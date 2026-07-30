@@ -43,3 +43,5 @@ nimbledeps
 /windy/
 /ws/
 /zippy/
+libcurl.dll
+nim.cfg.local
