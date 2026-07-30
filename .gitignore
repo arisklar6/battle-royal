@@ -45,3 +45,4 @@ nimbledeps
 /zippy/
 libcurl.dll
 nim.cfg.local
+_to_delete/
