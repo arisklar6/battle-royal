@@ -1,4 +1,4 @@
-﻿## Core sim types. All HP in centi-HP integers (DESIGN Â§5.2); no floats in the sim.
+﻿## Core sim types. All HP in centi-HP integers (DESIGN §5.2); no floats in the sim.
 
 import items
 export items
@@ -54,7 +54,7 @@ type
     deathTick*: int            # -1 while alive
     damageDealtCenti*: int
     kills*: int
-    # inventory (DESIGN Â§3.1)
+    # inventory (DESIGN §3.1)
     hand*: ItemId              # iNone = bare hands
     handN*: int                # thrown-weapon stack held in hand
     handDur*: int
@@ -112,7 +112,7 @@ const
   SlotHand* = -1
   SlotBody* = -2
 
-  ## Pinned pedestal ring (DESIGN Â§2.2) â€” literal constants, no runtime trig.
+  ## Pinned pedestal ring (DESIGN §2.2) — literal constants, no runtime trig.
   Pedestals*: array[16, Pos] = [
     Pos(x: 40, y: 24), Pos(x: 39, y: 30), Pos(x: 35, y: 35), Pos(x: 30, y: 39),
     Pos(x: 24, y: 40), Pos(x: 18, y: 39), Pos(x: 13, y: 35), Pos(x: 9, y: 30),

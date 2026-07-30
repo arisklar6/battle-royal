@@ -1,14 +1,14 @@
 ﻿## Deterministic sim core. Steps 1-2: freeze/mines/ignition/movement + loot,
-## inventory, forage. Resolution order per DESIGN Â§1.2 (part of the spec).
-## PRNG consumption order (Â§15.1): rocks -> crate positions -> crate contents
-## -> bushes -> tier-1 -> tier-2, then per-tick in Â§1.2 step order.
+## inventory, forage. Resolution order per DESIGN §1.2 (part of the spec).
+## PRNG consumption order (§15.1): rocks -> crate positions -> crate contents
+## -> bushes -> tier-1 -> tier-2, then per-tick in §1.2 step order.
 
 import std/[json, tables]
 import prng, types, arena
 
 type
   ActionKind* = enum
-    akNone, akMove, akPickup, akDrop, akUse, akInteract
+    akNone, akMove, akAttack, akPickup, akDrop, akUse, akInteract
 
   Action* = object
     kind*: ActionKind
@@ -199,6 +199,7 @@ proc actionJson(act: Action): string =
   case act.kind
   of akNone: """{"do":"none"}"""
   of akMove: """{"do":"move","dir":"""" & $act.dir & """"}"""
+  of akAttack: """{"do":"attack","dir":"""" & $act.dir & """"}"""
   of akPickup: """{"do":"pickup"}"""
   of akDrop: """{"do":"drop","slot":""" & $act.invSlot & "}"
   of akUse: """{"do":"use","slot":""" & $act.invSlot & "}"
@@ -344,7 +345,7 @@ proc resolvePickup(s: var Sim, i: int) =
     s.ground[gi] = g
 
 proc unequipBodyToGround(s: var Sim, i: int) =
-  ## Dropping/replacing a backpack sheds overflow slots 2..3 (DESIGN Â§3.1).
+  ## Dropping/replacing a backpack sheds overflow slots 2..3 (DESIGN §3.1).
   let a = addr s.agents[i]
   if a.body == iNone:
     return
@@ -381,7 +382,7 @@ proc resolveUse(s: var Sim, i: int, invSlot: int) =
   let d = def(slotItem)
   case d.kind
   of ikMelee, ikRanged, ikThrown:
-    # equip swap: hand <-> pack slot (DESIGN Â§3.1); brief attack lockout
+    # equip swap: hand <-> pack slot (DESIGN §3.1); brief attack lockout
     let oldHand = a.hand
     let oldN = a.handN
     let oldDur = a.handDur
@@ -437,6 +438,153 @@ proc resolveChannels(s: var Sim) =
       discard
     a.channeling = Channeling()
 
+# ---------------------------------------------------------------- combat
+
+proc meleeMult(a: Agent): int = 5 + a.stats.strength   # x/10 (DESIGN §5.2)
+
+proc applyDamage(s: var Sim, victim: int, centi: int, source: int) =
+  let v = addr s.agents[victim]
+  if not v.alive or centi <= 0:
+    return
+  v.hpCenti -= centi
+  v.damageTakenCenti += centi
+  if source >= 0:
+    v.lastDamager = source
+    s.agents[source].damageDealtCenti += centi
+  # ANY damage cancels a first-aid channel (kit kept — DESIGN §3.2)
+  if v.channeling.kind == chConsume and v.channeling.item == iFirstAid:
+    v.channeling = Channeling()
+
+proc bowDraw(a: Agent): int = 18 - a.stats.athleticism div 2
+
+proc spawnProjectile(s: var Sim, shooter: int, dir: Dir8, kind: ItemId) =
+  s.projectiles.add(Projectile(
+    pos: s.agents[shooter].pos, dir: dir, kind: kind, shooter: shooter,
+    remaining: (if kind == iArrows: def(iBow).rng
+                elif kind == iDarts: def(iBlowgun).rng
+                else: def(s.agents[shooter].hand).rng)))
+
+proc takeAmmo(a: var Agent, ammo: ItemId): bool =
+  for idx in 0 ..< a.packSlots:
+    if a.pack[idx].item == ammo and a.pack[idx].n > 0:
+      dec a.pack[idx].n
+      if a.pack[idx].n == 0:
+        a.pack[idx] = PackSlot()
+      return true
+  false
+
+proc resolveMelee(s: var Sim) =
+  if s.phase != phLive:
+    return
+  for i in 0 .. 15:
+    if not s.pendingSet[i] or s.pendingActions[i].kind != akAttack:
+      continue
+    let a = addr s.agents[i]
+    if not a.alive or s.tick < a.attackReadyTick:
+      continue
+    let dir = s.pendingActions[i].dir
+    let w = a.hand
+    let d = def(w)
+    case d.kind
+    of ikMelee:
+      var hit = -1
+      var probe = a.pos
+      for _ in 1 .. d.rng:
+        probe = probe + dir
+        if not inBounds(probe) or blocksSight(s.arena.tile(probe)):
+          break
+        let t = s.agentAt(probe)
+        if t >= 0:
+          hit = t
+          break
+      a.attackReadyTick = s.tick + d.cooldown
+      a.camoRevealedUntil = s.tick + CamoRevealTicks
+      if hit >= 0:
+        s.applyDamage(hit, d.damage * 100 * meleeMult(a[]) div 10, i)
+        if w != iNone:
+          dec a.handDur
+          if a.handDur <= 0:
+            a.hand = iNone
+            a.handN = 0
+    of ikRanged:
+      let ammo = ammoFor(w)
+      if not takeAmmo(a[], ammo):
+        continue
+      s.spawnProjectile(i, dir, ammo)
+      a.attackReadyTick = s.tick + (if w == iBow: bowDraw(a[]) else: d.cooldown)
+      a.camoRevealedUntil = s.tick + CamoRevealTicks
+    of ikThrown:
+      if a.handN <= 0:
+        continue
+      dec a.handN
+      s.spawnProjectile(i, dir, w)
+      a.attackReadyTick = s.tick + d.cooldown
+      a.camoRevealedUntil = s.tick + CamoRevealTicks
+      if a.handN == 0:
+        a.hand = iNone
+    else:
+      discard
+
+proc projectileDamage(kind: ItemId): int =
+  case kind
+  of iArrows: def(iBow).damage
+  of iDarts: def(iBlowgun).damage
+  of iKnives: def(iKnives).damage
+  else: 0
+
+proc applyPoison(s: var Sim, victim, shooter: int) =
+  let v = addr s.agents[victim]
+  v.poisonUntil = s.tick + 12 * (20 - v.stats.intelligence)
+  v.poisonAppliedTick = s.tick
+  v.poisonFrom = shooter
+
+proc advanceProjectiles(s: var Sim) =
+  ## 2 tiles/tick, spawn order. Range-end -> recoverable ground item;
+  ## wall/agent hit -> gone. Dodge (2·ATH in 100, match PRNG) passes through.
+  var kept: seq[Projectile] = @[]
+  for pIdx in 0 ..< s.projectiles.len:
+    var p = s.projectiles[pIdx]
+    var dead = false
+    for _ in 0 ..< 2:
+      if dead or p.remaining <= 0:
+        break
+      let next = p.pos + p.dir
+      if not inBounds(next) or blocksSight(s.arena.tile(next)):
+        dead = true
+        break
+      p.pos = next
+      dec p.remaining
+      let t = s.agentAt(next)
+      if t >= 0 and t != p.shooter:
+        if s.rng.rand(100) < 2 * s.agents[t].stats.athleticism:
+          continue                       # dodged: passes through
+        case p.kind
+        of iNet:
+          s.agents[t].nettedUntil = s.tick + NetTicks
+        of iDarts:
+          s.applyDamage(t, projectileDamage(p.kind) * 100, p.shooter)
+          if s.agents[t].alive:
+            s.applyPoison(t, p.shooter)
+        else:
+          s.applyDamage(t, projectileDamage(p.kind) * 100, p.shooter)
+        dead = true
+        break
+    if not dead:
+      if p.remaining <= 0:
+        s.dropGround(p.pos, p.kind, 1)   # spent projectile is lootable
+      else:
+        kept.add(p)
+  s.projectiles = kept
+
+proc resolvePoisonPulses(s: var Sim) =
+  for i in 0 .. 15:
+    let a = addr s.agents[i]
+    if not a.alive or a.poisonUntil <= s.tick:
+      continue
+    let dt = s.tick - a.poisonAppliedTick
+    if dt > 0 and dt mod PoisonPulsePeriod == 0:
+      s.applyDamage(i, PoisonPulseCenti, a.poisonFrom)
+
 # ---------------------------------------------------------------- deaths
 
 proc dropAllInventory(s: var Sim, i: int) =
@@ -458,6 +606,9 @@ proc resolveDeaths(s: var Sim) =
     if a.alive and a.hpCenti <= 0:
       a.alive = false
       a.deathTick = s.tick
+      # kill credit: last damager, mutual kills count for both (DESIGN §4)
+      if a.lastDamager >= 0 and a.lastDamager != i:
+        inc s.agents[a.lastDamager].kills
       s.dropAllInventory(i)
       s.emit(evDeathFireworks, i, a.pos)
       s.emit(evBoom, i, a.pos)
@@ -494,6 +645,16 @@ proc tickHash*(s: Sim): uint64 =
       fnv1a(h, uint64(cast[uint32](int32(ps.durability))))
     fnv1a(h, uint64(ord(a.channeling.kind)))
     fnv1a(h, uint64(cast[uint32](int32(a.channeling.doneTick))))
+  for a in s.agents:
+    fnv1a(h, uint64(cast[uint32](int32(a.poisonUntil))))
+    fnv1a(h, uint64(cast[uint32](int32(a.nettedUntil))))
+    fnv1a(h, uint64(cast[uint32](int32(a.kills))))
+    fnv1a(h, uint64(cast[uint32](int32(a.damageDealtCenti))))
+  for p in s.projectiles:
+    fnv1a(h, uint64(p.pos.x))
+    fnv1a(h, uint64(p.pos.y))
+    fnv1a(h, uint64(ord(p.kind)))
+    fnv1a(h, uint64(cast[uint32](int32(p.remaining))))
   for g in s.ground:
     fnv1a(h, uint64(g.pos.x))
     fnv1a(h, uint64(g.pos.y))
@@ -528,7 +689,14 @@ proc step*(s: var Sim) =
   # 3. movement
   s.resolveMovement()
 
-  # 4-6. combat, projectiles, effects â€” step 3 of the build plan.
+  # 4. melee attacks (positions post-move; mutual hits both land)
+  s.resolveMelee()
+
+  # 5. projectiles
+  s.advanceProjectiles()
+
+  # 6. DoT effects (net expiry is passive via nettedUntil)
+  s.resolvePoisonPulses()
 
   # 7. item verbs: completions first, then pickups, then drops/use/interact
   s.resolveChannels()
