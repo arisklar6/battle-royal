@@ -46,6 +46,19 @@ proc inputLogJson(s: Sim): string =
                "action": parseJson(inp.payload)})
   $arr
 
+proc sponsorLogJson*(s: Sim): string =
+  ## DESIGN §14: every accept AND reject.
+  var arr = newJArray()
+  for r in s.sponsorLog:
+    arr.add(%*{"tick_requested": r.tickRequested,
+               "tick_landed": (if r.tickLanded >= 0: %r.tickLanded else: newJNull()),
+               "sponsor": r.sponsor, "team": TeamNames[r.team],
+               "recipient_slot": r.recipientSlot, "item": r.itemId,
+               "cost": r.cost, "status": $r.status,
+               "reason": (if r.reason.len > 0: %r.reason else: newJNull()),
+               "balance_after": r.balanceAfter})
+  $arr
+
 proc matchSummaryJson*(s: Sim, seed: uint64): string =
   var deaths = newJArray()
   for a in s.agents:
@@ -74,6 +87,8 @@ proc buildReplayZip*(workDir: string, effectiveConfig: string, s: Sim): string =
     kind: ekFile, contents: buildTranscriptText(s), lastModified: stamp)
   archive.contents["chat_transcript.json"] = ArchiveEntry(
     kind: ekFile, contents: buildTranscriptJson(s), lastModified: stamp)
+  archive.contents["sponsor_log.json"] = ArchiveEntry(
+    kind: ekFile, contents: sponsorLogJson(s), lastModified: stamp)
   let zipPath = workDir / "replay.zip"
   archive.writeZipArchive(zipPath)
   readFile(zipPath)

@@ -36,6 +36,18 @@ type
     fromTick*: int
     duration*: int
 
+  ScriptedGift* = object
+    tick*: int
+    team*: int                 # 0..7
+    recipientSlot*: int
+    itemId*: string            # catalog key
+
+  SponsorConfig* = object
+    live*: bool
+    budgetPerTeam*: int
+    shopOpensTick*: int
+    scriptedGifts*: seq[ScriptedGift]
+
   SimConfig* = object
     seed*: uint64
     seedWasMinted*: bool
@@ -44,6 +56,38 @@ type
     zone*: seq[ZoneStage]
     events*: seq[ScriptedEvent]
     playerNames*: seq[string]
+    sponsor*: SponsorConfig
+
+  GiftStatus* = enum
+    gsAccepted = "accepted", gsRejected = "rejected"
+
+  GiftRecord* = object
+    tickRequested*: int
+    tickLanded*: int           # -1 until landed / for rejects
+    sponsor*: string
+    team*: int
+    recipientSlot*: int
+    itemId*: string
+    cost*: int
+    status*: GiftStatus
+    reason*: string            # rejection reason, "" for accepts
+    balanceAfter*: int
+
+  Pod* = object
+    landing*: Pos
+    itemId*: string
+    recipientSlot*: int
+    spawnTick*: int
+    landsTick*: int
+    landed*: bool
+
+  GiftOutcome* = object
+    accepted*: bool
+    reason*: string
+    cost*: int
+    balance*: int
+    landsTick*: int
+    landing*: Pos
 
   TalkChannel* = enum
     tcBroadcast = "broadcast", tcTeam = "team", tcDm = "dm"
@@ -78,6 +122,13 @@ type
     inputLog*: seq[AppliedInput]
     hashes*: seq[(int, uint64)]
     winnerSlot*: int
+    teamBudget*: array[8, int]
+    sponsorLog*: seq[GiftRecord]
+    pods*: seq[Pod]
+    finaleEmitted*: bool
+    suppressScriptedGifts*: bool   # replay mode: gifts come from the input log
+                                   # ONLY (mission invariant); config-driven
+                                   # scripted processing is disabled
     pendingActions: array[16, Action]
     pendingSet: array[16, bool]
 
@@ -120,6 +171,25 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   else:
     for st in DefaultZone:
       result.zone.add(st)
+  result.sponsor.budgetPerTeam = 300
+  result.sponsor.shopOpensTick = 1680
+  if node.hasKey("sponsor"):
+    let sp = node["sponsor"]
+    result.sponsor.live = sp{"live"}.getBool(false)
+    result.sponsor.budgetPerTeam = sp{"budget_per_team"}.getInt(300)
+    result.sponsor.shopOpensTick = sp{"shop_opens_tick"}.getInt(1680)
+    if sp.hasKey("scripted_gifts"):
+      for g in sp["scripted_gifts"]:
+        var teamIdx = -1
+        let teamStr = g{"team"}.getStr("")
+        for ti, tn in TeamNames:
+          if tn == teamStr:
+            teamIdx = ti
+        result.sponsor.scriptedGifts.add(ScriptedGift(
+          tick: g{"tick"}.getInt(),
+          team: (if teamIdx >= 0: teamIdx else: g{"team"}.getInt(-1)),
+          recipientSlot: g{"recipient_slot"}.getInt(-1),
+          itemId: g{"item_id"}.getStr("")))
   for i in 0 .. 15:
     result.playerNames.add("P" & (if i < 10: "0" else: "") & $i)
   if node.hasKey("players"):
@@ -141,10 +211,16 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
       result.events.add(ev)
 
 proc effectiveConfigJson*(cfg: SimConfig, original: JsonNode): string =
+  ## Complete effective config for the replay header: minted seed written in,
+  ## ALL auth material stripped (runner tokens + sponsor tokens — gifts replay
+  ## from the input log, so the secrets are never needed downstream).
   var eff = copy(original)
   eff["seed"] = %int64(cfg.seed)
   if eff.hasKey("tokens"):
     eff.delete("tokens")
+  if eff.hasKey("sponsor") and eff["sponsor"].kind == JObject and
+     eff["sponsor"].hasKey("sponsor_tokens"):
+    eff["sponsor"].delete("sponsor_tokens")
   $eff
 
 # ---------------------------------------------------------------- zone/events
@@ -329,6 +405,8 @@ proc initSim*(cfg: SimConfig): Sim =
       moveReadyTick: 0, attackReadyTick: 0, deathTick: -1,
       lastDamager: -1)
     result.lastTalkTick[i] = -24
+  for t in 0 .. 7:
+    result.teamBudget[t] = cfg.sponsor.budgetPerTeam
   result.generateLoot()
 
 # ---------------------------------------------------------------- actions
@@ -816,6 +894,133 @@ proc resolvePoisonPulses(s: var Sim) =
     if dt > 0 and dt mod PoisonPulsePeriod == 0:
       s.applyDamage(i, PoisonPulseCenti, a.poisonFrom)
 
+# ---------------------------------------------------------------- sponsor
+
+proc podReservedAt(s: Sim, p: Pos): bool =
+  for pod in s.pods:
+    if pod.landing == p:
+      return true
+
+proc landingFree(s: Sim, p: Pos): bool =
+  inBounds(p) and not blocksMovement(s.arena.tile(p)) and
+    s.agentAt(p) < 0 and not s.podReservedAt(p)
+
+proc findLandingTile(s: Sim, origin: Pos): Pos =
+  ## DESIGN §9.3.3 pinned spiral: Chebyshev rings r=0..3 around origin, each
+  ## ring starting at (x, y-r) walking clockwise; first free tile wins.
+  ## Fallback: nearest free by squared distance, tie-broken by scan order.
+  for r in 0 .. 3:
+    if r == 0:
+      if s.landingFree(origin):
+        return origin
+      continue
+    var ring: seq[Pos] = @[]
+    var p = Pos(x: origin.x, y: origin.y - r)
+    ring.add(p)
+    for (dx, dy, steps) in [(1, 0, r), (0, 1, 2 * r), (-1, 0, 2 * r),
+                            (0, -1, 2 * r), (1, 0, r - 1)]:
+      for _ in 0 ..< steps:
+        p = Pos(x: p.x + dx, y: p.y + dy)
+        ring.add(p)
+    for q in ring:
+      if s.landingFree(q):
+        return q
+  # fallback: whole-arena scan, min d2, scan order breaks ties
+  var best = Pos(x: -1, y: -1)
+  var bestD2 = int.high
+  for y in 1 ..< ArenaSize - 1:
+    for x in 1 ..< ArenaSize - 1:
+      let q = Pos(x: x, y: y)
+      if s.landingFree(q):
+        let dx = x - origin.x
+        let dy = y - origin.y
+        let d2 = dx * dx + dy * dy
+        if d2 < bestD2:
+          bestD2 = d2
+          best = q
+  best
+
+proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
+                  recipientSlot: int, itemId: string): GiftOutcome =
+  ## Atomic (DESIGN §9.1): full-cost accept or zero-effect reject. Both logged.
+  var rec = GiftRecord(tickRequested: s.tick, tickLanded: -1, sponsor: sponsor,
+                       team: teamIdx, recipientSlot: recipientSlot,
+                       itemId: itemId, status: gsRejected)
+  template reject(why: string): GiftOutcome =
+    rec.reason = why
+    rec.balanceAfter = (if teamIdx in 0 .. 7: s.teamBudget[teamIdx] else: 0)
+    s.sponsorLog.add(rec)
+    GiftOutcome(accepted: false, reason: why, balance: rec.balanceAfter)
+  if s.phase == phEnded or teamIdx notin 0 .. 7 or recipientSlot notin 0 .. 15:
+    return reject("malformed")
+  let (known, gift) = giftLookup(itemId)
+  if not known:
+    return reject("unknown_item")
+  if s.tick < s.cfg.sponsor.shopOpensTick:
+    return reject("shop_locked")
+  if not s.agents[recipientSlot].alive:
+    return reject("recipient_dead")
+  if team(AgentId(recipientSlot)) != teamIdx:
+    return reject("not_own_team")
+  if s.teamBudget[teamIdx] < gift.price:
+    return reject("insufficient_funds")
+
+  s.teamBudget[teamIdx] -= gift.price
+  let origin = s.agents[recipientSlot].pos
+  let landing = s.findLandingTile(origin)
+  let landsTick = s.tick + 120
+  s.pods.add(Pod(landing: landing, itemId: itemId,
+                 recipientSlot: recipientSlot, spawnTick: s.tick,
+                 landsTick: landsTick))
+  rec.status = gsAccepted
+  rec.cost = gift.price
+  rec.balanceAfter = s.teamBudget[teamIdx]
+  s.sponsorLog.add(rec)
+  s.inputLog.add(AppliedInput(tick: s.tick, slot: recipientSlot,
+    payload: """{"gift":{"sponsor":""" & escapeJson(sponsor) &
+             ""","team":""" & $teamIdx & ""","recipient_slot":""" & $recipientSlot &
+             ""","item_id":""" & escapeJson(itemId) & "}}"))
+  s.emit(evGiftIncoming, recipientSlot, landing,
+    """{"item":"""" & itemId & """","lands_tick":""" & $landsTick &
+    ""","recipient":""" & $recipientSlot & "}")
+  GiftOutcome(accepted: true, cost: gift.price, balance: s.teamBudget[teamIdx],
+              landsTick: landsTick, landing: landing)
+
+proc resolvePods(s: var Sim) =
+  # landings
+  for i in 0 ..< s.pods.len:
+    if not s.pods[i].landed and s.tick >= s.pods[i].landsTick:
+      s.pods[i].landed = true
+      let (_, gift) = giftLookup(s.pods[i].itemId)
+      for (item, n) in gift.contents:
+        s.dropGround(s.pods[i].landing, item, n, def(item).durability)
+      s.emit(evGiftLanded, s.pods[i].recipientSlot, s.pods[i].landing,
+        """{"item":"""" & s.pods[i].itemId & """"}""")
+      # record landing tick on the matching accepted gift
+      for j in countdown(s.sponsorLog.len - 1, 0):
+        if s.sponsorLog[j].status == gsAccepted and
+           s.sponsorLog[j].tickLanded < 0 and
+           s.sponsorLog[j].recipientSlot == s.pods[i].recipientSlot and
+           s.sponsorLog[j].itemId == s.pods[i].itemId:
+          s.sponsorLog[j].tickLanded = s.tick
+          break
+  # expire landed pods once their tile is looted clean
+  var kept: seq[Pod] = @[]
+  for pod in s.pods:
+    if pod.landed and s.groundAt(pod.landing).len == 0:
+      discard
+    else:
+      kept.add(pod)
+  s.pods = kept
+
+proc processScriptedGifts(s: var Sim) =
+  ## Scripted gifts pass the IDENTICAL validation pipeline (DESIGN §9.3.1).
+  if s.suppressScriptedGifts:
+    return
+  for g in s.cfg.sponsor.scriptedGifts:
+    if g.tick == s.tick:
+      discard s.requestGift("script", g.team, g.recipientSlot, g.itemId)
+
 # ---------------------------------------------------------------- deaths
 
 proc dropAllInventory(s: var Sim, i: int) =
@@ -896,6 +1101,14 @@ proc tickHash*(s: Sim): uint64 =
   for i in 0 .. 15:
     fnv1a(h, uint64(cast[uint32](int32(s.lastTalkTick[i]))))
   fnv1a(h, uint64(s.talkLog.len))
+  for t in 0 .. 7:
+    fnv1a(h, uint64(cast[uint32](int32(s.teamBudget[t]))))
+  for pod in s.pods:
+    fnv1a(h, uint64(pod.landing.x))
+    fnv1a(h, uint64(pod.landing.y))
+    fnv1a(h, uint64(cast[uint32](int32(pod.landsTick))))
+    fnv1a(h, uint64(ord(pod.landed)))
+  fnv1a(h, uint64(s.sponsorLog.len))
   for w in s.rng.state():
     fnv1a(h, w)
   h
@@ -949,6 +1162,7 @@ proc step*(s: var Sim) =
     s.phase = phLive
     s.emit(evIgnition, -1, Pos(x: ArenaSize div 2, y: ArenaSize div 2))
   s.emitHazardWarnings()
+  s.processScriptedGifts()
 
   # 3. movement
   s.resolveMovement()
@@ -963,7 +1177,9 @@ proc step*(s: var Sim) =
   s.resolvePoisonPulses()
   s.resolveHazards()
 
-  # 7. item verbs: completions first, then pickups, then drops/use/interact
+  # 7. item verbs: pod landings first (same-tick lootable), then completions,
+  # pickups, drops/use/interact
+  s.resolvePods()
   s.resolveChannels()
   if s.phase == phLive:
     for i in 0 .. 15:
@@ -1012,7 +1228,12 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
   ## and the live server both go through here — one mapping, no drift.
   if j == nil or j.kind != JObject:
     return
-  if j.hasKey("talk"):
+  if j.hasKey("gift"):
+    let g = j["gift"]
+    if g.kind == JObject:
+      discard s.requestGift(g{"sponsor"}.getStr("script"), g{"team"}.getInt(-1),
+                            g{"recipient_slot"}.getInt(-1), g{"item_id"}.getStr(""))
+  elif j.hasKey("talk"):
     let t = j["talk"]
     if t.kind != JObject:
       return

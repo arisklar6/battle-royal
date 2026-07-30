@@ -15,12 +15,16 @@ const
   SpFwGold = 31
   SpMineFlash = 32
   SpZoneFire = 33
+  SpPod = 34
+  SpPodMark = 35
 
   ObBackground = 1
   ObAgentBase = 100         # 100 + slot
   ObEffectBase = 1000
   ObZoneRingBase = 30000    # pool for zone-front tiles
   ZoneRingPool = 400
+  ObPodBase = 40000         # pod markers/crates by pod index
+  PodPool = 64
 
   TeamColors: array[8, (uint8, uint8, uint8)] = [
     (220'u8, 60'u8, 60'u8), (70'u8, 110'u8, 230'u8), (70'u8, 190'u8, 90'u8),
@@ -37,6 +41,7 @@ type
     effects: seq[Effect]
     deadDrawn: array[16, bool]
     ringDrawn: int            # zone-front objects currently defined
+    podsDrawn: int
 
 proc put(pixels: var seq[uint8], w, x, y: int, r, g, b: uint8, a: uint8 = 255) =
   let i = (y * w + x) * 4
@@ -110,6 +115,21 @@ proc spriteDefs(s: Sim): seq[uint8] =
       fire.put(TileSize, x, y,
                (if hot: 255'u8 else: 210'u8), (if hot: 110'u8 else: 60'u8), 20, 170)
   result.addSprite(SpZoneFire, TileSize, TileSize, fire, "zone_fire")
+  # sponsor pod: white crate w/ red stripe; incoming marker: red target box
+  var pod = newSeq[uint8](TileSize * TileSize * 4)
+  for y in 0 ..< TileSize:
+    for x in 0 ..< TileSize:
+      if y == TileSize div 2 or y == TileSize div 2 - 1:
+        pod.put(TileSize, x, y, 220, 40, 40)
+      else:
+        pod.put(TileSize, x, y, 235, 235, 235)
+  result.addSprite(SpPod, TileSize, TileSize, pod, "pod")
+  var mark = newSeq[uint8](TileSize * TileSize * 4)
+  for y in 0 ..< TileSize:
+    for x in 0 ..< TileSize:
+      if x == 0 or y == 0 or x == TileSize - 1 or y == TileSize - 1:
+        mark.put(TileSize, x, y, 255, 60, 60, 200)
+  result.addSprite(SpPodMark, TileSize, TileSize, mark, "pod_mark")
 
 proc agentObject(packet: var seq[uint8], s: Sim, slot: int) =
   packet.addObject(ObAgentBase + slot,
@@ -151,6 +171,22 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     else:
       kept.add(ef)
   r.effects = kept
+  # sponsor pods: incoming marker blinks on the landing tile; landed = crate
+  var podIdx = 0
+  for pod in s.pods:
+    if podIdx >= PodPool: break
+    if pod.landed:
+      result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize,
+                       pod.landing.y * TileSize, 12, LayerMap, SpPod)
+    elif (s.tick div 6) mod 2 == 0:
+      result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize,
+                       pod.landing.y * TileSize, 12, LayerMap, SpPodMark)
+    else:
+      result.addDeleteObject(ObPodBase + podIdx)
+    inc podIdx
+  for stale in podIdx ..< r.podsDrawn:
+    result.addDeleteObject(ObPodBase + stale)
+  r.podsDrawn = podIdx
   # zone front ring: tiles just outside the current radius
   var ringIdx = 0
   let zr = s.zoneRadius()

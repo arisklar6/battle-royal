@@ -61,6 +61,32 @@ const
   NetTicks* = 72
   CamoRevealTicks* = 120
 
+type
+  GiftDef* = object
+    price*: int
+    contents*: seq[(ItemId, int)]
+
+const GiftCatalog*: seq[(string, GiftDef)] = @[
+  ## DESIGN §9.2 (DECIDED: fixed prices, no caps beyond the budget).
+  ("rations", GiftDef(price: 20, contents: @[(iRations, 2)])),
+  ("knives", GiftDef(price: 30, contents: @[(iKnives, 4)])),
+  ("arrows", GiftDef(price: 30, contents: @[(iArrows, 6)])),
+  ("darts", GiftDef(price: 35, contents: @[(iDarts, 4)])),
+  ("net", GiftDef(price: 50, contents: @[(iNet, 1)])),
+  ("first_aid", GiftDef(price: 60, contents: @[(iFirstAid, 1)])),
+  ("backpack", GiftDef(price: 70, contents: @[(iBackpack, 1)])),
+  ("camouflage", GiftDef(price: 80, contents: @[(iCamo, 1)])),
+  ("spear", GiftDef(price: 90, contents: @[(iSpear, 1)])),
+  ("blowgun", GiftDef(price: 100, contents: @[(iBlowgun, 1), (iDarts, 4)])),
+  ("sword", GiftDef(price: 120, contents: @[(iSword, 1)])),
+  ("bow", GiftDef(price: 150, contents: @[(iBow, 1), (iArrows, 6)]))]
+
+proc giftLookup*(id: string): (bool, GiftDef) =
+  for (key, g) in GiftCatalog:
+    if key == id:
+      return (true, g)
+  (false, GiftDef())
+
 proc def*(id: ItemId): ItemDef = ItemTable[id]
 proc isWeapon*(id: ItemId): bool =
   ItemTable[id].kind in {ikMelee, ikRanged, ikThrown} and id != iNone

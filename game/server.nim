@@ -18,14 +18,25 @@ const
   SnappyJs = staticRead("client/snappyjs.min.js")
   TargetFps = 24.0
 
+const SponsorClientHtml = staticRead("client/sponsor_client.html")
+
 type
   ViewerState = object
     initialized: bool
+
+  SponsorReq = object
+    ws: WebSocket
+    teamIdx: int
+    payload: string
 
   AppState = object
     lock: Lock
     viewers: Table[WebSocket, ViewerState]
     closed: seq[WebSocket]
+    sponsors: Table[WebSocket, int]      # ws -> team index
+    sponsorQueue: seq[SponsorReq]
+    sponsorLive: bool
+    sponsorTokens: Table[string, string] # team name -> token (runtime config only)
 
 var appState: AppState
 
@@ -36,15 +47,42 @@ proc mintSeedFromOs(): uint64 =
   for i in 0 .. 7:
     result = (result shl 8) or uint64(b[i])
 
+proc queryParam(uri, key: string): string =
+  let parts = uri.split('?')
+  if parts.len < 2:
+    return ""
+  for pair in parts[1].split('&'):
+    let kv = pair.split('=')
+    if kv.len == 2 and kv[0] == key:
+      return kv[1]
+
 proc httpHandler(request: Request) =
   let path = request.uri.split('?')[0]
+  var headers: HttpHeaders
   if request.httpMethod == "GET" and path in ["/global", "/replay"]:
     let websocket = request.upgradeToWebSocket()
     {.gcsafe.}:
       withLock appState.lock:
         appState.viewers[websocket] = ViewerState()
     return
-  var headers: HttpHeaders
+  if request.httpMethod == "GET" and path == "/sponsor":
+    # token-gated live ingress (DESIGN §11); refuse at upgrade on any mismatch
+    {.gcsafe.}:
+      withLock appState.lock:
+        let live = appState.sponsorLive
+        let teamName = queryParam(request.uri, "team")
+        let token = queryParam(request.uri, "token")
+        if not live or teamName notin appState.sponsorTokens or
+           token.len == 0 or appState.sponsorTokens[teamName] != token:
+          headers["Content-Type"] = "text/plain"
+          request.respond(403, headers, "sponsor ingress disabled or bad token")
+          return
+        var teamIdx = -1
+        for i, tn in TeamNames:
+          if tn == teamName: teamIdx = i
+        let websocket = request.upgradeToWebSocket()
+        appState.sponsors[websocket] = teamIdx
+    return
   case path
   of "/healthz":
     headers["Content-Type"] = "text/plain"
@@ -52,6 +90,15 @@ proc httpHandler(request: Request) =
   of "/client/global", "/client/replay":
     headers["Content-Type"] = "text/html; charset=utf-8"
     request.respond(200, headers, GlobalClientHtml)
+  of "/client/sponsor":
+    {.gcsafe.}:
+      withLock appState.lock:
+        if not appState.sponsorLive:
+          headers["Content-Type"] = "text/plain"
+          request.respond(403, headers, "sponsor mode is not live")
+          return
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    request.respond(200, headers, SponsorClientHtml)
   of "/client/snappyjs.min.js":
     headers["Content-Type"] = "application/javascript"
     request.respond(200, headers, SnappyJs)
@@ -62,12 +109,20 @@ proc httpHandler(request: Request) =
 proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
                       message: Message) =
   case event
-  of OpenEvent, MessageEvent:
-    discard message
+  of OpenEvent:
+    discard
+  of MessageEvent:
+    {.gcsafe.}:
+      withLock appState.lock:
+        if websocket in appState.sponsors:
+          appState.sponsorQueue.add(SponsorReq(
+            ws: websocket, teamIdx: appState.sponsors[websocket],
+            payload: message.data))
   of ErrorEvent, CloseEvent:
     {.gcsafe.}:
       withLock appState.lock:
         appState.closed.add(websocket)
+        appState.sponsors.del(websocket)
 
 type ServerThreadArgs = object
   server: ptr Server
@@ -127,17 +182,93 @@ proc runLive(rc: RuntimeConfig) =
              "zone": {"schedule": [[96, 144, 336, 24, 12, 2],
                                     [432, 480, 624, 12, 0, 30]]},
              "events": [{"kind": "firestorm", "center": [15, 15], "radius": 4,
-                          "from_tick": 240, "duration": 240}]}
+                          "from_tick": 240, "duration": 240}],
+             "sponsor": {"live": false, "budget_per_team": 300,
+                          "shop_opens_tick": 96,
+                          "scripted_gifts": [
+                            {"tick": 90, "team": "A", "recipient_slot": 0,
+                             "item_id": "rations"},
+                            {"tick": 150, "team": "C", "recipient_slot": 5,
+                             "item_id": "sword"},
+                            {"tick": 200, "team": "B", "recipient_slot": 2,
+                             "item_id": "first_aid"}]}}
   let cfg = parseSimConfig(original, mintSeedFromOs)
   var s = initSim(cfg)
   var r: Renderer
   startServer(rc)
+  {.gcsafe.}:
+    withLock appState.lock:
+      appState.sponsorLive = cfg.sponsor.live
+      if original.hasKey("sponsor") and
+         original["sponsor"].hasKey("sponsor_tokens"):
+        for teamName, tok in original["sponsor"]["sponsor_tokens"].pairs:
+          appState.sponsorTokens[teamName] = tok.getStr()
 
   var last = getMonoTime()
   var echoedTalks = 0
+  var echoedGifts = 0
   while s.phase != phEnded:
+    # live sponsor ingress: drain queued requests at the tick boundary
+    var reqs: seq[SponsorReq] = @[]
+    {.gcsafe.}:
+      withLock appState.lock:
+        reqs = appState.sponsorQueue
+        appState.sponsorQueue.setLen(0)
+    for req in reqs:
+      var reply = """{"type":"gift_result","accepted":false,"reason":"malformed"}"""
+      try:
+        let j = parseJson(req.payload)
+        if j{"type"}.getStr() == "gift_request":
+          let outc = s.requestGift("live:" & TeamNames[req.teamIdx],
+            req.teamIdx, j{"recipient_slot"}.getInt(-1), j{"item_id"}.getStr(""))
+          let reqId = j{"request_id"}.getStr("")
+          reply =
+            if outc.accepted:
+              """{"type":"gift_result","request_id":""" & escapeJson(reqId) &
+              ""","accepted":true,"cost":""" & $outc.cost &
+              ""","balance":""" & $outc.balance &
+              ""","lands_tick":""" & $outc.landsTick &
+              ""","landing":[""" & $outc.landing.x & "," & $outc.landing.y & "]}"
+            else:
+              """{"type":"gift_result","request_id":""" & escapeJson(reqId) &
+              ""","accepted":false,"reason":""" & escapeJson(outc.reason) &
+              ""","balance":""" & $outc.balance & "}"
+      except CatchableError:
+        discard
+      try:
+        req.ws.send(reply, TextMessage)
+      except CatchableError:
+        discard
     s.driveScript()
     s.step()
+    # sponsor state push every 24 ticks
+    if s.tick mod 24 == 0:
+      var sponsorConns: seq[(WebSocket, int)] = @[]
+      {.gcsafe.}:
+        withLock appState.lock:
+          for ws, ti in appState.sponsors.pairs:
+            sponsorConns.add((ws, ti))
+      for (ws, ti) in sponsorConns:
+        var aliveArr = ""
+        for i in 0 .. 15:
+          if s.agents[i].alive and team(AgentId(i)) == ti:
+            if aliveArr.len > 0: aliveArr.add(",")
+            aliveArr.add($i)
+        try:
+          ws.send("""{"type":"sponsor_state","tick":""" & $s.tick &
+                  ""","budget":""" & $s.teamBudget[ti] &
+                  ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
+                  ""","team_alive":[""" & aliveArr & "]}", TextMessage)
+        except CatchableError:
+          discard
+    while echoedGifts < s.sponsorLog.len:
+      let g = s.sponsorLog[echoedGifts]
+      echo "SPONSOR [t=", g.tickRequested, "] ", g.sponsor, " ", $g.status,
+           " ", g.itemId, " -> P", g.recipientSlot, " (team ",
+           TeamNames[g.team], ") cost=", g.cost,
+           (if g.reason.len > 0: " reason=" & g.reason else: ""),
+           " balance=", g.balanceAfter
+      inc echoedGifts
     while echoedTalks < s.talkLog.len:
       echo "CHAT ", talkLine(s, s.talkLog[echoedTalks])
       inc echoedTalks
@@ -159,10 +290,11 @@ proc runLive(rc: RuntimeConfig) =
     createDir("results")
     writeFile("results" / "replay.zip", zipBytes)
     echo "replay bundle -> results/replay.zip"
-  # local convenience copies next to results (DESIGN §13)
+  # local convenience copies next to results (DESIGN §13/§14)
   createDir("results")
   writeFile("results" / "chat_transcript.txt", buildTranscriptText(s))
   writeFile("results" / "chat_transcript.json", buildTranscriptJson(s))
+  writeFile("results" / "sponsor_log.json", sponsorLogJson(s))
   echo "match over: winner=", s.winnerSlot, " ticks=", s.tick
   quit(0)
 

@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Zero Sum - Sponsor Console</title>
+<style>
+  body { font-family: monospace; background: #14170f; color: #e8e8e0; margin: 0; padding: 16px; }
+  h1 { font-size: 16px; color: #d4af37; }
+  #status { color: #9a9; }
+  #budget { font-size: 20px; color: #d4af37; }
+  .shop { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; max-width: 560px; }
+  button { font-family: monospace; background: #232a1c; color: #e8e8e0; border: 1px solid #565; padding: 6px 10px; cursor: pointer; }
+  button:hover { background: #37422c; }
+  select { font-family: monospace; background: #232a1c; color: #e8e8e0; border: 1px solid #565; padding: 4px; }
+  #log { white-space: pre-wrap; font-size: 12px; margin-top: 12px; border-top: 1px solid #333; padding-top: 8px; max-height: 40vh; overflow-y: auto; }
+  iframe { border: 1px solid #333; width: 100%; height: 420px; margin-top: 12px; background: #000; }
+</style>
+</head>
+<body>
+<h1>ZERO SUM &mdash; SPONSOR CONSOLE</h1>
+<div id="status">connecting&hellip;</div>
+<div>budget: <span id="budget">?</span> softcoin</div>
+<div>
+  recipient:
+  <select id="recipient"></select>
+</div>
+<div class="shop" id="shop"></div>
+<div id="log"></div>
+<iframe src="/client/global"></iframe>
+<script>
+// Client-page WS contract (DESIGN §11): honor ?address= when present, else
+// same-origin derivation with the /client/sponsor -> /sponsor path rewrite.
+const pageUrl = new URL(window.location.href);
+function websocketAddress(path) {
+  const address = pageUrl.searchParams.get('address');
+  const target = new URL(address || window.location.href, window.location.href);
+  if (target.protocol === 'http:') target.protocol = 'ws:';
+  if (target.protocol === 'https:') target.protocol = 'wss:';
+  if (!address) target.pathname = target.pathname.replace(/\/client\/sponsor$/, path);
+  for (const key of ['team', 'token']) {
+    const v = pageUrl.searchParams.get(key);
+    if (v !== null) target.searchParams.set(key, v);
+  }
+  target.hash = '';
+  return target;
+}
+const CATALOG = {rations: 20, knives: 30, arrows: 30, darts: 35, net: 50,
+                 first_aid: 60, backpack: 70, camouflage: 80, spear: 90,
+                 blowgun: 100, sword: 120, bow: 150};
+const logEl = document.getElementById('log');
+const shopEl = document.getElementById('shop');
+const recEl = document.getElementById('recipient');
+let reqN = 0;
+function log(line) { logEl.textContent = line + "\n" + logEl.textContent; }
+const ws = new WebSocket(websocketAddress('/sponsor'));
+ws.onopen = () => { document.getElementById('status').textContent = 'connected'; };
+ws.onclose = () => { document.getElementById('status').textContent = 'disconnected'; };
+ws.onmessage = (ev) => {
+  try {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'sponsor_state') {
+      document.getElementById('budget').textContent = m.budget;
+      const current = recEl.value;
+      recEl.innerHTML = '';
+      for (const slot of m.team_alive) {
+        const o = document.createElement('option');
+        o.value = slot; o.textContent = 'P' + String(slot).padStart(2, '0');
+        recEl.appendChild(o);
+      }
+      if (current) recEl.value = current;
+    } else if (m.type === 'gift_result') {
+      log(m.accepted
+        ? `ACCEPTED ${m.request_id} cost=${m.cost} lands t=${m.lands_tick} at (${m.landing}) balance=${m.balance}`
+        : `REJECTED ${m.request_id} reason=${m.reason} balance=${m.balance}`);
+    }
+  } catch (e) { /* ignore */ }
+};
+for (const [item, price] of Object.entries(CATALOG)) {
+  const b = document.createElement('button');
+  b.textContent = `${item} (${price})`;
+  b.onclick = () => {
+    const req = {type: 'gift_request', request_id: 'r' + (++reqN),
+                 recipient_slot: Number(recEl.value), item_id: item};
+    ws.send(JSON.stringify(req));
+    log(`sent ${req.request_id}: ${item} -> P${recEl.value}`);
+  };
+  shopEl.appendChild(b);
+}
+</script>
+</body>
+</html>
