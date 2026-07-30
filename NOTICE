@@ -1,0 +1,25 @@
+Zero Sum
+========
+
+Zero Sum is built on the bitworld engine library:
+
+  bitworld — "Retro 64x64 multiplayer social curriculum AI environment."
+  Author:  Andre von Houck
+  Source:  https://github.com/Metta-AI/bitworld
+  Commit:  pinned at build time; recorded in zero_sum.nimble and below.
+  License: MIT, as declared by the package metadata (bitworld.nimble line 4:
+           `license     = "MIT"`). The upstream repository ships no LICENSE
+           file; the nimble declaration is the operative license statement,
+           and this project proceeds on it with attribution (see LICENSE).
+
+Pinned upstream commit for this source tree:
+  e47559c90d92ff25c748ecdb41cd5695c10c65b2  (Metta-AI/bitworld)
+
+Platform contract references were verified against:
+  https://github.com/Metta-AI/coworld
+  7c3d8f05c29f3b38c39673dee4498c6138719791
+  (coworld's pyproject.toml likewise declares `license = "MIT"`.)
+
+All Zero Sum game code, design, art direction, and documentation in this
+repository are original work © 2026 the Zero Sum authors, released under the
+MIT License (see LICENSE).

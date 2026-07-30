@@ -1,0 +1,13 @@
+nimcache/
+bin/
+dist/
+*.exe
+*.pdb
+.venv/
+__pycache__/
+results/
+replays/
+*.zsr
+replay.zip
+episode-*/
+.DS_Store
