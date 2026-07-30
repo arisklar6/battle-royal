@@ -46,6 +46,13 @@ type
 
 proc allocDeadlineTick*(s: Sim): int = s.cfg.freezeTicks - 24
 proc moveCooldown*(a: Agent): int = 16 - a.stats.speed
+proc visionRadius*(a: Agent): int = 5 + (a.stats.intelligence + 1) div 2
+proc hazardScaled*(a: Agent, centi: int): int =
+  ## Zone/event damage after athleticism reduction (DESIGN §5.2).
+  centi * (100 - 3 * a.stats.athleticism) div 100
+
+type AllocResult* = enum
+  arAccepted, arRejectedInvalid, arRejectedDuplicate, arRejectedLate
 
 # ---------------------------------------------------------------- config
 
@@ -194,6 +201,30 @@ proc submitAction*(s: var Sim, slot: AgentId, act: Action) =
   if not s.pendingSet[slot]:
     s.pendingActions[slot] = act
     s.pendingSet[slot] = true
+
+proc submitAllocation*(s: var Sim, slot: AgentId, st: Stats): AllocResult =
+  ## First valid allocation wins and is immutable (DESIGN §5.1). Applied and
+  ## input-logged immediately; a retry after a lost ack must be safe.
+  if s.agents[slot].statsLocked:
+    return arRejectedDuplicate
+  if s.tick > s.allocDeadlineTick() or s.phase != phCountdown:
+    return arRejectedLate
+  let vals = [st.speed, st.strength, st.intelligence, st.athleticism]
+  var sum = 0
+  for v in vals:
+    if v < 1 or v > 10:
+      return arRejectedInvalid
+    sum += v
+  if sum > 20:
+    return arRejectedInvalid
+  s.agents[slot].stats = st
+  s.agents[slot].statsLocked = true
+  s.inputLog.add(AppliedInput(tick: s.tick, slot: int(slot),
+    payload: """{"allocate_stats":{"speed":""" & $st.speed &
+             ""","strength":""" & $st.strength &
+             ""","intelligence":""" & $st.intelligence &
+             ""","athleticism":""" & $st.athleticism & "}}"))
+  arAccepted
 
 proc actionJson(act: Action): string =
   case act.kind
@@ -429,8 +460,8 @@ proc resolveChannels(s: var Sim) =
       let bi = s.bushAt(a.pos)
       if bi >= 0 and s.bushes[bi].charges > 0:
         dec s.bushes[bi].charges
-        var n = 1
-        # INT double-yield roll arrives with step 4 stat effects
+        # INT double-yield: 5·INT in 100 (DESIGN §5.2), match PRNG
+        var n = if s.rng.chance(5 * a.stats.intelligence): 2 else: 1
         discard tryPack(a[], iRations, n, 0)
         if n > 0:
           s.dropGround(a.pos, iRations, n)
@@ -682,6 +713,12 @@ proc step*(s: var Sim) =
         payload: actionJson(s.pendingActions[i])))
 
   # 2. phase transitions
+  if s.phase == phCountdown and s.tick == s.allocDeadlineTick() + 1:
+    # missing/invalid by deadline -> default build stays (5/5/5/5), logged
+    for i in 0 .. 15:
+      if not s.agents[i].statsLocked:
+        s.inputLog.add(AppliedInput(tick: s.tick, slot: i,
+          payload: """{"allocate_stats":"defaulted"}"""))
   if s.phase == phCountdown and s.tick == s.ignitionTick:
     s.phase = phLive
     s.emit(evIgnition, -1, Pos(x: ArenaSize div 2, y: ArenaSize div 2))
