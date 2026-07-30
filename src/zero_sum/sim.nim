@@ -1053,6 +1053,46 @@ proc aliveCount*(s: Sim): int =
   for a in s.agents:
     if a.alive: inc result
 
+proc aliveTeamCount*(s: Sim): int =
+  var seen: array[8, bool]
+  for a in s.agents:
+    if a.alive:
+      seen[team(a.slot)] = true
+  for t in seen:
+    if t: inc result
+
+# ---------------------------------------------------------------- scoring
+
+# DESIGN §12.1 (DECIDED: standard table, +1/kill).
+const PlacementPoints*: array[16, int] =
+  [15, 12, 10, 8, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1, 0, 0]
+
+proc computePlacements*(s: Sim): array[16, int] =
+  ## Placement 1..16: reverse death order; same-tick ties broken by higher
+  ## damage dealt, then lower slot (DESIGN §12.1). Winner (alive) is place 1.
+  var order: seq[int] = @[]
+  for i in 0 .. 15:
+    order.add(i)
+  # sort: alive first, then deathTick desc, damage desc, slot asc
+  proc better(a, b: int): bool =
+    let x = s.agents[a]
+    let y = s.agents[b]
+    if x.alive != y.alive: return x.alive
+    if x.deathTick != y.deathTick: return x.deathTick > y.deathTick
+    if x.damageDealtCenti != y.damageDealtCenti:
+      return x.damageDealtCenti > y.damageDealtCenti
+    a < b
+  for i in 1 ..< order.len:                # insertion sort: stable, tiny n
+    var j = i
+    while j > 0 and better(order[j], order[j - 1]):
+      let t = order[j]; order[j] = order[j - 1]; order[j - 1] = t
+      dec j
+  for place, slot in order:
+    result[slot] = place + 1
+
+proc scoreFor*(placement, kills: int): int =
+  PlacementPoints[placement - 1] + kills
+
 # ---------------------------------------------------------------- hash
 
 proc fnv1a(h: var uint64, v: uint64) {.inline.} =
@@ -1195,7 +1235,11 @@ proc step*(s: var Sim) =
   # 8. deaths
   s.resolveDeaths()
 
-  # 9. win check + bookkeeping
+  # 9. win check + bookkeeping (FFA finale: one team left, >=2 alive)
+  if s.phase == phLive and not s.finaleEmitted and
+     s.aliveTeamCount() == 1 and s.aliveCount() >= 2:
+    s.finaleEmitted = true
+    s.emit(evFinale, -1, Pos(x: ArenaSize div 2, y: ArenaSize div 2))
   if s.aliveCount() <= 1 and s.phase == phLive:
     for i in 0 .. 15:
       if s.agents[i].alive:

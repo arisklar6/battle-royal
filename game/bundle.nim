@@ -59,6 +59,35 @@ proc sponsorLogJson*(s: Sim): string =
                "balance_after": r.balanceAfter})
   $arr
 
+proc resultsJson*(s: Sim): string =
+  ## DESIGN §12.2 — schema-required scores + declared parallel arrays.
+  var scores = newJArray()
+  var placements = newJArray()
+  var kills = newJArray()
+  var damage = newJArray()
+  var survival = newJArray()
+  var gifts = newJArray()
+  let places = s.computePlacements()
+  var giftCount: array[16, int]
+  for r in s.sponsorLog:
+    if r.status == gsAccepted and r.recipientSlot in 0 .. 15:
+      inc giftCount[r.recipientSlot]
+  for i in 0 .. 15:
+    let a = s.agents[i]
+    scores.add(%scoreFor(places[i], a.kills))
+    placements.add(%places[i])
+    kills.add(%a.kills)
+    damage.add(%(a.damageDealtCenti div 100))
+    survival.add(%(if a.alive: s.tick else: a.deathTick))
+    gifts.add(%giftCount[i])
+  let winnerTeam =
+    if s.winnerSlot >= 0: %teamName(AgentId(s.winnerSlot)) else: newJNull()
+  $(%*{"scores": scores, "placements": placements, "kills": kills,
+       "damage_dealt": damage, "survival_ticks": survival,
+       "gifts_received": gifts,
+       "winner_slot": s.winnerSlot, "winner_team": winnerTeam,
+       "match_ticks": s.tick, "seed": int64(s.cfg.seed)})
+
 proc matchSummaryJson*(s: Sim, seed: uint64): string =
   var deaths = newJArray()
   for a in s.agents:

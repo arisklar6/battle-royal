@@ -283,11 +283,16 @@ proc runLive(rc: RuntimeConfig) =
   let effective = effectiveConfigJson(cfg, original)
   let work = getTempDir() / "zero-sum-bundle"
   let zipBytes = buildReplayZip(work, effective, s)
+  let results = resultsJson(s)
+  if rc.resultsUri.len > 0:
+    writeResults(rc, results)
+    echo "results -> ", rc.resultsUri
+  createDir("results")
+  writeFile("results" / "results.json", results)
   if rc.replayUri.len > 0:
     writeReplay(rc, zipBytes)
     echo "replay bundle -> ", rc.replayUri
   else:
-    createDir("results")
     writeFile("results" / "replay.zip", zipBytes)
     echo "replay bundle -> results/replay.zip"
   # local convenience copies next to results (DESIGN §13/§14)
