@@ -123,7 +123,11 @@ proc startServer(rc: RuntimeConfig) =
 proc runLive(rc: RuntimeConfig) =
   let original =
     if rc.config.len > 0: parseJson(rc.config)
-    else: %*{"max_ticks": 600, "freeze_ticks": 48, "seed": 42}
+    else: %*{"max_ticks": 720, "freeze_ticks": 48, "seed": 42,
+             "zone": {"schedule": [[96, 144, 336, 24, 12, 2],
+                                    [432, 480, 624, 12, 0, 30]]},
+             "events": [{"kind": "firestorm", "center": [15, 15], "radius": 4,
+                          "from_tick": 240, "duration": 240}]}
   let cfg = parseSimConfig(original, mintSeedFromOs)
   var s = initSim(cfg)
   var r: Renderer

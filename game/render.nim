@@ -14,10 +14,13 @@ const
   SpFwBlack = 30
   SpFwGold = 31
   SpMineFlash = 32
+  SpZoneFire = 33
 
   ObBackground = 1
   ObAgentBase = 100         # 100 + slot
   ObEffectBase = 1000
+  ObZoneRingBase = 30000    # pool for zone-front tiles
+  ZoneRingPool = 400
 
   TeamColors: array[8, (uint8, uint8, uint8)] = [
     (220'u8, 60'u8, 60'u8), (70'u8, 110'u8, 230'u8), (70'u8, 190'u8, 90'u8),
@@ -33,6 +36,7 @@ type
     nextEffect: int
     effects: seq[Effect]
     deadDrawn: array[16, bool]
+    ringDrawn: int            # zone-front objects currently defined
 
 proc put(pixels: var seq[uint8], w, x, y: int, r, g, b: uint8, a: uint8 = 255) =
   let i = (y * w + x) * 4
@@ -98,6 +102,14 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpFwBlack, 18, 18, burstPixels(18, 25, 25, 30), "fw_black")
   result.addSprite(SpFwGold, 18, 18, burstPixels(18, 250, 210, 80), "fw_gold")
   result.addSprite(SpMineFlash, 12, 12, burstPixels(12, 255, 120, 40), "mine")
+  # zone front: semi-transparent fire tile
+  var fire = newSeq[uint8](TileSize * TileSize * 4)
+  for y in 0 ..< TileSize:
+    for x in 0 ..< TileSize:
+      let hot = (x + y) mod 2 == 0
+      fire.put(TileSize, x, y,
+               (if hot: 255'u8 else: 210'u8), (if hot: 110'u8 else: 60'u8), 20, 170)
+  result.addSprite(SpZoneFire, TileSize, TileSize, fire, "zone_fire")
 
 proc agentObject(packet: var seq[uint8], s: Sim, slot: int) =
   packet.addObject(ObAgentBase + slot,
@@ -139,6 +151,24 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     else:
       kept.add(ef)
   r.effects = kept
+  # zone front ring: tiles just outside the current radius
+  var ringIdx = 0
+  let zr = s.zoneRadius()
+  if zr < ArenaSize and s.phase != phCountdown:
+    let c = ArenaSize div 2
+    for ty in 0 ..< ArenaSize:
+      for tx in 0 ..< ArenaSize:
+        if ringIdx >= ZoneRingPool: break
+        let dx = tx - c
+        let dy = ty - c
+        let d2 = dx * dx + dy * dy
+        if d2 > zr * zr and d2 <= (zr + 1) * (zr + 1):
+          result.addObject(ObZoneRingBase + ringIdx,
+            tx * TileSize, ty * TileSize, 15, LayerMap, SpZoneFire)
+          inc ringIdx
+  for stale in ringIdx ..< r.ringDrawn:
+    result.addDeleteObject(ObZoneRingBase + stale)
+  r.ringDrawn = ringIdx
 
 proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   ## Complete current scene for a fresh viewer.

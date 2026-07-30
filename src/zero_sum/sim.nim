@@ -1,4 +1,4 @@
-﻿## Deterministic sim core. Steps 1-2: freeze/mines/ignition/movement + loot,
+## Deterministic sim core. Steps 1-2: freeze/mines/ignition/movement + loot,
 ## inventory, forage. Resolution order per DESIGN §1.2 (part of the spec).
 ## PRNG consumption order (§15.1): rocks -> crate positions -> crate contents
 ## -> bushes -> tier-1 -> tier-2, then per-tick in §1.2 step order.
@@ -20,11 +20,29 @@ type
     slot*: int
     payload*: string
 
+  ZoneStage* = object
+    warnT*, shrinkT*, doneT*: int
+    rStart*, rEnd*: int
+    dmgPerS*: int              # whole HP per second, ATH-scaled on application
+
+  EventCfgKind* = enum
+    ecFlood = "flood", ecFirestorm = "firestorm"
+
+  ScriptedEvent* = object
+    kind*: EventCfgKind
+    rect*: array[4, int]       # flood: x0,y0,x1,y1
+    center*: Pos               # firestorm
+    radius*: int
+    fromTick*: int
+    duration*: int
+
   SimConfig* = object
     seed*: uint64
     seedWasMinted*: bool
     maxTicks*: int
     freezeTicks*: int
+    zone*: seq[ZoneStage]
+    events*: seq[ScriptedEvent]
 
   Sim* = object
     cfg*: SimConfig
@@ -56,6 +74,16 @@ type AllocResult* = enum
 
 # ---------------------------------------------------------------- config
 
+const DefaultZone*: array[7, ZoneStage] = [
+  ## DESIGN §7.1, DECIDED fast ~5-min close. Every boundary a multiple of 24.
+  ZoneStage(warnT: 1440, shrinkT: 1632, doneT: 2064, rStart: 24, rEnd: 19, dmgPerS: 1),
+  ZoneStage(warnT: 2352, shrinkT: 2544, doneT: 2976, rStart: 19, rEnd: 15, dmgPerS: 2),
+  ZoneStage(warnT: 3264, shrinkT: 3456, doneT: 3888, rStart: 15, rEnd: 11, dmgPerS: 4),
+  ZoneStage(warnT: 4176, shrinkT: 4368, doneT: 4800, rStart: 11, rEnd: 8, dmgPerS: 6),
+  ZoneStage(warnT: 5088, shrinkT: 5280, doneT: 5712, rStart: 8, rEnd: 5, dmgPerS: 8),
+  ZoneStage(warnT: 6000, shrinkT: 6192, doneT: 6624, rStart: 5, rEnd: 3, dmgPerS: 16),
+  ZoneStage(warnT: 6912, shrinkT: 7104, doneT: 7536, rStart: 3, rEnd: 0, dmgPerS: 24)]
+
 proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   result.maxTicks = node{"max_ticks"}.getInt(9120)
   result.freezeTicks = node{"freeze_ticks"}.getInt(240)
@@ -65,6 +93,27 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   else:
     result.seed = mintSeed()
     result.seedWasMinted = true
+  if node.hasKey("zone") and node["zone"].hasKey("schedule"):
+    for row in node["zone"]["schedule"]:
+      result.zone.add(ZoneStage(
+        warnT: row[0].getInt(), shrinkT: row[1].getInt(), doneT: row[2].getInt(),
+        rStart: row[3].getInt(), rEnd: row[4].getInt(), dmgPerS: row[5].getInt()))
+  else:
+    for st in DefaultZone:
+      result.zone.add(st)
+  if node.hasKey("events"):
+    for e in node["events"]:
+      var ev = ScriptedEvent(fromTick: e{"from_tick"}.getInt(),
+                             duration: e{"duration"}.getInt())
+      if e{"kind"}.getStr() == "flood":
+        ev.kind = ecFlood
+        for i in 0 .. 3:
+          ev.rect[i] = e["rect"][i].getInt()
+      else:
+        ev.kind = ecFirestorm
+        ev.center = Pos(x: e["center"][0].getInt(), y: e["center"][1].getInt())
+        ev.radius = e{"radius"}.getInt()
+      result.events.add(ev)
 
 proc effectiveConfigJson*(cfg: SimConfig, original: JsonNode): string =
   var eff = copy(original)
@@ -72,6 +121,67 @@ proc effectiveConfigJson*(cfg: SimConfig, original: JsonNode): string =
   if eff.hasKey("tokens"):
     eff.delete("tokens")
   $eff
+
+# ---------------------------------------------------------------- zone/events
+
+proc zoneRadius*(s: Sim): int =
+  ## Pinned formula (DESIGN §7.1): piecewise; during a stage's shrink window
+  ## r(t) = rStart - floor((t-shrinkT)*(rStart-rEnd)/(doneT-shrinkT)).
+  if s.cfg.zone.len == 0:
+    return ArenaSize
+  result = s.cfg.zone[0].rStart
+  for st in s.cfg.zone:
+    if s.tick >= st.doneT:
+      result = st.rEnd
+    elif s.tick >= st.shrinkT:
+      result = st.rStart -
+        ((s.tick - st.shrinkT) * (st.rStart - st.rEnd)) div (st.doneT - st.shrinkT)
+      break
+    else:
+      break
+
+proc zoneDamagePerS*(s: Sim): int =
+  ## Stage k's damage applies from its warn tick until stage k+1's warn tick;
+  ## no damage before stage 1 warns.
+  result = 0
+  for st in s.cfg.zone:
+    if s.tick >= st.warnT:
+      result = st.dmgPerS
+
+proc insideZone*(s: Sim, p: Pos): bool =
+  let r = s.zoneRadius()
+  let dx = p.x - ArenaSize div 2
+  let dy = p.y - ArenaSize div 2
+  dx * dx + dy * dy <= r * r
+
+proc eventActive(ev: ScriptedEvent, tick: int): bool =
+  tick >= ev.fromTick and tick < ev.fromTick + ev.duration
+
+proc floodedAt*(s: Sim, p: Pos): bool =
+  for ev in s.cfg.events:
+    if ev.kind == ecFlood and eventActive(ev, s.tick) and
+       p.x >= ev.rect[0] and p.y >= ev.rect[1] and
+       p.x <= ev.rect[2] and p.y <= ev.rect[3]:
+      return true
+
+proc inFirestorm(s: Sim, p: Pos): bool =
+  for ev in s.cfg.events:
+    if ev.kind == ecFirestorm and eventActive(ev, s.tick):
+      let dx = p.x - ev.center.x
+      let dy = p.y - ev.center.y
+      if dx * dx + dy * dy <= ev.radius * ev.radius:
+        return true
+
+proc eventJson(ev: ScriptedEvent): string =
+  case ev.kind
+  of ecFlood:
+    """{"kind":"flood","rect":[""" & $ev.rect[0] & "," & $ev.rect[1] & "," &
+      $ev.rect[2] & "," & $ev.rect[3] & """],"from_tick":""" & $ev.fromTick &
+      ""","duration":""" & $ev.duration & "}"
+  of ecFirestorm:
+    """{"kind":"firestorm","center":[""" & $ev.center.x & "," & $ev.center.y &
+      """],"radius":""" & $ev.radius & ""","from_tick":""" & $ev.fromTick &
+      ""","duration":""" & $ev.duration & "}"
 
 # ---------------------------------------------------------------- loot gen
 
@@ -259,6 +369,8 @@ proc resolveMovement(s: var Sim) =
     let target = a.pos + s.pendingActions[i].dir
     if not inBounds(target) or blocksMovement(s.arena.tile(target)):
       continue
+    if s.floodedAt(target) and not s.floodedAt(a.pos):
+      continue                 # may move OFF flooded tiles, never ONTO them
     intent[i] = PendingMove(slot: AgentId(i), target: target, active: true)
 
   for i in 0 .. 15:
@@ -607,6 +719,36 @@ proc advanceProjectiles(s: var Sim) =
         kept.add(p)
   s.projectiles = kept
 
+proc resolveHazards(s: var Sim) =
+  ## Zone + scripted-event damage, once per 24 ticks, ATH-scaled, sourceless.
+  if s.phase != phLive or s.tick mod 24 != 0:
+    return
+  let zoneDmg = s.zoneDamagePerS()
+  for i in 0 .. 15:
+    let a = addr s.agents[i]
+    if not a.alive:
+      continue
+    var centi = 0
+    if zoneDmg > 0 and not s.insideZone(a.pos):
+      centi += zoneDmg * 100
+    if s.floodedAt(a.pos):
+      centi += 4 * 100
+    if s.inFirestorm(a.pos):
+      centi += 6 * 100
+    if centi > 0:
+      s.applyDamage(i, hazardScaled(a[], centi), -1)
+
+proc emitHazardWarnings(s: var Sim) =
+  for st in s.cfg.zone:
+    if s.tick == st.warnT:
+      s.emit(evZoneWarning, -1, Pos(x: ArenaSize div 2, y: ArenaSize div 2),
+        """{"r_start":""" & $st.rStart & ""","r_end":""" & $st.rEnd &
+        ""","shrink_tick":""" & $st.shrinkT & ""","done_tick":""" & $st.doneT &
+        ""","damage_per_s":""" & $st.dmgPerS & "}")
+  for ev in s.cfg.events:
+    if s.tick == ev.fromTick - 120:
+      s.emit(evEventWarning, -1, Pos(x: -1, y: -1), eventJson(ev))
+
 proc resolvePoisonPulses(s: var Sim) =
   for i in 0 .. 15:
     let a = addr s.agents[i]
@@ -722,6 +864,7 @@ proc step*(s: var Sim) =
   if s.phase == phCountdown and s.tick == s.ignitionTick:
     s.phase = phLive
     s.emit(evIgnition, -1, Pos(x: ArenaSize div 2, y: ArenaSize div 2))
+  s.emitHazardWarnings()
 
   # 3. movement
   s.resolveMovement()
@@ -732,8 +875,9 @@ proc step*(s: var Sim) =
   # 5. projectiles
   s.advanceProjectiles()
 
-  # 6. DoT effects (net expiry is passive via nettedUntil)
+  # 6. DoT effects (net expiry is passive via nettedUntil) + hazards
   s.resolvePoisonPulses()
+  s.resolveHazards()
 
   # 7. item verbs: completions first, then pickups, then drops/use/interact
   s.resolveChannels()
