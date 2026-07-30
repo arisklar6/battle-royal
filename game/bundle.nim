@@ -6,6 +6,7 @@ import bitworld/replays
 import zippy/ziparchives_v1
 import zippy/ziparchives
 import zero_sum/[types, sim, version]
+import transcript
 
 proc zeroSumReplaySpec*(): ReplaySpec =
   ReplaySpec(
@@ -69,6 +70,10 @@ proc buildReplayZip*(workDir: string, effectiveConfig: string, s: Sim): string =
     kind: ekFile, contents: effectiveConfig, lastModified: stamp)
   archive.contents["match_summary.json"] = ArchiveEntry(
     kind: ekFile, contents: matchSummaryJson(s, s.cfg.seed), lastModified: stamp)
+  archive.contents["chat_transcript.txt"] = ArchiveEntry(
+    kind: ekFile, contents: buildTranscriptText(s), lastModified: stamp)
+  archive.contents["chat_transcript.json"] = ArchiveEntry(
+    kind: ekFile, contents: buildTranscriptJson(s), lastModified: stamp)
   let zipPath = workDir / "replay.zip"
   archive.writeZipArchive(zipPath)
   readFile(zipPath)

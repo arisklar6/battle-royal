@@ -43,6 +43,20 @@ type
     freezeTicks*: int
     zone*: seq[ZoneStage]
     events*: seq[ScriptedEvent]
+    playerNames*: seq[string]
+
+  TalkChannel* = enum
+    tcBroadcast = "broadcast", tcTeam = "team", tcDm = "dm"
+
+  TalkMsg* = object
+    tick*: int
+    slot*: int
+    channel*: TalkChannel
+    to*: int                   # dm target, -1 otherwise
+    text*: string
+
+  TalkResult* = enum
+    tkAccepted, tkRateLimited, tkRejected
 
   Sim* = object
     cfg*: SimConfig
@@ -56,6 +70,11 @@ type
     phase*: Phase
     ignitionTick*: int
     events*: seq[Event]
+    eventHistory*: seq[Event]
+    talkLog*: seq[TalkMsg]
+    inbox*: array[16, seq[TalkMsg]]   # delivered THIS tick (previous tick's talk)
+    lastTalkTick: array[16, int]
+    talkQueue: seq[TalkMsg]
     inputLog*: seq[AppliedInput]
     hashes*: seq[(int, uint64)]
     winnerSlot*: int
@@ -101,6 +120,12 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   else:
     for st in DefaultZone:
       result.zone.add(st)
+  for i in 0 .. 15:
+    result.playerNames.add("P" & (if i < 10: "0" else: "") & $i)
+  if node.hasKey("players"):
+    for i, p in node["players"].elems:
+      if i < 16 and p.kind == JObject and p{"name"}.getStr("").len > 0:
+        result.playerNames[i] = p["name"].getStr()
   if node.hasKey("events"):
     for e in node["events"]:
       var ev = ScriptedEvent(fromTick: e{"from_tick"}.getInt(),
@@ -303,6 +328,7 @@ proc initSim*(cfg: SimConfig): Sim =
       stats: Stats(speed: 5, strength: 5, intelligence: 5, athleticism: 5),
       moveReadyTick: 0, attackReadyTick: 0, deathTick: -1,
       lastDamager: -1)
+    result.lastTalkTick[i] = -24
   result.generateLoot()
 
 # ---------------------------------------------------------------- actions
@@ -348,7 +374,39 @@ proc actionJson(act: Action): string =
 
 proc emit(s: var Sim, kind: EventKind, slot = -1, pos = Pos(x: -1, y: -1),
           data = "") =
-  s.events.add(Event(tick: s.tick, kind: kind, slot: slot, pos: pos, data: data))
+  let e = Event(tick: s.tick, kind: kind, slot: slot, pos: pos, data: data)
+  s.events.add(e)
+  s.eventHistory.add(e)
+
+proc sanitizeTalk*(text: string): string =
+  ## Printable ASCII only (0x20-0x7E), max 120 chars (DESIGN §10.4).
+  for c in text:
+    if result.len >= 120:
+      break
+    if ord(c) >= 0x20 and ord(c) <= 0x7E:
+      result.add(c)
+
+proc submitTalk*(s: var Sim, slot: AgentId, channel: TalkChannel,
+                 to: int, text: string): TalkResult =
+  if not s.agents[slot].alive or s.phase == phEnded:
+    return tkRejected
+  if channel == tcDm and (to < 0 or to > 15 or to == int(slot)):
+    return tkRejected
+  if s.tick - s.lastTalkTick[slot] < 24:
+    return tkRateLimited
+  let clean = sanitizeTalk(text)
+  if clean.len == 0:
+    return tkRejected
+  s.lastTalkTick[slot] = s.tick
+  let msg = TalkMsg(tick: s.tick, slot: int(slot), channel: channel,
+                    to: (if channel == tcDm: to else: -1), text: clean)
+  s.talkLog.add(msg)
+  s.talkQueue.add(msg)
+  var toJson = if channel == tcDm: $to else: "null"
+  s.inputLog.add(AppliedInput(tick: s.tick, slot: int(slot),
+    payload: """{"talk":{"channel":"""" & $channel & """","to":""" & toJson &
+             ""","text":""" & escapeJson(clean) & "}}"))
+  tkAccepted
 
 proc agentAt(s: Sim, p: Pos): int =
   for i in 0 .. 15:
@@ -835,6 +893,9 @@ proc tickHash*(s: Sim): uint64 =
     fnv1a(h, uint64(cast[uint32](int32(g.n))))
   for b in s.bushes:
     fnv1a(h, uint64(cast[uint32](int32(b.charges))))
+  for i in 0 .. 15:
+    fnv1a(h, uint64(cast[uint32](int32(s.lastTalkTick[i]))))
+  fnv1a(h, uint64(s.talkLog.len))
   for w in s.rng.state():
     fnv1a(h, w)
   h
@@ -847,6 +908,29 @@ proc step*(s: var Sim) =
   s.events.setLen(0)
   for i in 0 .. 15:
     s.agents[i].damageTakenCenti = 0
+    s.inbox[i].setLen(0)
+
+  # deliver last tick's talk (DESIGN §10.4: next-tick delivery, sender echoed)
+  var undelivered: seq[TalkMsg] = @[]
+  for msg in s.talkQueue:
+    if msg.tick == s.tick - 1:
+      case msg.channel
+      of tcBroadcast:
+        for i in 0 .. 15:
+          if s.agents[i].alive:
+            s.inbox[i].add(msg)
+      of tcTeam:
+        for i in 0 .. 15:
+          if s.agents[i].alive and team(AgentId(i)) == team(AgentId(msg.slot)):
+            s.inbox[i].add(msg)
+      of tcDm:
+        if s.agents[msg.to].alive:
+          s.inbox[msg.to].add(msg)
+        if s.agents[msg.slot].alive:
+          s.inbox[msg.slot].add(msg)
+    elif msg.tick >= s.tick:
+      undelivered.add(msg)
+  s.talkQueue = undelivered
 
   # 1. log applied inputs
   for i in 0 .. 15:
@@ -914,5 +998,51 @@ proc step*(s: var Sim) =
   for i in 0 .. 15:
     s.pendingSet[i] = false
   inc s.tick
+
+# ---------------------------------------------------------------- input JSON
+
+proc parseDir(v: string): (bool, Dir8) =
+  for d in Dir8:
+    if $d == v:
+      return (true, d)
+  (false, dN)
+
+proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
+  ## Canonical application of one logged/live input payload. The replay path
+  ## and the live server both go through here — one mapping, no drift.
+  if j == nil or j.kind != JObject:
+    return
+  if j.hasKey("talk"):
+    let t = j["talk"]
+    if t.kind != JObject:
+      return
+    let chStr = t{"channel"}.getStr("")
+    var ch = tcBroadcast
+    if chStr == $tcTeam: ch = tcTeam
+    elif chStr == $tcDm: ch = tcDm
+    elif chStr != $tcBroadcast: return
+    discard s.submitTalk(slot, ch, t{"to"}.getInt(-1), t{"text"}.getStr(""))
+  elif j.hasKey("allocate_stats"):
+    let a = j["allocate_stats"]
+    if a.kind == JObject:
+      discard s.submitAllocation(slot, Stats(
+        speed: a{"speed"}.getInt(), strength: a{"strength"}.getInt(),
+        intelligence: a{"intelligence"}.getInt(),
+        athleticism: a{"athleticism"}.getInt()))
+    # the "defaulted" string marker is server-emitted, never re-applied
+  elif j.hasKey("do"):
+    let verb = j["do"].getStr("")
+    case verb
+    of "move", "attack":
+      let (ok, d) = parseDir(j{"dir"}.getStr(""))
+      if ok:
+        s.submitAction(slot, Action(
+          kind: (if verb == "move": akMove else: akAttack), dir: d))
+    of "pickup": s.submitAction(slot, Action(kind: akPickup))
+    of "interact": s.submitAction(slot, Action(kind: akInteract))
+    of "drop": s.submitAction(slot, Action(kind: akDrop, invSlot: j{"slot"}.getInt(-99)))
+    of "use": s.submitAction(slot, Action(kind: akUse, invSlot: j{"slot"}.getInt(-99)))
+    of "none": s.submitAction(slot, Action(kind: akNone))
+    else: discard
 
 

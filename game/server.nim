@@ -11,7 +11,7 @@ import std/[json, locks, monotimes, os, strutils, sysrand, tables, times]
 import mummy
 import bitworld/[replays, runtime, spriteprotocol]
 import zero_sum/[prng, types, arena, sim]
-import render, bundle, demo_script
+import render, bundle, demo_script, transcript
 
 const
   GlobalClientHtml = staticRead("client/global_client.html")
@@ -134,9 +134,13 @@ proc runLive(rc: RuntimeConfig) =
   startServer(rc)
 
   var last = getMonoTime()
+  var echoedTalks = 0
   while s.phase != phEnded:
     s.driveScript()
     s.step()
+    while echoedTalks < s.talkLog.len:
+      echo "CHAT ", talkLine(s, s.talkLog[echoedTalks])
+      inc echoedTalks
     r.broadcast(s, r.updatePacket(s))
     runFrameLimiter(last)
 
@@ -155,6 +159,10 @@ proc runLive(rc: RuntimeConfig) =
     createDir("results")
     writeFile("results" / "replay.zip", zipBytes)
     echo "replay bundle -> results/replay.zip"
+  # local convenience copies next to results (DESIGN §13)
+  createDir("results")
+  writeFile("results" / "chat_transcript.txt", buildTranscriptText(s))
+  writeFile("results" / "chat_transcript.json", buildTranscriptJson(s))
   echo "match over: winner=", s.winnerSlot, " ticks=", s.tick
   quit(0)
 
@@ -197,12 +205,9 @@ proc runReplay(rc: RuntimeConfig) =
         for (slot, payload) in inputsByTick[s.tick]:
           let j =
             try: parseJson(payload)
-            except: newJNull()
-          if j.kind == JObject and j{"do"}.getStr("") == "move":
-            let dirStr = j{"dir"}.getStr("")
-            for d in Dir8:
-              if $d == dirStr:
-                s.submitAction(AgentId(slot), Action(kind: akMove, dir: d))
+            except CatchableError: nil
+          if slot in 0 .. 15:
+            s.applyInputJson(AgentId(slot), j)
       s.step()
       let expect = storedHash.getOrDefault(s.tick - 1, 0'u64)
       if expect != 0'u64 and expect != s.hashes[^1][1]:
