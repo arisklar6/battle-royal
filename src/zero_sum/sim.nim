@@ -1268,9 +1268,26 @@ proc parseDir(v: string): (bool, Dir8) =
   (false, dN)
 
 proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
-  ## Canonical application of one logged/live input payload. The replay path
-  ## and the live server both go through here — one mapping, no drift.
+  ## Canonical application of one input payload. Accepts BOTH the wire shapes
+  ## (zero_sum.player.v1: {"type":"talk",...} / {"type":"allocate_stats",...}
+  ## flat messages) and the internal log shapes ({"talk":{...}} etc.) — the
+  ## replay path and the live server go through here, one mapping, no drift.
   if j == nil or j.kind != JObject:
+    return
+  let wireType = j{"type"}.getStr("")
+  if wireType == "talk" and j.hasKey("channel"):
+    let chStr = j{"channel"}.getStr("")
+    var ch = tcBroadcast
+    if chStr == $tcTeam: ch = tcTeam
+    elif chStr == $tcDm: ch = tcDm
+    elif chStr != $tcBroadcast: return
+    discard s.submitTalk(slot, ch, j{"to"}.getInt(-1), j{"text"}.getStr(""))
+    return
+  if wireType == "allocate_stats" and j.hasKey("speed"):
+    discard s.submitAllocation(slot, Stats(
+      speed: j{"speed"}.getInt(), strength: j{"strength"}.getInt(),
+      intelligence: j{"intelligence"}.getInt(),
+      athleticism: j{"athleticism"}.getInt()))
     return
   if j.hasKey("gift"):
     let g = j["gift"]

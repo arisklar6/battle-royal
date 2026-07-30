@@ -10,7 +10,7 @@
 import std/[json, locks, monotimes, os, strutils, sysrand, tables, times]
 import mummy
 import bitworld/[replays, runtime, spriteprotocol]
-import zero_sum/[prng, types, arena, sim]
+import zero_sum/[prng, types, arena, sim, obs]
 import render, bundle, demo_script, transcript
 
 const
@@ -19,6 +19,7 @@ const
   TargetFps = 24.0
 
 const SponsorClientHtml = staticRead("client/sponsor_client.html")
+const PlayerClientHtml = staticRead("client/player_client.html")
 
 type
   ViewerState = object
@@ -37,6 +38,12 @@ type
     sponsorQueue: seq[SponsorReq]
     sponsorLive: bool
     sponsorTokens: Table[string, string] # team name -> token (runtime config only)
+    playerTokens: seq[string]            # per-slot, runner-injected
+    players: Table[WebSocket, int]       # ws -> slot
+    playerBySlot: array[16, WebSocket]   # valid only when slotConnected
+    slotConnected: array[16, bool]
+    playerQueue: seq[(int, string)]      # (slot, payload)
+    playerJoined: seq[int]               # slots needing player_config
 
 var appState: AppState
 
@@ -65,6 +72,33 @@ proc httpHandler(request: Request) =
       withLock appState.lock:
         appState.viewers[websocket] = ViewerState()
     return
+  if request.httpMethod == "GET" and path == "/player":
+    # slot+token auth (platform contract: bad token MUST fail the upgrade)
+    {.gcsafe.}:
+      withLock appState.lock:
+        let slotStr = queryParam(request.uri, "slot")
+        let token = queryParam(request.uri, "token")
+        var slot = -1
+        try:
+          slot = parseInt(slotStr)
+        except CatchableError:
+          discard
+        if slot notin 0 .. 15 or slot >= appState.playerTokens.len or
+           token.len == 0 or appState.playerTokens[slot] != token:
+          headers["Content-Type"] = "text/plain"
+          request.respond(401, headers, "bad slot/token")
+          return
+        let websocket = request.upgradeToWebSocket()
+        # reconnect policy (DESIGN §10): a valid second connection replaces
+        # the seat; the old socket is queued for closure
+        if appState.slotConnected[slot]:
+          appState.closed.add(appState.playerBySlot[slot])
+          appState.players.del(appState.playerBySlot[slot])
+        appState.playerBySlot[slot] = websocket
+        appState.slotConnected[slot] = true
+        appState.players[websocket] = slot
+        appState.playerJoined.add(slot)
+    return
   if request.httpMethod == "GET" and path == "/sponsor":
     # token-gated live ingress (DESIGN §11); refuse at upgrade on any mismatch
     {.gcsafe.}:
@@ -90,6 +124,9 @@ proc httpHandler(request: Request) =
   of "/client/global", "/client/replay":
     headers["Content-Type"] = "text/html; charset=utf-8"
     request.respond(200, headers, GlobalClientHtml)
+  of "/client/player":
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    request.respond(200, headers, PlayerClientHtml)
   of "/client/sponsor":
     {.gcsafe.}:
       withLock appState.lock:
@@ -118,11 +155,19 @@ proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
           appState.sponsorQueue.add(SponsorReq(
             ws: websocket, teamIdx: appState.sponsors[websocket],
             payload: message.data))
+        elif websocket in appState.players:
+          appState.playerQueue.add((appState.players[websocket], message.data))
   of ErrorEvent, CloseEvent:
     {.gcsafe.}:
       withLock appState.lock:
         appState.closed.add(websocket)
         appState.sponsors.del(websocket)
+        if websocket in appState.players:
+          let slot = appState.players[websocket]
+          if appState.slotConnected[slot] and
+             appState.playerBySlot[slot] == websocket:
+            appState.slotConnected[slot] = false
+          appState.players.del(websocket)
 
 type ServerThreadArgs = object
   server: ptr Server
@@ -179,6 +224,7 @@ proc runLive(rc: RuntimeConfig) =
   let original =
     if rc.config.len > 0: parseJson(rc.config)
     else: %*{"max_ticks": 720, "freeze_ticks": 48, "seed": 42,
+             "demo_script": true,
              "zone": {"schedule": [[96, 144, 336, 24, 12, 2],
                                     [432, 480, 624, 12, 0, 30]]},
              "events": [{"kind": "firestorm", "center": [15, 15], "radius": 4,
@@ -203,6 +249,10 @@ proc runLive(rc: RuntimeConfig) =
          original["sponsor"].hasKey("sponsor_tokens"):
         for teamName, tok in original["sponsor"]["sponsor_tokens"].pairs:
           appState.sponsorTokens[teamName] = tok.getStr()
+      if original.hasKey("tokens"):
+        for tok in original["tokens"]:
+          appState.playerTokens.add(tok.getStr())
+  let demoMode = original{"demo_script"}.getBool(false)
 
   var last = getMonoTime()
   var echoedTalks = 0
@@ -239,8 +289,43 @@ proc runLive(rc: RuntimeConfig) =
         req.ws.send(reply, TextMessage)
       except CatchableError:
         discard
-    s.driveScript()
+    # player intake: config for fresh joins, then queued inputs (first-wins)
+    var joined: seq[int] = @[]
+    var pinputs: seq[(int, string)] = @[]
+    var conns: array[16, (bool, WebSocket)]
+    {.gcsafe.}:
+      withLock appState.lock:
+        joined = appState.playerJoined
+        appState.playerJoined.setLen(0)
+        pinputs = appState.playerQueue
+        appState.playerQueue.setLen(0)
+        for i in 0 .. 15:
+          conns[i] = (appState.slotConnected[i], appState.playerBySlot[i])
+    for slot in joined:
+      if conns[slot][0]:
+        try:
+          conns[slot][1].send(playerConfigJson(s, slot), TextMessage)
+        except CatchableError:
+          discard
+    for (slot, payload) in pinputs:
+      let j =
+        try: parseJson(payload)
+        except CatchableError: nil
+      s.applyInputJson(AgentId(slot), j)
+    if demoMode:
+      s.driveScript()
     s.step()
+    # per-tick observations to connected, living players; final on death
+    for i in 0 .. 15:
+      if not conns[i][0]:
+        continue
+      try:
+        if s.agents[i].alive:
+          conns[i][1].send(observationJson(s, i), TextMessage)
+        elif s.agents[i].deathTick == s.tick - 1:
+          conns[i][1].send(finalJson(s, i), TextMessage)
+      except CatchableError:
+        discard
     # sponsor state push every 24 ticks
     if s.tick mod 24 == 0:
       var sponsorConns: seq[(WebSocket, int)] = @[]
@@ -275,6 +360,18 @@ proc runLive(rc: RuntimeConfig) =
     r.broadcast(s, r.updatePacket(s))
     runFrameLimiter(last)
 
+  # match over: final message to every connected player, then a short hold
+  var endConns: array[16, (bool, WebSocket)]
+  {.gcsafe.}:
+    withLock appState.lock:
+      for i in 0 .. 15:
+        endConns[i] = (appState.slotConnected[i], appState.playerBySlot[i])
+  for i in 0 .. 15:
+    if endConns[i][0]:
+      try:
+        endConns[i][1].send(finalJson(s, i), TextMessage)
+      except CatchableError:
+        discard
   # hold the final frame briefly so a live viewer sees the ending
   for _ in 0 ..< 72:
     r.broadcast(s, @[])

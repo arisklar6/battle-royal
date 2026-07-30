@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Zero Sum - Player</title>
+<style>
+  body { font-family: monospace; background: #14170f; color: #e8e8e0; margin: 0; padding: 12px; display: flex; gap: 16px; }
+  #left { flex: 0 0 auto; }
+  canvas { border: 1px solid #444; image-rendering: pixelated; }
+  #hud { margin: 6px 0; color: #d4af37; }
+  #keys { color: #888; font-size: 12px; max-width: 300px; }
+  #chatlog { font-size: 12px; height: 120px; overflow-y: auto; border: 1px solid #333; padding: 4px; width: 300px; white-space: pre-wrap; }
+  input { font-family: monospace; background: #232a1c; color: #e8e8e0; border: 1px solid #565; width: 230px; }
+  #obs { font-size: 10px; white-space: pre; max-height: 90vh; overflow: auto; color: #9a9; }
+</style>
+</head>
+<body>
+<div id="left">
+  <div id="hud">connecting&hellip;</div>
+  <canvas id="cv" width="480" height="480"></canvas>
+  <div id="keys">arrows/QWEASDZXC move (8-dir) &middot; shift+dir attack &middot; G pickup &middot; F interact &middot; 1-4 use pack slot</div>
+  <div id="chatlog"></div>
+  <input id="chat" placeholder="talk (enter: broadcast, /t team, /d N dm)">
+</div>
+<div id="obs"></div>
+<script>
+// WS contract (DESIGN §11): ?address= override, else same-origin rewrite.
+const pageUrl = new URL(window.location.href);
+function websocketAddress(path) {
+  const address = pageUrl.searchParams.get('address');
+  const target = new URL(address || window.location.href, window.location.href);
+  if (target.protocol === 'http:') target.protocol = 'ws:';
+  if (target.protocol === 'https:') target.protocol = 'wss:';
+  if (!address) target.pathname = target.pathname.replace(/\/client\/player$/, path);
+  for (const key of ['slot', 'token', 'name']) {
+    const v = pageUrl.searchParams.get(key);
+    if (v !== null) target.searchParams.set(key, v);
+  }
+  target.hash = '';
+  return target;
+}
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hud = document.getElementById('hud');
+const chatlog = document.getElementById('chatlog');
+const obsEl = document.getElementById('obs');
+let cfg = null;
+const TEAM = ['#dc3c3c','#466ee6','#46be5a','#e6c83c','#a050dc','#46c8d2','#f08c32','#f06eb4'];
+const ws = new WebSocket(websocketAddress('/player'));
+ws.onopen = () => { hud.textContent = 'connected - allocating 6/6/4/4';
+  ws.send(JSON.stringify({type:'allocate_stats', speed:6, strength:6, intelligence:4, athleticism:4})); };
+ws.onclose = () => { hud.textContent = 'disconnected'; };
+ws.onmessage = (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.type === 'player_config') { cfg = m; return; }
+  if (m.type === 'final') { hud.textContent = `FINAL place=${m.placement} score=${m.score} winner=P${m.winner_slot}`; return; }
+  if (m.type !== 'observation' || !cfg) return;
+  obsEl.textContent = JSON.stringify(m, null, 1).slice(0, 4000);
+  hud.textContent = `t=${m.tick} ${m.phase}  HP ${m.you.hp}  hand ${m.you.hand.id}` +
+    (m.you.effects.length ? '  [' + m.you.effects.map(e=>e.id).join(',') + ']' : '');
+  for (const c of m.chat) {
+    chatlog.textContent = `[${c.tick}] P${c.from} (${c.channel}): ${c.text}\n` + chatlog.textContent;
+  }
+  // draw: static map + visible entities, 10px tiles
+  const S = 10, N = cfg.arena.size;
+  ctx.fillStyle = '#0c0e0a'; ctx.fillRect(0, 0, cv.width, cv.height);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const t = cfg.arena.static_map[y][x];
+    if (t === '#') ctx.fillStyle = '#5c5c64';
+    else if (t === 'F') ctx.fillStyle = '#9c9ca6';
+    else if (t === 'R') ctx.fillStyle = '#7a5838';
+    else if (t === 'P') ctx.fillStyle = '#8a7020';
+    else if (t === 'B') ctx.fillStyle = '#347636';
+    else continue;
+    ctx.fillRect(x * S, y * S, S, S);
+  }
+  // zone circle
+  ctx.strokeStyle = '#e05820'; ctx.beginPath();
+  ctx.arc(m.zone.center[0] * S + S/2, m.zone.center[1] * S + S/2, m.zone.radius * S, 0, 7);
+  ctx.stroke();
+  for (const it of m.visible.items) { ctx.fillStyle = '#cfc26a'; ctx.fillRect(it.pos[0]*S+2, it.pos[1]*S+2, S-4, S-4); }
+  for (const p of m.visible.pods) { ctx.fillStyle = p.landed ? '#eee' : '#f04040'; ctx.fillRect(p.pos[0]*S+1, p.pos[1]*S+1, S-2, S-2); }
+  for (const a of m.visible.agents) { ctx.fillStyle = TEAM[Math.floor(a.slot/2)]; ctx.fillRect(a.pos[0]*S, a.pos[1]*S, S, S); }
+  ctx.fillStyle = '#fff'; ctx.fillRect(m.you.pos[0]*S+1, m.you.pos[1]*S+1, S-2, S-2);
+  ctx.strokeStyle = TEAM[Math.floor(cfg.slot/2)]; ctx.strokeRect(m.you.pos[0]*S, m.you.pos[1]*S, S, S);
+};
+const DIRKEYS = {ArrowUp:'dN', ArrowDown:'dS', ArrowLeft:'dW', ArrowRight:'dE',
+  q:'dNW', w:'dN', e:'dNE', a:'dW', d:'dE', z:'dSW', x:'dS', c:'dSE'};
+document.addEventListener('keydown', (ev) => {
+  if (document.activeElement === document.getElementById('chat')) return;
+  const dir = DIRKEYS[ev.key] || DIRKEYS[ev.key.toLowerCase()];
+  if (dir) { ws.send(JSON.stringify({type:'action', do: ev.shiftKey ? 'attack' : 'move', dir})); ev.preventDefault(); }
+  else if (ev.key === 'g' || ev.key === 'G') ws.send(JSON.stringify({type:'action', do:'pickup'}));
+  else if (ev.key === 'f' || ev.key === 'F') ws.send(JSON.stringify({type:'action', do:'interact'}));
+  else if (ev.key >= '1' && ev.key <= '4') ws.send(JSON.stringify({type:'action', do:'use', slot: Number(ev.key)-1}));
+});
+document.getElementById('chat').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter') return;
+  let text = ev.target.value.trim();
+  if (!text) return;
+  let msg = {type:'talk', channel:'broadcast', text};
+  if (text.startsWith('/t ')) msg = {type:'talk', channel:'team', text: text.slice(3)};
+  else if (text.startsWith('/d ')) {
+    const parts = text.slice(3).split(' ');
+    msg = {type:'talk', channel:'dm', to: Number(parts[0]), text: parts.slice(1).join(' ')};
+  }
+  ws.send(JSON.stringify(msg));
+  ev.target.value = '';
+});
+</script>
+</body>
+</html>
