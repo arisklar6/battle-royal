@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.nim text eol=lf
+*.nims text eol=lf
+*.nimble text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.lock text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.png binary
+*.gif binary
+*.aseprite binary
+*.exe binary
+*.dll binary
+*.zip binary
+*.zsr binary
