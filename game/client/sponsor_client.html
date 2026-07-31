@@ -44,9 +44,10 @@ function websocketAddress(path) {
   target.hash = '';
   return target;
 }
-const CATALOG = {rations: 20, knives: 30, arrows: 30, darts: 35, net: 50,
-                 first_aid: 60, backpack: 70, camouflage: 80, spear: 90,
-                 blowgun: 100, sword: 120, bow: 150};
+// fallback only; sponsor_welcome carries the authoritative catalog
+let CATALOG = {rations: 20, knives: 30, arrows: 30, darts: 35, net: 50,
+               first_aid: 60, backpack: 70, camouflage: 80, spear: 90,
+               blowgun: 100, sword: 120, bow: 150};
 const logEl = document.getElementById('log');
 const shopEl = document.getElementById('shop');
 const recEl = document.getElementById('recipient');
@@ -58,7 +59,11 @@ ws.onclose = () => { document.getElementById('status').textContent = 'disconnect
 ws.onmessage = (ev) => {
   try {
     const m = JSON.parse(ev.data);
-    if (m.type === 'sponsor_state') {
+    if (m.type === 'sponsor_welcome') {
+      document.getElementById('budget').textContent = m.budget;
+      if (m.catalog) { CATALOG = m.catalog; buildShop(); }
+      log(`welcome team ${m.team}, shop opens t=${m.shop_opens_tick}`);
+    } else if (m.type === 'sponsor_state') {
       document.getElementById('budget').textContent = m.budget;
       const current = recEl.value;
       recEl.innerHTML = '';
@@ -75,17 +80,21 @@ ws.onmessage = (ev) => {
     }
   } catch (e) { /* ignore */ }
 };
-for (const [item, price] of Object.entries(CATALOG)) {
-  const b = document.createElement('button');
-  b.textContent = `${item} (${price})`;
-  b.onclick = () => {
-    const req = {type: 'gift_request', request_id: 'r' + (++reqN),
-                 recipient_slot: Number(recEl.value), item_id: item};
-    ws.send(JSON.stringify(req));
-    log(`sent ${req.request_id}: ${item} -> P${recEl.value}`);
-  };
-  shopEl.appendChild(b);
+function buildShop() {
+  shopEl.innerHTML = '';
+  for (const [item, price] of Object.entries(CATALOG)) {
+    const b = document.createElement('button');
+    b.textContent = `${item} (${price})`;
+    b.onclick = () => {
+      const req = {type: 'gift_request', request_id: 'r' + (++reqN),
+                   recipient_slot: Number(recEl.value), item_id: item};
+      ws.send(JSON.stringify(req));
+      log(`sent ${req.request_id}: ${item} -> P${recEl.value}`);
+    };
+    shopEl.appendChild(b);
+  }
 }
+buildShop();
 </script>
 </body>
 </html>

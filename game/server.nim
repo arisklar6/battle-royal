@@ -36,6 +36,7 @@ type
     closed: seq[WebSocket]
     sponsors: Table[WebSocket, int]      # ws -> team index
     sponsorQueue: seq[SponsorReq]
+    sponsorJoined: seq[WebSocket]
     sponsorLive: bool
     sponsorTokens: Table[string, string] # team name -> token (runtime config only)
     playerTokens: seq[string]            # per-slot, runner-injected
@@ -63,10 +64,24 @@ proc queryParam(uri, key: string): string =
     if kv.len == 2 and kv[0] == key:
       return kv[1]
 
+proc isWsHandshake(request: Request): bool =
+  ## Plain HTTP GETs on WS routes must get 2xx, not a 500 from a failed
+  ## upgrade (platform validator does exactly that probe).
+  var hasUpgrade = false
+  for (k, v) in request.headers:
+    if k.toLowerAscii() == "upgrade" and v.toLowerAscii() == "websocket":
+      hasUpgrade = true
+  hasUpgrade
+
 proc httpHandler(request: Request) =
   let path = request.uri.split('?')[0]
   var headers: HttpHeaders
-  if request.httpMethod == "GET" and path in ["/global", "/replay"]:
+  if request.httpMethod == "GET" and path in ["/global", "/replay", "/admin"] and
+     not request.isWsHandshake():
+    headers["Content-Type"] = "text/plain"
+    request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
+    return
+  if request.httpMethod == "GET" and path in ["/global", "/replay", "/admin"]:
     let websocket = request.upgradeToWebSocket()
     {.gcsafe.}:
       withLock appState.lock:
@@ -88,6 +103,10 @@ proc httpHandler(request: Request) =
           headers["Content-Type"] = "text/plain"
           request.respond(401, headers, "bad slot/token")
           return
+        if not request.isWsHandshake():
+          headers["Content-Type"] = "text/plain"
+          request.respond(200, headers, "zero_sum player websocket endpoint")
+          return
         let websocket = request.upgradeToWebSocket()
         # reconnect policy (DESIGN §10): a valid second connection replaces
         # the seat; the old socket is queued for closure
@@ -106,22 +125,23 @@ proc httpHandler(request: Request) =
         let live = appState.sponsorLive
         let teamName = queryParam(request.uri, "team")
         let token = queryParam(request.uri, "token")
-        if not live or teamName notin appState.sponsorTokens or
+        var teamIdx = -1
+        for i, tn in TeamNames:
+          if tn == teamName: teamIdx = i
+        if not live or teamIdx < 0 or teamName notin appState.sponsorTokens or
            token.len == 0 or appState.sponsorTokens[teamName] != token:
           headers["Content-Type"] = "text/plain"
           request.respond(403, headers, "sponsor ingress disabled or bad token")
           return
-        var teamIdx = -1
-        for i, tn in TeamNames:
-          if tn == teamName: teamIdx = i
         let websocket = request.upgradeToWebSocket()
         appState.sponsors[websocket] = teamIdx
+        appState.sponsorJoined.add(websocket)
     return
   case path
   of "/healthz":
     headers["Content-Type"] = "text/plain"
     request.respond(200, headers, "ok")
-  of "/client/global", "/client/replay":
+  of "/client/global", "/client/replay", "/client/admin":
     headers["Content-Type"] = "text/html; charset=utf-8"
     request.respond(200, headers, GlobalClientHtml)
   of "/client/player":
@@ -258,12 +278,31 @@ proc runLive(rc: RuntimeConfig) =
   var echoedTalks = 0
   var echoedGifts = 0
   while s.phase != phEnded:
-    # live sponsor ingress: drain queued requests at the tick boundary
+    # live sponsor ingress: welcomes first, then queued requests
     var reqs: seq[SponsorReq] = @[]
+    var freshSponsors: seq[(WebSocket, int)] = @[]
     {.gcsafe.}:
       withLock appState.lock:
+        for ws in appState.sponsorJoined:
+          if ws in appState.sponsors:
+            freshSponsors.add((ws, appState.sponsors[ws]))
+        appState.sponsorJoined.setLen(0)
         reqs = appState.sponsorQueue
         appState.sponsorQueue.setLen(0)
+    for (ws, ti) in freshSponsors:
+      var catalog = "{"
+      for (key, g) in GiftCatalog:
+        if catalog.len > 1: catalog.add(",")
+        catalog.add("\"" & key & "\":" & $g.price)
+      catalog.add("}")
+      try:
+        ws.send("""{"type":"sponsor_welcome","team":"""" & TeamNames[ti] &
+                """","budget":""" & $s.teamBudget[ti] &
+                ""","catalog":""" & catalog &
+                ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
+                ""","tick":""" & $s.tick & "}", TextMessage)
+      except CatchableError:
+        discard
     for req in reqs:
       var reply = """{"type":"gift_result","accepted":false,"reason":"malformed"}"""
       try:
@@ -311,6 +350,41 @@ proc runLive(rc: RuntimeConfig) =
       let j =
         try: parseJson(payload)
         except CatchableError: nil
+      if j == nil:
+        s.noteMalformedInput(AgentId(slot))
+        continue
+      # alloc_result reply (DESIGN §5.1/§10.2): handled here so the outcome
+      # can be echoed back on the socket
+      if j.kind == JObject and j{"type"}.getStr("") == "allocate_stats" and
+         j.hasKey("speed"):
+        let res = s.submitAllocation(AgentId(slot), Stats(
+          speed: j{"speed"}.getInt(), strength: j{"strength"}.getInt(),
+          intelligence: j{"intelligence"}.getInt(),
+          athleticism: j{"athleticism"}.getInt()))
+        let st = s.agents[slot].stats
+        let applied = """{"speed":""" & $st.speed & ""","strength":""" &
+          $st.strength & ""","intelligence":""" & $st.intelligence &
+          ""","athleticism":""" & $st.athleticism & "}"
+        let reply =
+          case res
+          of arAccepted:
+            """{"type":"alloc_result","applied":""" & applied &
+            ""","defaulted":false}"""
+          of arRejectedDuplicate:
+            """{"type":"alloc_result","rejected":true,"reason":"duplicate","applied":""" &
+            applied & "}"
+          of arRejectedInvalid:
+            """{"type":"alloc_result","rejected":true,"reason":"invalid","applied":""" &
+            applied & "}"
+          of arRejectedLate:
+            """{"type":"alloc_result","rejected":true,"reason":"late","applied":""" &
+            applied & "}"
+        if conns[slot][0]:
+          try:
+            conns[slot][1].send(reply, TextMessage)
+          except CatchableError:
+            discard
+        continue
       s.applyInputJson(AgentId(slot), j)
     if demoMode:
       s.driveScript()
@@ -350,7 +424,7 @@ proc runLive(rc: RuntimeConfig) =
       let g = s.sponsorLog[echoedGifts]
       echo "SPONSOR [t=", g.tickRequested, "] ", g.sponsor, " ", $g.status,
            " ", g.itemId, " -> P", g.recipientSlot, " (team ",
-           TeamNames[g.team], ") cost=", g.cost,
+           (if g.team in 0 .. 7: TeamNames[g.team] else: "?"), ") cost=", g.cost,
            (if g.reason.len > 0: " reason=" & g.reason else: ""),
            " balance=", g.balanceAfter
       inc echoedGifts
@@ -403,6 +477,11 @@ proc runLive(rc: RuntimeConfig) =
 proc runReplay(rc: RuntimeConfig) =
   let work = getTempDir() / "zero-sum-replay"
   let loaded = loadReplayZip(rc.replay, work)
+  # gifts re-enter ONLY from the log (mission invariant): config-driven
+  # scripted processing off, logged {"gift":..} payloads allowed
+  template armReplaySim(sim: untyped) =
+    sim.suppressScriptedGifts = true
+    sim.allowLoggedGifts = true
   echo "replay loaded: game=", loaded.data.gameName,
        " inputs=", loaded.data.clientInputs.len,
        " hashes=", loaded.data.hashes.len
@@ -425,6 +504,7 @@ proc runReplay(rc: RuntimeConfig) =
     let cfg = parseSimConfig(loaded.effectiveConfig, mintSeedFromOs)
     doAssert not cfg.seedWasMinted, "effective config must carry the seed"
     var s = initSim(cfg)
+    s.armReplaySim()
     var r: Renderer
     r.resetForLoop()
     {.gcsafe.}:

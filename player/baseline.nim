@@ -16,7 +16,7 @@ proc blockedAt(c: Ctx, x, y: int): bool =
     return true
   c.staticMap[y][x] in {'#', 'R', 'F'}
 
-const DirNames = ["dN", "dNE", "dE", "dSE", "dS", "dSW", "dW", "dNW"]
+const DirNames = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 const Dx = [0, 1, 1, 1, 0, -1, -1, -1]
 const Dy = [-1, -1, 0, 1, 1, 1, 0, -1]
 
@@ -109,6 +109,13 @@ proc decide(c: Ctx, m: JsonNode): JsonNode =
       ey = ay
       enemyCritical = a["hp_band"].getStr() == "critical"
 
+  # 0. never restart an active channel (heal/forage completes on its own)
+  var channeling = false
+  for e in you["effects"]:
+    if e{"id"}.getStr() == "channeling":
+      channeling = true
+  if channeling:
+    return %*{"type": "action", "do": "none"}
   # 1. survival: flee visible enemies when weak
   if hp < 35 and ex >= 0:
     let d = c.dirAway(x, y, ex, ey)

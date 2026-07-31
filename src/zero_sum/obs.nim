@@ -84,15 +84,37 @@ proc effectsJson(s: Sim, a: Agent): JsonNode =
     result.add(%*{"id": "camo_revealed",
                   "ticks_left": a.camoRevealedUntil - s.tick})
 
-proc eventJsonNode(e: Event): JsonNode =
-  result = %*{"type": ($e.kind)[2 ..^ 1]}
+proc roughDirection(fromP, toP: Pos): string =
+  ## 8-way compass from observer to source (boom cue, DESIGN §10.3).
+  let dx = toP.x - fromP.x
+  let dy = toP.y - fromP.y
+  if dx == 0 and dy == 0:
+    return "here"
+  let ns = (if dy < -abs(dx) div 2: "N" elif dy > abs(dx) div 2: "S" else: "")
+  let ew = (if dx > abs(dy) div 2: "E" elif dx < -abs(dy) div 2: "W" else: "")
+  result = ns & ew
+  if result.len == 0:
+    result = (if dx > 0: "E" else: "W")
+
+proc eventJsonNode(s: Sim, viewer: int, e: Event): JsonNode =
+  ## Wire event: snake_case type token, kind-specific fields at TOP level
+  ## (DESIGN §10.3). Boom carries only a rough observer-relative direction.
+  result = %*{"type": $e.kind}
+  if e.kind == evBoom:
+    result["direction"] = %roughDirection(s.agents[viewer].pos, e.pos)
+    return
   if e.slot >= 0:
     result["slot"] = %e.slot
   if e.pos.x >= 0:
     result["pos"] = %[e.pos.x, e.pos.y]
   if e.data.len > 0:
     try:
-      result["data"] = parseJson(e.data)
+      let d = parseJson(e.data)
+      if d.kind == JObject:
+        for k, v in d.pairs:
+          result[k] = v
+      else:
+        result["data"] = d
     except CatchableError:
       result["data"] = %e.data
 
@@ -201,11 +223,21 @@ proc observationJson*(s: Sim, slot: int): string =
   var projArr = newJArray()
   for p in s.projectiles:
     if s.tileVisible(slot, p.pos):
+      let kindTok =
+        case p.kind
+        of iArrows: "arrow"
+        of iDarts: "dart"
+        of iKnives: "knife"
+        of iNet: "net"
+        else: $p.kind
       projArr.add(%*{"pos": [p.pos.x, p.pos.y], "dir": $p.dir,
-                     "kind": $p.kind, "shooter": p.shooter})
+                     "kind": kindTok, "shooter": p.shooter})
   var eventsArr = newJArray()
   for e in s.events:
-    eventsArr.add(eventJsonNode(e))
+    eventsArr.add(eventJsonNode(s, slot, e))
+  var dmgTaken = newJArray()
+  for (src, centi) in me.damageSources:
+    dmgTaken.add(%*{"source": src, "amount": centi.float / 100.0})
   var chatArr = newJArray()
   for m in s.inbox[slot]:
     chatArr.add(%*{"tick": m.tick, "from": m.slot, "channel": $m.channel,
@@ -223,11 +255,12 @@ proc observationJson*(s: Sim, slot: int): string =
             "body": (if me.body == iNone: newJNull() else: %($me.body)),
             "pack": pack,
             "effects": effectsJson(s, me),
-            "damage_taken": me.damageTakenCenti div 100,
+            "damage_taken": dmgTaken,
             "kills": me.kills,
             "damage_dealt": me.damageDealtCenti div 100,
             "move_ready_in": max(0, me.moveReadyTick - s.tick),
-            "attack_ready_in": max(0, me.attackReadyTick - s.tick)},
+            "attack_ready_in": max(0, me.attackReadyTick - s.tick),
+            "action_result": s.lastActionResult[slot]},
     "visible": {"agents": agentsArr, "items": itemsArr, "pods": podsArr,
                  "bushes": bushArr, "projectiles": projArr},
     "zone": zoneJson(s),

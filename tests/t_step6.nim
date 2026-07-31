@@ -69,7 +69,7 @@ block input_json_roundtrip:
   doAssert s.talkLog.len == 1 and s.talkLog[0].to == 3
   s.applyInputJson(AgentId(1), parseJson("""{"allocate_stats":{"speed":7,"strength":5,"intelligence":4,"athleticism":4}}"""))
   doAssert s.agents[1].statsLocked and s.agents[1].stats.speed == 7
-  s.applyInputJson(AgentId(2), parseJson("""{"do":"move","dir":"dSW"}"""))
+  s.applyInputJson(AgentId(2), parseJson("""{"do":"move","dir":"SW"}"""))
   # move pends: step during countdown moves off pedestal -> mine (proves applied)
   s.step()
   doAssert not s.agents[2].alive

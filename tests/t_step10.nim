@@ -66,7 +66,7 @@ block arena_wide_events:
   let o = parseJson(observationJson(s, 0))
   var sawDeath = false
   for e in o["events"]:
-    if e["type"].getStr() == "DeathFireworks":
+    if e["type"].getStr() == "death_fireworks":
       sawDeath = true
   doAssert sawDeath
 
@@ -86,7 +86,7 @@ block wire_shapes:
   s.agents[2].pos = Pos(x: 10, y: 30)
   s.agents[2].moveReadyTick = 0
   s.applyInputJson(AgentId(2), parseJson(
-    """{"type":"action","do":"move","dir":"dN"}"""))
+    """{"type":"action","do":"move","dir":"N"}"""))
   s.step()
   doAssert s.agents[2].pos == Pos(x: 10, y: 29)
 

@@ -129,6 +129,13 @@ type
     suppressScriptedGifts*: bool   # replay mode: gifts come from the input log
                                    # ONLY (mission invariant); config-driven
                                    # scripted processing is disabled
+    allowLoggedGifts*: bool        # ONLY the replay path may apply {"gift":..}
+                                   # payloads; live player sockets must never
+                                   # mint sponsor gifts (security)
+    lastActionResult*: array[16, string]
+    inStep: bool
+    pendingEvents: seq[Event]      # emitted between ticks (live/replay gift
+                                   # intake); spliced into the next tick
     pendingActions: array[16, Action]
     pendingSet: array[16, bool]
 
@@ -405,6 +412,7 @@ proc initSim*(cfg: SimConfig): Sim =
       moveReadyTick: 0, attackReadyTick: 0, deathTick: -1,
       lastDamager: -1)
     result.lastTalkTick[i] = -24
+    result.lastActionResult[i] = "ok"
   for t in 0 .. 7:
     result.teamBudget[t] = cfg.sponsor.budgetPerTeam
   result.generateLoot()
@@ -452,9 +460,14 @@ proc actionJson(act: Action): string =
 
 proc emit(s: var Sim, kind: EventKind, slot = -1, pos = Pos(x: -1, y: -1),
           data = "") =
+  ## Inside step(): lands in this tick's events. Between ticks (gift intake):
+  ## deferred and spliced into the NEXT step so the events reset cannot eat it.
   let e = Event(tick: s.tick, kind: kind, slot: slot, pos: pos, data: data)
-  s.events.add(e)
-  s.eventHistory.add(e)
+  if s.inStep:
+    s.events.add(e)
+    s.eventHistory.add(e)
+  else:
+    s.pendingEvents.add(e)
 
 proc sanitizeTalk*(text: string): string =
   ## Printable ASCII only (0x20-0x7E), max 120 chars (DESIGN §10.4).
@@ -471,6 +484,7 @@ proc submitTalk*(s: var Sim, slot: AgentId, channel: TalkChannel,
   if channel == tcDm and (to < 0 or to > 15 or to == int(slot)):
     return tkRejected
   if s.tick - s.lastTalkTick[slot] < 24:
+    s.lastActionResult[slot] = "rate_limited"
     return tkRateLimited
   let clean = sanitizeTalk(text)
   if clean.len == 0:
@@ -501,11 +515,14 @@ proc resolveMovement(s: var Sim) =
     if not a.alive or not s.pendingSet[i] or s.pendingActions[i].kind != akMove:
       continue
     if s.tick < a.moveReadyTick or s.tick < a.nettedUntil:
+      s.lastActionResult[i] = "cooldown"
       continue
     let target = a.pos + s.pendingActions[i].dir
     if not inBounds(target) or blocksMovement(s.arena.tile(target)):
+      s.lastActionResult[i] = "blocked"
       continue
     if s.floodedAt(target) and not s.floodedAt(a.pos):
+      s.lastActionResult[i] = "blocked"
       continue                 # may move OFF flooded tiles, never ONTO them
     intent[i] = PendingMove(slot: AgentId(i), target: target, active: true)
 
@@ -535,6 +552,7 @@ proc resolveMovement(s: var Sim) =
       for slot in group:
         if slot != winner:
           intent[slot].active = false
+          s.lastActionResult[slot] = "blocked"
 
   var changed = true
   while changed:
@@ -544,6 +562,7 @@ proc resolveMovement(s: var Sim) =
       let occ = s.agentAt(intent[i].target)
       if occ >= 0 and occ != i and not intent[occ].active:
         intent[i].active = false
+        s.lastActionResult[i] = "blocked"
         changed = true
 
   for i in 0 .. 15:
@@ -582,6 +601,7 @@ proc resolvePickup(s: var Sim, i: int) =
   let a = addr s.agents[i]
   let here = s.groundAt(a.pos)
   if here.len == 0:
+    s.lastActionResult[i] = "no_target"
     return
   let gi = here[0]
   var g = s.ground[gi]
@@ -622,6 +642,7 @@ proc resolvePickup(s: var Sim, i: int) =
     s.ground.delete(gi)
   else:
     s.ground[gi] = g
+    s.lastActionResult[i] = "inventory_full"
 
 proc unequipBodyToGround(s: var Sim, i: int) =
   ## Dropping/replacing a backpack sheds overflow slots 2..3 (DESIGN §3.1).
@@ -654,9 +675,14 @@ proc resolveDrop(s: var Sim, i: int, invSlot: int) =
 proc resolveUse(s: var Sim, i: int, invSlot: int) =
   let a = addr s.agents[i]
   if invSlot notin 0 .. 3 or invSlot >= a[].packSlots:
+    s.lastActionResult[i] = "malformed"
+    return
+  if a.channeling.kind != chNone:
+    s.lastActionResult[i] = "cooldown"   # re-issued use is NOT a restart
     return
   let slotItem = a.pack[invSlot].item
   if slotItem == iNone:
+    s.lastActionResult[i] = "no_target"
     return
   let d = def(slotItem)
   case d.kind
@@ -690,6 +716,8 @@ proc resolveInteract(s: var Sim, i: int) =
   if bi >= 0 and s.bushes[bi].charges > 0 and a.channeling.kind == chNone:
     a.channeling = Channeling(kind: chForage, item: iRations, packIdx: -1,
                         doneTick: s.tick + 24)
+  elif a.channeling.kind == chNone:
+    s.lastActionResult[i] = "no_target"
 
 proc resolveChannels(s: var Sim) =
   for i in 0 .. 15:
@@ -721,12 +749,17 @@ proc resolveChannels(s: var Sim) =
 
 proc meleeMult(a: Agent): int = 5 + a.stats.strength   # x/10 (DESIGN §5.2)
 
-proc applyDamage(s: var Sim, victim: int, centi: int, source: int) =
+proc applyDamage(s: var Sim, victim: int, centi: int, source: int,
+                 label = "") =
   let v = addr s.agents[victim]
   if not v.alive or centi <= 0:
     return
   v.hpCenti -= centi
   v.damageTakenCenti += centi
+  v.damageSources.add((
+    (if label.len > 0: label
+     elif source >= 0: "P" & $source
+     else: "environment"), centi))
   if source >= 0:
     v.lastDamager = source
     s.agents[source].damageDealtCenti += centi
@@ -759,7 +792,10 @@ proc resolveMelee(s: var Sim) =
     if not s.pendingSet[i] or s.pendingActions[i].kind != akAttack:
       continue
     let a = addr s.agents[i]
-    if not a.alive or s.tick < a.attackReadyTick:
+    if not a.alive:
+      continue
+    if s.tick < a.attackReadyTick:
+      s.lastActionResult[i] = "cooldown"
       continue
     let dir = s.pendingActions[i].dir
     let w = a.hand
@@ -778,22 +814,27 @@ proc resolveMelee(s: var Sim) =
           break
       a.attackReadyTick = s.tick + d.cooldown
       a.camoRevealedUntil = s.tick + CamoRevealTicks
+      # durability counts SWINGS, hit or miss (DESIGN §3.2 "40 swings")
+      if w != iNone:
+        dec a.handDur
       if hit >= 0:
         s.applyDamage(hit, d.damage * 100 * meleeMult(a[]) div 10, i)
-        if w != iNone:
-          dec a.handDur
-          if a.handDur <= 0:
-            a.hand = iNone
-            a.handN = 0
+      else:
+        s.lastActionResult[i] = "no_target"
+      if w != iNone and a.handDur <= 0:
+        a.hand = iNone
+        a.handN = 0
     of ikRanged:
       let ammo = ammoFor(w)
       if not takeAmmo(a[], ammo):
+        s.lastActionResult[i] = "no_ammo"
         continue
       s.spawnProjectile(i, dir, ammo)
       a.attackReadyTick = s.tick + (if w == iBow: bowDraw(a[]) else: d.cooldown)
       a.camoRevealedUntil = s.tick + CamoRevealTicks
     of ikThrown:
       if a.handN <= 0:
+        s.lastActionResult[i] = "no_ammo"
         continue
       dec a.handN
       s.spawnProjectile(i, dir, w)
@@ -864,15 +905,12 @@ proc resolveHazards(s: var Sim) =
     let a = addr s.agents[i]
     if not a.alive:
       continue
-    var centi = 0
     if zoneDmg > 0 and not s.insideZone(a.pos):
-      centi += zoneDmg * 100
+      s.applyDamage(i, hazardScaled(a[], zoneDmg * 100), -1, "zone")
     if s.floodedAt(a.pos):
-      centi += 4 * 100
+      s.applyDamage(i, hazardScaled(a[], 400), -1, "flood")
     if s.inFirestorm(a.pos):
-      centi += 6 * 100
-    if centi > 0:
-      s.applyDamage(i, hazardScaled(a[], centi), -1)
+      s.applyDamage(i, hazardScaled(a[], 600), -1, "firestorm")
 
 proc emitHazardWarnings(s: var Sim) =
   for st in s.cfg.zone:
@@ -892,7 +930,7 @@ proc resolvePoisonPulses(s: var Sim) =
       continue
     let dt = s.tick - a.poisonAppliedTick
     if dt > 0 and dt mod PoisonPulsePeriod == 0:
-      s.applyDamage(i, PoisonPulseCenti, a.poisonFrom)
+      s.applyDamage(i, PoisonPulseCenti, a.poisonFrom, "poison")
 
 # ---------------------------------------------------------------- sponsor
 
@@ -905,35 +943,37 @@ proc landingFree(s: Sim, p: Pos): bool =
   inBounds(p) and not blocksMovement(s.arena.tile(p)) and
     s.agentAt(p) < 0 and not s.podReservedAt(p)
 
+proc ringTiles(origin: Pos, r: int): seq[Pos] =
+  ## Chebyshev ring walk: start (x, y-r), clockwise (DESIGN §9.3.3).
+  var p = Pos(x: origin.x, y: origin.y - r)
+  result.add(p)
+  for (dx, dy, steps) in [(1, 0, r), (0, 1, 2 * r), (-1, 0, 2 * r),
+                          (0, -1, 2 * r), (1, 0, r - 1)]:
+    for _ in 0 ..< steps:
+      p = Pos(x: p.x + dx, y: p.y + dy)
+      result.add(p)
+
 proc findLandingTile(s: Sim, origin: Pos): Pos =
-  ## DESIGN §9.3.3 pinned spiral: Chebyshev rings r=0..3 around origin, each
-  ## ring starting at (x, y-r) walking clockwise; first free tile wins.
-  ## Fallback: nearest free by squared distance, tie-broken by scan order.
-  for r in 0 .. 3:
-    if r == 0:
-      if s.landingFree(origin):
-        return origin
-      continue
-    var ring: seq[Pos] = @[]
-    var p = Pos(x: origin.x, y: origin.y - r)
-    ring.add(p)
-    for (dx, dy, steps) in [(1, 0, r), (0, 1, 2 * r), (-1, 0, 2 * r),
-                            (0, -1, 2 * r), (1, 0, r - 1)]:
-      for _ in 0 ..< steps:
-        p = Pos(x: p.x + dx, y: p.y + dy)
-        ring.add(p)
-    for q in ring:
+  ## DESIGN §9.3.3 pinned spiral: rings r=0..3 first-free wins; fallback keeps
+  ## the SAME ring enumeration outward (min d2, ties broken by ring order).
+  if s.landingFree(origin):
+    return origin
+  for r in 1 .. 3:
+    for q in ringTiles(origin, r):
       if s.landingFree(q):
         return q
-  # fallback: whole-arena scan, min d2, scan order breaks ties
+  # global min d2 with ring-enumeration tiebreak (strict < keeps the earliest
+  # tile in ring-outward walk order). A ring r's minimum possible d2 is r*r,
+  # so stop once r*r exceeds the best found.
   var best = Pos(x: -1, y: -1)
   var bestD2 = int.high
-  for y in 1 ..< ArenaSize - 1:
-    for x in 1 ..< ArenaSize - 1:
-      let q = Pos(x: x, y: y)
+  for r in 4 ..< ArenaSize:
+    if best.x >= 0 and r * r > bestD2:
+      break
+    for q in ringTiles(origin, r):
       if s.landingFree(q):
-        let dx = x - origin.x
-        let dy = y - origin.y
+        let dx = q.x - origin.x
+        let dy = q.y - origin.y
         let d2 = dx * dx + dy * dy
         if d2 < bestD2:
           bestD2 = d2
@@ -1148,7 +1188,10 @@ proc tickHash*(s: Sim): uint64 =
     fnv1a(h, uint64(pod.landing.y))
     fnv1a(h, uint64(cast[uint32](int32(pod.landsTick))))
     fnv1a(h, uint64(ord(pod.landed)))
-  fnv1a(h, uint64(s.sponsorLog.len))
+  # NOTE: sponsorLog deliberately NOT hashed — rejected requests are audit
+  # records, not sim state, and rejects are not input-logged; hashing them
+  # would make live-vs-replay hashes diverge on any rejected live request.
+  # Accepted-gift effects are fully covered by teamBudget + pods + ground.
   for w in s.rng.state():
     fnv1a(h, w)
   h
@@ -1159,8 +1202,19 @@ proc step*(s: var Sim) =
   if s.phase == phEnded:
     return
   s.events.setLen(0)
+  s.inStep = true
+  # splice events emitted between ticks (gift intake) into THIS tick
+  for e in s.pendingEvents:
+    var ev = e
+    ev.tick = s.tick
+    s.events.add(ev)
+    s.eventHistory.add(ev)
+  s.pendingEvents.setLen(0)
   for i in 0 .. 15:
     s.agents[i].damageTakenCenti = 0
+    s.agents[i].damageSources.setLen(0)
+    if s.pendingSet[i]:
+      s.lastActionResult[i] = "ok"   # provisional; resolvers downgrade it
     s.inbox[i].setLen(0)
 
   # deliver last tick's talk (DESIGN §10.4: next-tick delivery, sender echoed)
@@ -1221,16 +1275,20 @@ proc step*(s: var Sim) =
   # pickups, drops/use/interact
   s.resolvePods()
   s.resolveChannels()
-  if s.phase == phLive:
-    for i in 0 .. 15:
-      if not s.pendingSet[i] or not s.agents[i].alive:
-        continue
-      case s.pendingActions[i].kind
-      of akPickup: s.resolvePickup(i)
-      of akDrop: s.resolveDrop(i, s.pendingActions[i].invSlot)
-      of akUse: s.resolveUse(i, s.pendingActions[i].invSlot)
-      of akInteract: s.resolveInteract(i)
-      else: discard
+  for i in 0 .. 15:
+    if not s.pendingSet[i] or not s.agents[i].alive:
+      continue
+    let kind = s.pendingActions[i].kind
+    if s.phase != phLive:
+      if kind in {akAttack, akPickup, akDrop, akUse, akInteract}:
+        s.lastActionResult[i] = "frozen"   # §1.1: ignored during countdown
+      continue
+    case kind
+    of akPickup: s.resolvePickup(i)
+    of akDrop: s.resolveDrop(i, s.pendingActions[i].invSlot)
+    of akUse: s.resolveUse(i, s.pendingActions[i].invSlot)
+    of akInteract: s.resolveInteract(i)
+    else: discard
 
   # 8. deaths
   s.resolveDeaths()
@@ -1257,6 +1315,7 @@ proc step*(s: var Sim) =
   s.hashes.add((s.tick, s.tickHash()))
   for i in 0 .. 15:
     s.pendingSet[i] = false
+  s.inStep = false
   inc s.tick
 
 # ---------------------------------------------------------------- input JSON
@@ -1290,6 +1349,11 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
       athleticism: j{"athleticism"}.getInt()))
     return
   if j.hasKey("gift"):
+    # SECURITY: only the replay path may re-apply logged gifts. A live player
+    # socket sending {"gift":...} must never mint sponsor spend.
+    if not s.allowLoggedGifts:
+      s.lastActionResult[slot] = "malformed"
+      return
     let g = j["gift"]
     if g.kind == JObject:
       discard s.requestGift(g{"sponsor"}.getStr("script"), g{"team"}.getInt(-1),
@@ -1325,6 +1389,12 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
     of "drop": s.submitAction(slot, Action(kind: akDrop, invSlot: j{"slot"}.getInt(-99)))
     of "use": s.submitAction(slot, Action(kind: akUse, invSlot: j{"slot"}.getInt(-99)))
     of "none": s.submitAction(slot, Action(kind: akNone))
-    else: discard
+    else: s.lastActionResult[slot] = "malformed"
+  else:
+    s.lastActionResult[slot] = "malformed"
+
+proc noteMalformedInput*(s: var Sim, slot: AgentId) =
+  ## Server-side hook for unparseable payloads (never a disconnect, §10).
+  s.lastActionResult[slot] = "malformed"
 
 

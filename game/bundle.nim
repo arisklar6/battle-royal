@@ -52,7 +52,8 @@ proc sponsorLogJson*(s: Sim): string =
   for r in s.sponsorLog:
     arr.add(%*{"tick_requested": r.tickRequested,
                "tick_landed": (if r.tickLanded >= 0: %r.tickLanded else: newJNull()),
-               "sponsor": r.sponsor, "team": TeamNames[r.team],
+               "sponsor": r.sponsor,
+               "team": (if r.team in 0 .. 7: %TeamNames[r.team] else: newJNull()),
                "recipient_slot": r.recipientSlot, "item": r.itemId,
                "cost": r.cost, "status": $r.status,
                "reason": (if r.reason.len > 0: %r.reason else: newJNull()),

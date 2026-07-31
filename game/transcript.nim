@@ -72,7 +72,7 @@ proc buildTranscriptJson*(s: Sim): string =
       let e = s.eventHistory[ei]
       if e.kind notin {evBoom}:
         arr.add(%*{"tick": e.tick, "slot": nil,
-                   "kind": ($e.kind)[2 ..^ 1],
+                   "kind": $e.kind,
                    "at": [e.pos.x, e.pos.y],
                    "data": e.data, "subject": e.slot})
       inc ei

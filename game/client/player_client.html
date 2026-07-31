@@ -84,8 +84,8 @@ ws.onmessage = (ev) => {
   ctx.fillStyle = '#fff'; ctx.fillRect(m.you.pos[0]*S+1, m.you.pos[1]*S+1, S-2, S-2);
   ctx.strokeStyle = TEAM[Math.floor(cfg.slot/2)]; ctx.strokeRect(m.you.pos[0]*S, m.you.pos[1]*S, S, S);
 };
-const DIRKEYS = {ArrowUp:'dN', ArrowDown:'dS', ArrowLeft:'dW', ArrowRight:'dE',
-  q:'dNW', w:'dN', e:'dNE', a:'dW', d:'dE', z:'dSW', x:'dS', c:'dSE'};
+const DIRKEYS = {ArrowUp:'N', ArrowDown:'S', ArrowLeft:'W', ArrowRight:'E',
+  q:'NW', w:'N', e:'NE', a:'W', d:'E', z:'SW', x:'S', c:'SE'};
 document.addEventListener('keydown', (ev) => {
   if (document.activeElement === document.getElementById('chat')) return;
   const dir = DIRKEYS[ev.key] || DIRKEYS[ev.key.toLowerCase()];

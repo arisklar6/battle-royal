@@ -18,7 +18,9 @@ type
     phEnded = "ended"
 
   Dir8* = enum
-    dN, dNE, dE, dSE, dS, dSW, dW, dNW
+    ## String values ARE the wire tokens (DESIGN §10.3/§10.4).
+    dN = "N", dNE = "NE", dE = "E", dSE = "SE",
+    dS = "S", dSW = "SW", dW = "W", dNW = "NW"
 
   Pos* = object
     x*, y*: int
@@ -69,6 +71,7 @@ type
     channeling*: Channeling
     lastDamager*: int          # -1 = environment
     damageTakenCenti*: int     # this tick, for observations
+    damageSources*: seq[(string, int)]  # this tick: (source label, centi)
 
   GroundItem* = object
     pos*: Pos
@@ -88,9 +91,12 @@ type
     remaining*: int            # tiles of range left
 
   EventKind* = enum
-    evIgnition, evDeathFireworks, evBoom, evMineExplosion,
-    evZoneWarning, evEventWarning, evGiftIncoming, evGiftLanded,
-    evFinale, evMatchEnd
+    ## String values ARE the wire event-type tokens (DESIGN §10.3).
+    evIgnition = "ignition", evDeathFireworks = "death_fireworks",
+    evBoom = "boom", evMineExplosion = "mine_explosion",
+    evZoneWarning = "zone_warning", evEventWarning = "event_warning",
+    evGiftIncoming = "gift_incoming", evGiftLanded = "gift_landed",
+    evFinale = "finale", evMatchEnd = "match_end"
 
   Event* = object
     tick*: int

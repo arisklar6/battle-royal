@@ -121,6 +121,7 @@ block replay_single_application:
   doAssert live.teamBudget[2] == 180
   var rep = mkSim(gifts)
   rep.suppressScriptedGifts = true
+  rep.allowLoggedGifts = true
   # re-apply from the live input log
   var gi = 0
   while rep.tick < 400:
