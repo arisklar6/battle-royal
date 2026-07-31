@@ -467,6 +467,27 @@ Remaining weapons (axe, sling, machete…), crafting, traps, trading, cross-team
 - All art stays code-generated pixel data (no external asset pipeline);
   palette discipline: <=15 visible colors per sprite (house convention).
 
+### 21.3 Esports visual system (owner spec, 2026-07-31)
+Standard palette tokens: BG #0B0C10, masonry #1F2833, telemetry base #45A29E,
+ring plasma #66FCF1 (stages 1-4) / #FF0055 (stages 5+ and lethal), gold
+#C5A059 (pedestals/Fortress light/airdrops), toxic flood #39FF14, HP states
+#2ECC71/#F39C12/#E74C3C. Team accents: A coral pink, B electric cyan,
+C amber gold, D royal violet, E crimson (spec's "mint crimson" resolved),
+F ice white, G burnt orange, H magenta (G/H defaulted — spec silent).
+Spectator: dark-steel plate floor w/ recessed grid, granite Fortress with
+golden mouth light, teal->crimson plasma ring w/ lightning micro-strikes on
+burning agents, two chassis per team (Alpha heavy / Beta sleek), weapon
+trails (white kinetic / green vapor / silver blur), poison halo pulse,
+translucent camo w/ reveal glitch, netted energy mesh, death void beam +
+black burst, airdrop gold beam + floating cargo typography. Player client:
+ruthless tactical view — black fog matte, LOS shadow crosshatch, cyan self
+token (cooldown gauge, stacked status tags), band-colored enemy tokens w/
+weapon icons, symbol+count ground items, bush charge integers. Analyst
+dashboard (new /client/analyst + JSON telemetry feed): live projected-score
+scoreboard, softcoin ticker w/ interception callouts, post-deadline stat
+matrix, FINALE takeover overlay. sprite_v1 constraint: all effects are
+pixel-art equivalents (alpha supported; no 3D/shaders/camera motion).
+
 ### 21.2 Prompt-policy seats + pre-game lobby (DECIDED: game-side LLM)
 - The human role becomes COACH: before the match each human (a) writes a
   free-text policy prompt and (b) allocates the 20 stat points. Both are

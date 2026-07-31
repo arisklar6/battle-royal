@@ -16,7 +16,7 @@ const
   SpFwBlack = 30
   SpFwGold = 31
   SpMineFlash = 32
-  SpZoneFireA = 33
+  SpZoneFireA = 33          # teal plasma (stages 1-4)
   SpZoneFireB = 34
   SpPodCrate = 35
   SpPodChute = 36
@@ -24,6 +24,19 @@ const
   SpFirestormB = 38
   SpFloodA = 39
   SpFloodB = 40
+  SpPlasmaCritA = 41        # crimson plasma (stages 5+)
+  SpPlasmaCritB = 42
+  SpGlassBody = 43          # camo refractive silhouette
+  SpNetMesh = 44
+  SpPoisonHaloA = 45
+  SpPoisonHaloB = 46
+  SpVoidBeam = 47
+  SpGoldBeam = 48
+  SpGlitch = 49
+  SpTrailBase = 750         # 750+ord: arrow/dart/knife trail ghosts
+  SpMouthA = 700
+  SpMouthB = 701
+  SpCargoBase = 710         # rotating cargo-label text sprites (8)
   SpItemBase = 50          # 50 + ord(ItemId): ground chips
   SpProjBase = 80          # 80 + ord(ItemId): projectiles
   SpBushBase = 90          # 90..93: bush with 0..3 berries
@@ -54,6 +67,11 @@ const
   ObHudLine1 = 50001
   ObHudLine2 = 50002
   ObBanner = 50010
+  ObHaloBase = 44000        # poison halo per slot
+  ObMeshBase = 44100        # net mesh per slot
+  ObMouthBase = 44200       # 8 gold mouth tiles
+  ObPodBeamBase = 44300
+  ObPodLabelBase = 44400
 
   LayerHudTL = 1
   LayerHudBL = 4
@@ -62,10 +80,21 @@ const
   BodyW = 8
   BodyH = 12
 
+  ## Esports palette (DESIGN §21.3): team accents A-H
+  ## coral pink / electric cyan / amber gold / royal violet / crimson /
+  ## ice white / burnt orange (default) / magenta (default)
   TeamColors: array[8, (uint8, uint8, uint8)] = [
-    (220'u8, 60'u8, 60'u8), (70'u8, 110'u8, 230'u8), (70'u8, 190'u8, 90'u8),
-    (230'u8, 200'u8, 60'u8), (160'u8, 80'u8, 220'u8), (70'u8, 200'u8, 210'u8),
-    (240'u8, 140'u8, 50'u8), (240'u8, 110'u8, 180'u8)]
+    (255'u8, 127'u8, 140'u8), (69'u8, 220'u8, 255'u8), (255'u8, 191'u8, 0'u8),
+    (122'u8, 60'u8, 220'u8), (220'u8, 20'u8, 60'u8), (235'u8, 245'u8, 255'u8),
+    (255'u8, 110'u8, 30'u8), (225'u8, 90'u8, 235'u8)]
+
+  # palette tokens
+  BgDark = (11'u8, 12'u8, 16'u8)          # #0B0C10
+  Masonry = (31'u8, 40'u8, 51'u8)         # #1F2833
+  PlasmaTeal = (102'u8, 252'u8, 241'u8)   # #66FCF1
+  PlasmaCrit = (255'u8, 0'u8, 85'u8)      # #FF0055
+  GoldTone = (197'u8, 160'u8, 89'u8)      # #C5A059
+  ToxicFlood = (57'u8, 255'u8, 20'u8)     # #39FF14
 
   Skin = (232'u8, 190'u8, 150'u8)
   Hair = (60'u8, 42'u8, 30'u8)
@@ -96,6 +125,13 @@ type
     bannerText: string
     bannerUntil: int
     bannerFlip: int
+    haloOn: array[16, bool]
+    meshOn: array[16, bool]
+    wasCamoHidden: array[16, bool]
+    mouthsDrawn: bool
+    mouthPhase: int
+    podBeamsDrawn: int
+    labelFlip: int
 
 # ---------------------------------------------------------------- helpers
 
@@ -118,16 +154,15 @@ proc tileHash(x, y: int): int = (x * 7 + y * 13 + (x * y) mod 11) mod 16
 # ---------------------------------------------------------------- tiles
 
 proc grassAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
+  ## Dark-brutalist steel plate with a recessed grid seam (DESIGN §21.3).
   let h = tileHash(tx, ty)
-  let base = shade((34'u8, 44'u8, 28'u8), (h mod 3) * 4 - 4)
+  let base = shade(BgDark, (h mod 3) * 3)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      px.put(w, ox + x, oy + y, base)
-  # sparse blade specks
-  if h mod 4 == 0:
-    px.put(w, ox + (h mod 5), oy + (h div 5) mod 5, shade(base, 18))
-  if h mod 5 == 2:
-    px.put(w, ox + 4 - (h mod 3), oy + 1 + (h mod 4), shade(base, 12))
+      let seam = x == 0 or y == 0
+      px.put(w, ox + x, oy + y, (if seam: Masonry else: base))
+  if h mod 5 == 0:                        # faint plate wear
+    px.put(w, ox + 2 + (h mod 3), oy + 2 + (h div 3) mod 3, shade(base, 10))
 
 proc bricksAt(px: var seq[uint8], w, ox, oy, tx, ty: int,
               base: (uint8, uint8, uint8)) =
@@ -164,12 +199,12 @@ proc backgroundPixels(a: Arena): seq[uint8] =
       let ox = tx * TileSize
       let oy = ty * TileSize
       case a.tiles[ty][tx]
-      of tkGround, tkBush:      # bushes are objects; grass beneath
+      of tkGround, tkBush:      # bushes are objects; plate beneath
         grassAt(result, WorldPx, ox, oy, tx, ty)
       of tkWall:
-        bricksAt(result, WorldPx, ox, oy, tx, ty, (92'u8, 92'u8, 102'u8))
+        bricksAt(result, WorldPx, ox, oy, tx, ty, Masonry)
       of tkFortressWall:
-        bricksAt(result, WorldPx, ox, oy, tx, ty, (158'u8, 158'u8, 170'u8))
+        bricksAt(result, WorldPx, ox, oy, tx, ty, shade(Masonry, 22))
       of tkRock:
         grassAt(result, WorldPx, ox, oy, tx, ty)
         rockAt(result, WorldPx, ox, oy)
@@ -301,26 +336,30 @@ proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
       if onRay and d2 <= c * c:
         result.put(size, x, y, (r, g, b), uint8(255 - min(220, d2 * 220 div (c * c))))
 
-proc firePixels(phase: int): seq[uint8] =
+proc plasmaPixels(phase: int, crit: bool): seq[uint8] =
+  ## Swirling plasma wall: teal (stages 1-4) or crimson (endgame).
   result = newSeq[uint8](TileSize * TileSize * 4)
+  let hotC = (if crit: PlasmaCrit else: PlasmaTeal)
+  let coldC = shade(hotC, -110)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      let hot = (x + y + phase) mod 2 == 0
-      let tall = (x + phase) mod 3 == 0 and y < 2
-      if tall:
-        result.put(TileSize, x, y, (255'u8, 200'u8, 60'u8), 200)
+      let swirl = (x * 2 + y + phase * 2) mod 5
+      if swirl == 0:
+        result.put(TileSize, x, y, (255'u8, 255'u8, 255'u8), 210)
+      elif swirl < 3:
+        result.put(TileSize, x, y, hotC, 190)
       else:
-        result.put(TileSize, x, y,
-          (if hot: (255'u8, 110'u8, 20'u8) else: (200'u8, 55'u8, 15'u8)), 175)
+        result.put(TileSize, x, y, coldC, 150)
 
 proc floodPixels(phase: int): seq[uint8] =
+  ## Toxic hyper-reflective fluid (#39FF14).
   result = newSeq[uint8](TileSize * TileSize * 4)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
       let crest = (x + y * 2 + phase * 3) mod 6 == 0
       result.put(TileSize, x, y,
-        (if crest: (140'u8, 190'u8, 235'u8) else: (45'u8, 90'u8, 190'u8)),
-        (if crest: 200'u8 else: 140'u8))
+        (if crest: (200'u8, 255'u8, 180'u8) else: ToxicFlood),
+        (if crest: 220'u8 else: 150'u8))
 
 proc stormPixels(phase: int): seq[uint8] =
   result = newSeq[uint8](TileSize * TileSize * 4)
@@ -371,6 +410,89 @@ proc bushPixels(berries: int): seq[uint8] =
   const spots = [(1, 2), (4, 1), (3, 4)]
   for i in 0 ..< min(berries, 3):
     result.put(TileSize, spots[i][0], spots[i][1], (215'u8, 45'u8, 60'u8))
+
+proc glassBodyPixels(): seq[uint8] =
+  ## Camo: refractive glass silhouette — faint outline, near-transparent fill.
+  result = newSeq[uint8](BodyW * BodyH * 4)
+  for y in 0 ..< BodyH:
+    for x in 1 .. 6:
+      let isHead = y >= 1 and y <= 3 and x >= 2 and x <= 5
+      let isBody = y >= 4 and y <= 11 and x >= 2 and x <= 5
+      if isHead or isBody:
+        let edge = x == 2 or x == 5 or y == 1 or y == 11
+        result.put(BodyW, x, y, (200'u8, 235'u8, 255'u8),
+                   (if edge: 90'u8 else: 34'u8))
+
+proc netMeshPixels(): seq[uint8] =
+  result = newSeq[uint8](TileSize * TileSize * 4)
+  for y in 0 ..< TileSize:
+    for x in 0 ..< TileSize:
+      if (x + y) mod 2 == 0 and (x == 0 or y == 0 or x == TileSize - 1 or
+                                  y == TileSize - 1 or x == y):
+        result.put(TileSize, x, y, (57'u8, 255'u8, 160'u8), 200)
+
+proc poisonHaloPixels(phase: int): seq[uint8] =
+  result = newSeq[uint8](10 * 10 * 4)
+  for y in 0 ..< 10:
+    for x in 0 ..< 10:
+      let dx = x * 2 + 1 - 10
+      let dy = y * 2 + 1 - 10
+      let d2 = dx * dx + dy * dy
+      if d2 > 36 and d2 <= 81 and (x + y + phase) mod 2 == 0:
+        result.put(10, x, y, ToxicFlood, 120)
+
+proc voidBeamPixels(): seq[uint8] =
+  ## Vertical dark energy beam (death marker).
+  result = newSeq[uint8](6 * 48 * 4)
+  for y in 0 ..< 48:
+    for x in 0 ..< 6:
+      let a = uint8(200 - (y * 3))
+      if x in [0, 5]:
+        result.put(6, x, y, (110'u8, 30'u8, 140'u8), a div 2)
+      else:
+        result.put(6, x, y, (8'u8, 4'u8, 12'u8), a)
+
+proc goldBeamPixels(): seq[uint8] =
+  ## Holographic gold drop cylinder.
+  result = newSeq[uint8](8 * 54 * 4)
+  for y in 0 ..< 54:
+    for x in 0 ..< 8:
+      if x in [0, 7]:
+        result.put(8, x, y, GoldTone, 170)
+      elif (y + x) mod 6 == 0:
+        result.put(8, x, y, shade(GoldTone, 40), 90)
+
+proc glitchPixels(): seq[uint8] =
+  ## Camo-reveal digital artifact burst.
+  result = newSeq[uint8](BodyW * BodyH * 4)
+  for y in 0 ..< BodyH:
+    for x in 0 ..< BodyW:
+      let n = tileHash(x * 3 + 1, y * 5 + 2)
+      if n mod 3 == 0:
+        result.put(BodyW, x, y,
+          (if n mod 2 == 0: (255'u8, 0'u8, 200'u8) else: (255'u8, 255'u8, 255'u8)),
+          220)
+
+proc mouthLightPixels(phase: int): seq[uint8] =
+  ## Volumetric golden light pooling in the Fortress mouths.
+  result = newSeq[uint8](TileSize * TileSize * 4)
+  for y in 0 ..< TileSize:
+    for x in 0 ..< TileSize:
+      if (x + y + phase) mod 3 != 0:
+        result.put(TileSize, x, y, shade(GoldTone, 30), 90)
+
+proc trailPixels(id: ItemId): seq[uint8] =
+  ## Fading combat vector trail: white kinetic / green vapor / silver blur.
+  result = newSeq[uint8](TileSize * TileSize * 4)
+  let c =
+    case id
+    of iArrows: (255'u8, 255'u8, 255'u8)
+    of iDarts: ToxicFlood
+    else: (200'u8, 200'u8, 215'u8)
+  for x in 0 ..< TileSize:
+    result.put(TileSize, x, TileSize div 2, c, 110)
+    if id == iDarts:
+      result.put(TileSize, x, TileSize div 2 + 1, c, 60)
 
 proc itemColor(id: ItemId): (uint8, uint8, uint8) =
   case id
@@ -463,8 +585,21 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpFwBlack, 18, 18, burstPixels(18, 25, 25, 30), "fw_black")
   result.addSprite(SpFwGold, 18, 18, burstPixels(18, 250, 210, 80), "fw_gold")
   result.addSprite(SpMineFlash, 12, 12, burstPixels(12, 255, 120, 40), "mine")
-  result.addSprite(SpZoneFireA, TileSize, TileSize, firePixels(0), "fireA")
-  result.addSprite(SpZoneFireB, TileSize, TileSize, firePixels(1), "fireB")
+  result.addSprite(SpZoneFireA, TileSize, TileSize, plasmaPixels(0, false), "plasmaA")
+  result.addSprite(SpZoneFireB, TileSize, TileSize, plasmaPixels(1, false), "plasmaB")
+  result.addSprite(SpPlasmaCritA, TileSize, TileSize, plasmaPixels(0, true), "plasmaCritA")
+  result.addSprite(SpPlasmaCritB, TileSize, TileSize, plasmaPixels(1, true), "plasmaCritB")
+  result.addSprite(SpGlassBody, BodyW, BodyH, glassBodyPixels(), "camo_glass")
+  result.addSprite(SpNetMesh, TileSize, TileSize, netMeshPixels(), "net_mesh")
+  result.addSprite(SpPoisonHaloA, 10, 10, poisonHaloPixels(0), "haloA")
+  result.addSprite(SpPoisonHaloB, 10, 10, poisonHaloPixels(1), "haloB")
+  result.addSprite(SpVoidBeam, 6, 48, voidBeamPixels(), "void_beam")
+  result.addSprite(SpGoldBeam, 8, 54, goldBeamPixels(), "gold_beam")
+  result.addSprite(SpGlitch, BodyW, BodyH, glitchPixels(), "glitch")
+  result.addSprite(SpMouthA, TileSize, TileSize, mouthLightPixels(0), "mouthA")
+  result.addSprite(SpMouthB, TileSize, TileSize, mouthLightPixels(1), "mouthB")
+  for id in [iArrows, iDarts, iKnives]:
+    result.addSprite(SpTrailBase + ord(id), TileSize, TileSize, trailPixels(id), "trail_" & $id)
   result.addSprite(SpFirestormA, TileSize, TileSize, stormPixels(0), "stormA")
   result.addSprite(SpFirestormB, TileSize, TileSize, stormPixels(1), "stormB")
   result.addSprite(SpFloodA, TileSize, TileSize, floodPixels(0), "floodA")
@@ -485,14 +620,18 @@ proc bodySprite(r: Renderer, s: Sim, slot: int): int =
   let frame = (if moving: (s.tick div 6) mod 2 else: 0)
   SpBodyBase + slot * 10 + r.facing[slot] * 2 + frame
 
+proc camoHidden(s: Sim, slot: int): bool =
+  s.agents[slot].body == iCamo and s.tick >= s.agents[slot].camoRevealedUntil
+
 proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
   let p = s.agents[slot].pos
-  # feet on the tile: sprite extends 6px above
+  # camo agents render as refractive glass on the spectator view (§21.3)
+  let sprite = (if s.camoHidden(slot): SpGlassBody else: r.bodySprite(s, slot))
   packet.addObject(ObAgentBase + slot, p.x * TileSize - 1,
-                   p.y * TileSize - (BodyH - TileSize), 10, LayerMap,
-                   r.bodySprite(s, slot))
+                   p.y * TileSize - (BodyH - TileSize), 10, LayerMap, sprite)
   let hand = s.agents[slot].hand
-  if hand != iNone and def(hand).kind in {ikMelee, ikRanged, ikThrown}:
+  if hand != iNone and not s.camoHidden(slot) and
+     def(hand).kind in {ikMelee, ikRanged, ikThrown}:
     let dx = (if r.facing[slot] == 2: TileSize - 1
               elif r.facing[slot] == 3: -4 else: TileSize - 2)
     packet.addObject(ObWeaponBase + slot, p.x * TileSize - 1 + dx,
@@ -519,15 +658,48 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         r.lastMoveTick[slot] = s.tick
         r.lastPos[slot] = a.pos
       r.drawAgent(result, s, slot)
-      r.weaponDrawn[slot] = s.agents[slot].hand != iNone
+      r.weaponDrawn[slot] = s.agents[slot].hand != iNone and not s.camoHidden(slot)
+      # camo reveal glitch: hidden last frame, visible now (§21.3)
+      let hiddenNow = s.camoHidden(slot)
+      if r.wasCamoHidden[slot] and not hiddenNow:
+        r.spawnEffect(result, s, SpGlitch,
+          a.pos.x * TileSize + 3, a.pos.y * TileSize - 2, 8, 6)
+      r.wasCamoHidden[slot] = hiddenNow
+      # poison halo pulse
+      let poisoned = a.poisonUntil > s.tick
+      if poisoned:
+        result.addObject(ObHaloBase + slot, a.pos.x * TileSize - 2,
+          a.pos.y * TileSize - 2, 9, LayerMap,
+          (if (s.tick div 6) mod 2 == 0: SpPoisonHaloA else: SpPoisonHaloB))
+        r.haloOn[slot] = true
+      elif r.haloOn[slot]:
+        result.addDeleteObject(ObHaloBase + slot)
+        r.haloOn[slot] = false
+      # net energy mesh at the base
+      let netted = a.nettedUntil > s.tick
+      if netted:
+        result.addObject(ObMeshBase + slot, a.pos.x * TileSize,
+          a.pos.y * TileSize, 12, LayerMap, SpNetMesh)
+        r.meshOn[slot] = true
+      elif r.meshOn[slot]:
+        result.addDeleteObject(ObMeshBase + slot)
+        r.meshOn[slot] = false
     elif not r.deadDrawn[slot]:
       result.addDeleteObject(ObAgentBase + slot)
       if r.weaponDrawn[slot]:
         result.addDeleteObject(ObWeaponBase + slot)
-      # corpse lingers, then the pool fades with the effect pool
+      if r.haloOn[slot]:
+        result.addDeleteObject(ObHaloBase + slot)
+        r.haloOn[slot] = false
+      if r.meshOn[slot]:
+        result.addDeleteObject(ObMeshBase + slot)
+        r.meshOn[slot] = false
+      # corpse + vertical void beam (§21.3 death broadcast)
       r.spawnEffect(result, s, SpCorpseBase + slot,
         a.pos.x * TileSize + TileSize div 2, a.pos.y * TileSize + TileSize div 2,
         12, 96)
+      r.spawnEffect(result, s, SpVoidBeam,
+        a.pos.x * TileSize + TileSize div 2, a.pos.y * TileSize - 20, 6, 36)
       r.deadDrawn[slot] = true
     elif r.weaponDrawn[slot]:
       result.addDeleteObject(ObWeaponBase + slot)
@@ -558,12 +730,16 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for stale in itemIdx ..< r.itemsDrawn:
     result.addDeleteObject(ObItemBase + stale)
   r.itemsDrawn = itemIdx
-  # projectiles
+  # projectiles + kinetic vector trails (§21.3)
   var projIdx = 0
   for p in s.projectiles:
     if projIdx >= ProjPool: break
     result.addObject(ObProjBase + projIdx, p.pos.x * TileSize + 1,
                      p.pos.y * TileSize + 1, 18, LayerMap, SpProjBase + ord(p.kind))
+    if p.kind in [iArrows, iDarts, iKnives]:
+      r.spawnEffect(result, s, SpTrailBase + ord(p.kind),
+        p.pos.x * TileSize + TileSize div 2, p.pos.y * TileSize + TileSize div 2,
+        TileSize, 3)
     inc projIdx
   for stale in projIdx ..< r.projsDrawn:
     result.addDeleteObject(ObProjBase + stale)
@@ -595,8 +771,10 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for stale in regIdx ..< r.regionDrawn:
     result.addDeleteObject(ObRegionBase + stale)
   r.regionDrawn = regIdx
-  # sponsor pods: parachute descends to the tile; crate once landed
+  # sponsor pods: gold drop beam + cargo typography while inbound (§21.3),
+  # parachute descending, crate once landed
   var podIdx = 0
+  var beamIdx = 0
   for pod in s.pods:
     if podIdx >= PodPool: break
     if pod.landed:
@@ -608,10 +786,33 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       let height = 4 + (left * 30) div total
       result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize - 2,
                        pod.landing.y * TileSize - height, 19, LayerMap, SpPodChute)
+      if beamIdx < 8:
+        # beam + label objects persist; refresh sprite on new beam or 1x/s
+        if beamIdx >= r.podBeamsDrawn or s.tick mod 24 == 0:
+          result.addObject(ObPodBeamBase + beamIdx, pod.landing.x * TileSize - 1,
+                           pod.landing.y * TileSize - 54, 13, LayerMap, SpGoldBeam)
+          # floating cargo typography above the beam
+          let (_, gift) = giftLookup(pod.itemId)
+          let spId = SpCargoBase + (r.labelFlip mod 8)
+          inc r.labelFlip
+          var label = "AIRDROP: "
+          for ch in pod.itemId:
+            label.add(if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
+          label.add(" " & $gift.price & " SC")
+          let (w, h, px) = textPixels(label, GoldTone[0], GoldTone[1], GoldTone[2])
+          result.addSprite(spId, w, h, px, "cargo")
+          result.addObject(ObPodLabelBase + beamIdx,
+                           pod.landing.x * TileSize - w div 2 + 3,
+                           pod.landing.y * TileSize - 62, 21, LayerMap, spId)
+        inc beamIdx
     inc podIdx
   for stale in podIdx ..< r.podsDrawn:
     result.addDeleteObject(ObPodBase + stale)
   r.podsDrawn = podIdx
+  for stale in beamIdx ..< r.podBeamsDrawn:
+    result.addDeleteObject(ObPodBeamBase + stale)
+    result.addDeleteObject(ObPodLabelBase + stale)
+  r.podBeamsDrawn = beamIdx
   # events -> bursts
   for e in s.events:
     let cx = e.pos.x * TileSize + TileSize div 2
@@ -633,10 +834,11 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     else:
       kept.add(ef)
   r.effects = kept
-  # zone fire ring (flicker)
+  # zone plasma ring (flicker); crimson crit arc once damage hits stage 5 (§21.3)
   var ringIdx = 0
   let zr = s.zoneRadius()
   if zr < ArenaSize and s.phase != phCountdown:
+    let crit = s.zoneDamagePerS() >= 8
     let c = ArenaSize div 2
     for ty in 0 ..< ArenaSize:
       for tx in 0 ..< ArenaSize:
@@ -645,12 +847,26 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         let dy = ty - c
         let d2 = dx * dx + dy * dy
         if d2 > zr * zr and d2 <= (zr + 1) * (zr + 1):
+          let flip = (phase + tx + ty) mod 2 == 0
+          let sp =
+            (if crit: (if flip: SpPlasmaCritA else: SpPlasmaCritB)
+             else: (if flip: SpZoneFireA else: SpZoneFireB))
           result.addObject(ObZoneRingBase + ringIdx, tx * TileSize, ty * TileSize,
-            15, LayerMap, (if (phase + tx + ty) mod 2 == 0: SpZoneFireA else: SpZoneFireB))
+            15, LayerMap, sp)
           inc ringIdx
   for stale in ringIdx ..< r.ringDrawn:
     result.addDeleteObject(ObZoneRingBase + stale)
   r.ringDrawn = ringIdx
+  # Fortress mouth gold light (§21.3): warm pulse in each wall gap
+  let mouthNow = (s.tick div 12) mod 2
+  if not r.mouthsDrawn or mouthNow != r.mouthPhase:
+    const MouthPos = [(23, 20), (24, 20), (23, 28), (24, 28),
+                      (20, 23), (20, 24), (28, 23), (28, 24)]
+    for i, (mx, my) in MouthPos:
+      result.addObject(ObMouthBase + i, mx * TileSize, my * TileSize, 2,
+        LayerMap, (if (mouthNow + i) mod 2 == 0: SpMouthA else: SpMouthB))
+    r.mouthsDrawn = true
+    r.mouthPhase = mouthNow
   # HUD
   var deadCount = 0
   for a in s.agents:
@@ -708,11 +924,16 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   result.addLayer(LayerHudTL, 0x01, 0x02)
   result.addViewport(LayerHudTL, 160, 12)
   result.addLayer(LayerHudBL, 0x04, 0x02)
-  result.addViewport(LayerHudBL, 200, 12)
+  result.addViewport(LayerHudBL, 244, 12)
   result.addLayer(LayerBanner, 0x05, 0x02)
   result.addViewport(LayerBanner, 120, 16)
   result.add(spriteDefs(s))
   result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
+  const MouthPos = [(23, 20), (24, 20), (23, 28), (24, 28),
+                    (20, 23), (20, 24), (28, 23), (28, 24)]
+  for i, (mx, my) in MouthPos:
+    result.addObject(ObMouthBase + i, mx * TileSize, my * TileSize, 2,
+      LayerMap, (if i mod 2 == 0: SpMouthA else: SpMouthB))
   for slot in 0 .. 15:
     if s.agents[slot].alive:
       r.drawAgent(result, s, slot)
@@ -725,6 +946,11 @@ proc resetForLoop*(r: var Renderer) =
     r.facing[i] = 0
     r.lastPos[i] = Pos(x: -1, y: -1)
     r.lastMoveTick[i] = -100
+    r.haloOn[i] = false
+    r.meshOn[i] = false
+    r.wasCamoHidden[i] = false
+  r.mouthsDrawn = false
+  r.podBeamsDrawn = 0
   r.ringDrawn = 0
   r.podsDrawn = 0
   r.itemsDrawn = 0
