@@ -84,6 +84,11 @@ function websocketAddress(path) {
 }
 const TEAM = {A:'#FF7F8C', B:'#45DCFF', C:'#FFBF00', D:'#7A3CDC',
               E:'#DC143C', F:'#EBF5FF', G:'#FF6E1E', H:'#E15AEB'};
+// server-supplied strings (names, sponsor item ids) must never reach
+// innerHTML raw — a live sponsor socket can put arbitrary text in item_id
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const teamColor = t => TEAM[t] || '#56606a';
 const el = id => document.getElementById(id);
 let finaleShown = false, tickerKeys = new Set();
 function fmtT(tick) {
@@ -106,8 +111,8 @@ ws.onmessage = (ev) => {
   el('board').tBodies[0].innerHTML = rows.map(a => {
     const band = a.hp > 66 ? '#39FF14' : a.hp >= 33 ? '#FFA500' : '#FF0055';
     return `<tr class="${a.alive ? '' : 'dead'}">
-      <td><span class="team-chip" style="background:${TEAM[a.team]}"></span>${a.team}</td>
-      <td>P${a.slot} ${a.name || ''}</td>
+      <td><span class="team-chip" style="background:${teamColor(a.team)}"></span>${esc(a.team)}</td>
+      <td>P${a.slot} ${esc(a.name || '')}</td>
       <td>${a.alive ? a.hp + '<div id="hpbar"><i style="width:' + a.hp + '%;background:' + band + '"></i></div>' : '<span class="crim">✝ ' + fmtT(a.death_tick) + '</span>'}</td>
       <td>${a.kills}</td><td>${a.damage_dealt}</td>
       <td>${a.placement}</td><td class="gold"><b>${a.projected_score}</b></td>
@@ -116,7 +121,7 @@ ws.onmessage = (ev) => {
 
   // budgets + ticker
   el('budgets').tBodies[0].innerHTML = '<tr>' + m.teams.map(t =>
-    `<td><span class="team-chip" style="background:${TEAM[t.team]}"></span>${t.team} <b class="gold">${t.budget}</b></td>`).join('') + '</tr>';
+    `<td><span class="team-chip" style="background:${teamColor(t.team)}"></span>${esc(t.team)} <b class="gold">${t.budget}</b></td>`).join('') + '</tr>';
   const tick = el('ticker');
   for (const g of m.ticker) {
     const key = 'g' + g.tick + g.team + g.item + g.recipient_slot;
@@ -124,8 +129,8 @@ ws.onmessage = (ev) => {
     tickerKeys.add(key);
     const d = document.createElement('div'); d.className = 'row';
     d.innerHTML = g.status === 'accepted'
-      ? `[${fmtT(g.tick)}] <span style="color:${TEAM[g.team]}">${g.team}</span> BUYS <span class="gold">${g.item.toUpperCase()}</span> −${g.cost} SC → P${g.recipient_slot} <span style="color:#56606a">(bal ${g.balance})</span>`
-      : `[${fmtT(g.tick)}] <span style="color:${TEAM[g.team]}">${g.team}</span> <span class="crim">REJECTED</span> ${g.item} (${g.reason})`;
+      ? `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → P${g.recipient_slot} <span style="color:#56606a">(bal ${g.balance})</span>`
+      : `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> <span class="crim">REJECTED</span> ${esc(g.item)} (${esc(g.reason)})`;
     tick.prepend(d);
   }
   for (const ic of m.interceptions) {
@@ -134,8 +139,8 @@ ws.onmessage = (ev) => {
     tickerKeys.add(key);
     const d = document.createElement('div'); d.className = 'row';
     d.innerHTML = ic.stolen
-      ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${ic.item.toUpperCase()} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
-      : `[${fmtT(ic.tick)}] ${ic.item.toUpperCase()} secured by P${ic.looter_slot < 0 ? '?' : ic.looter_slot}`;
+      ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${esc(ic.item.toUpperCase())} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
+      : `[${fmtT(ic.tick)}] ${esc(ic.item.toUpperCase())} secured by P${ic.looter_slot < 0 ? '?' : ic.looter_slot}`;
     tick.prepend(d);
   }
 
@@ -144,7 +149,7 @@ ws.onmessage = (ev) => {
     el('lockTag').textContent = '· LOCKED';
     el('matrix').tBodies[0].innerHTML = m.agents.map(a =>
       `<tr class="${a.alive ? '' : 'dead'}">
-        <td style="text-align:left"><span class="team-chip" style="background:${TEAM[a.team]}"></span>P${a.slot}</td>
+        <td style="text-align:left"><span class="team-chip" style="background:${teamColor(a.team)}"></span>P${a.slot}</td>
         <td>${a.stats.speed}</td><td>${a.stats.strength}</td>
         <td>${a.stats.intelligence}</td><td>${a.stats.athleticism}</td>
       </tr>`).join('');
