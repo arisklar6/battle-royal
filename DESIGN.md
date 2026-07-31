@@ -450,3 +450,48 @@ Ordering is load-bearing (verified: the platform selects `variants[0]` for defau
 
 ## 20. v2 backlog (LOCKED list + additions)
 Remaining weapons (axe, sling, machete…), crafting, traps, trading, cross-team gifts/bribery, sponsor→agent messages, 12×2 roster, custom commissioner injecting per-episode gift scripts via `game_config_overrides`, hosted casual-live via `coworld.game_config_overlay.v1` secret overlay, zone re-centering, terrain variety (water/mud), consumable buffs, armor.
+
+## 21. v0.2 — DECIDED additions (owner, 2026-07-31 popups)
+
+### 21.1 Art revamp (DECIDED: 12px humanoids + full texture pass)
+- Agents render as ~8x12-px humanoid figures (head/torso/legs, team-colored
+  tunic, slot-parity pip), 4-way facing derived from last movement, 2-frame
+  walk cycle, held weapon drawn as an overlay at the hand, distinct death
+  pose in the tick before the black fireworks. Tall sprites overlap the tile
+  behind (z-ordered by y — the engine draws lower-y first within a layer).
+- Environment: stone-brick Fortress + border walls, grass ground with
+  deterministic per-tile shade variation, bushes with visible berry dots
+  (dots = remaining charges, capped 3), wooden crate chips for ground loot,
+  2-frame flickering fire ring, water-styled flood tiles, pods descend under
+  a parachute sprite while inbound.
+- All art stays code-generated pixel data (no external asset pipeline);
+  palette discipline: <=15 visible colors per sprite (house convention).
+
+### 21.2 Prompt-policy seats + pre-game lobby (DECIDED: game-side LLM)
+- The human role becomes COACH: before the match each human (a) writes a
+  free-text policy prompt and (b) allocates the 20 stat points. Both are
+  IMMUTABLE once the countdown starts (allocation already first-valid-wins;
+  the lobby closes with it). No mid-game control of prompt seats.
+- Pre-game lobby: the connect-grace window becomes a lobby phase. The player
+  page shows a stat allocator (live sum<=20 validation) + prompt textarea +
+  READY. New protocol messages: `lobby_state` (S->C: seats, ready flags,
+  countdown-arming), `lobby_ready` (C->S: {stats, policy_prompt}). Countdown
+  begins when all expected seats are ready or the grace deadline passes.
+- Runtime (DECIDED): the GAME container hosts the LLM agents. Hosted runs use
+  the platform-granted Bedrock sidecar (InvokeModel); local runs use the
+  operator's Anthropic key from the environment. Planner cadence ~48 ticks:
+  compact observation digest + the seat's prompt -> a small plan (goal,
+  aggression, target, optional talk line); a deterministic micro-executor
+  (parameterized baseline heuristics) turns the current plan into per-tick
+  actions submitted through the NORMAL player-input path — so every action
+  lands in the input log and replays exactly (players remain outside the
+  determinism boundary; LLM nondeterminism never touches the sim).
+- Prompts are pre-game configuration: recorded verbatim in the effective
+  config (replay header + artifacts) for provenance. Hosted episodes supply
+  prompts via variant config / game_config_overrides (no live ingress — D3
+  unchanged); the local lobby writes them the same way before tick 0.
+- New variant `prompt-arena` (appended AFTER competition — variants[0] must
+  not change): all 16 seats prompt-driven; unclaimed seats get a default
+  prompt + 5/5/5/5. Competition/casual-live variants are untouched; keyboard
+  play remains available in casual-live only.
+
