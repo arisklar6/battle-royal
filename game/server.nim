@@ -298,6 +298,9 @@ proc runLive(rc: RuntimeConfig) =
               inc connected
       if connected == 16:
         break
+      # keep spectators fed during the hold: the /global probe (hosted smoke)
+      # expects a frame within ~10 s regardless of match start
+      r.broadcast(s, @[])
       runFrameLimiter(waitLast)
     var connected = 0
     {.gcsafe.}:
