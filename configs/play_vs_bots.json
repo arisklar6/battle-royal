@@ -1,0 +1,27 @@
+{
+  "max_ticks": 9120,
+  "freeze_ticks": 240,
+  "demo_script": false,
+  "player_connect_timeout_seconds": 60,
+  "tokens": ["t0","t1","t2","t3","t4","t5","t6","t7",
+              "t8","t9","t10","t11","t12","t13","t14","t15"],
+  "sponsor": {"live": false, "budget_per_team": 300,
+               "shop_opens_tick": 1680,
+               "scripted_gifts": [
+                 {"tick": 1700, "team": "A", "recipient_slot": 0, "item_id": "rations"},
+                 {"tick": 1700, "team": "B", "recipient_slot": 2, "item_id": "rations"},
+                 {"tick": 1700, "team": "C", "recipient_slot": 4, "item_id": "rations"},
+                 {"tick": 1700, "team": "D", "recipient_slot": 6, "item_id": "rations"},
+                 {"tick": 1700, "team": "E", "recipient_slot": 8, "item_id": "rations"},
+                 {"tick": 1700, "team": "F", "recipient_slot": 10, "item_id": "rations"},
+                 {"tick": 1700, "team": "G", "recipient_slot": 12, "item_id": "rations"},
+                 {"tick": 1700, "team": "H", "recipient_slot": 14, "item_id": "rations"},
+                 {"tick": 3000, "team": "A", "recipient_slot": 1, "item_id": "knives"},
+                 {"tick": 3000, "team": "B", "recipient_slot": 3, "item_id": "knives"},
+                 {"tick": 3000, "team": "C", "recipient_slot": 5, "item_id": "knives"},
+                 {"tick": 3000, "team": "D", "recipient_slot": 7, "item_id": "knives"},
+                 {"tick": 3000, "team": "E", "recipient_slot": 9, "item_id": "knives"},
+                 {"tick": 3000, "team": "F", "recipient_slot": 11, "item_id": "knives"},
+                 {"tick": 3000, "team": "G", "recipient_slot": 13, "item_id": "knives"},
+                 {"tick": 3000, "team": "H", "recipient_slot": 15, "item_id": "knives"}]}
+}
