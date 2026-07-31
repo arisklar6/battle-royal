@@ -22,3 +22,6 @@
 [low/vocab-quality] C:/Users/arisk/zero-sum/game/client/sponsor_client.html:29: The embedded spectator iframe hardcodes a same-origin path and goes blank whenever the console is used through the documented ?address= override.
 [low/vocab-quality] C:/Users/arisk/zero-sum/src/zero_sum/obs.nim:139-142 vs DESIGN.md:252: player_config omits the documented `fortress_mouths` array.
 [low/vocab-quality] C:/Users/arisk/zero-sum/game/client/sponsor_client.html:20 vs DESIGN.md:6: Header text "ZERO SUM â€” SPONSOR CONSOLE" uses a literal all-caps display form that is not one of the four locked naming forms (display form is "Zero Sum"; "ZERO_SUM" is reserved for constants/magic).
+
+[phase-d/owner] Dockerfile: RUN nimble install -y nimby is UNPINNED (resolves live package index); pin like cogs_vs_clips (0.1.26 release artifact) before any reproducible-build claim on the image itself.
+[phase-d/owner] v2 backlog: dead-recipient scripted gifts reject (equal ex ante, DECIDED keep); optional redesign = re-route to surviving teammate.

@@ -419,6 +419,20 @@ proc initSim*(cfg: SimConfig): Sim =
     result.teamBudget[t] = cfg.sponsor.budgetPerTeam
   result.generateLoot()
 
+proc initReplaySim*(cfg: SimConfig): Sim =
+  ## THE entry point for log-driven re-simulation (replay mode). Gifts enter
+  ## ONLY from the recorded input log (mission invariant): config-driven
+  ## scripted-gift processing is suppressed and logged {"gift":..} payloads
+  ## are allowed, so ALL sponsor bookkeeping (budget, pods, sponsorLog rows,
+  ## transcript events, gifts_received counters) flows through the same
+  ## requestGift path as the live run. Rejected-request rows are live-only
+  ## audit records (documented asymmetry — rejects are never input-logged).
+  ## A re-sim built on bare initSim() without these arms silently drops every
+  ## logged gift; use THIS proc.
+  result = initSim(cfg)
+  result.suppressScriptedGifts = true
+  result.allowLoggedGifts = true
+
 # ---------------------------------------------------------------- actions
 
 proc submitAction*(s: var Sim, slot: AgentId, act: Action) =

@@ -480,11 +480,6 @@ proc runLive(rc: RuntimeConfig) =
 proc runReplay(rc: RuntimeConfig) =
   let work = getTempDir() / "zero-sum-replay"
   let loaded = loadReplayZip(rc.replay, work)
-  # gifts re-enter ONLY from the log (mission invariant): config-driven
-  # scripted processing off, logged {"gift":..} payloads allowed
-  template armReplaySim(sim: untyped) =
-    sim.suppressScriptedGifts = true
-    sim.allowLoggedGifts = true
   echo "replay loaded: game=", loaded.data.gameName,
        " inputs=", loaded.data.clientInputs.len,
        " hashes=", loaded.data.hashes.len
@@ -506,8 +501,7 @@ proc runReplay(rc: RuntimeConfig) =
   while true:                                   # autoplay + LOOP
     let cfg = parseSimConfig(loaded.effectiveConfig, mintSeedFromOs)
     doAssert not cfg.seedWasMinted, "effective config must carry the seed"
-    var s = initSim(cfg)
-    s.armReplaySim()
+    var s = initReplaySim(cfg)
     var r: Renderer
     r.resetForLoop()
     {.gcsafe.}:

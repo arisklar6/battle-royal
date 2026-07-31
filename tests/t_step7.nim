@@ -119,9 +119,11 @@ block replay_single_application:
   var live = mkSim(gifts)
   live.runTo(400)
   doAssert live.teamBudget[2] == 180
-  var rep = mkSim(gifts)
-  rep.suppressScriptedGifts = true
-  rep.allowLoggedGifts = true
+  var rep = initReplaySim(parseSimConfig(%*{
+    "seed": 42, "max_ticks": 2000, "freeze_ticks": 48,
+    "sponsor": {"live": false, "budget_per_team": 300,
+                 "shop_opens_tick": 96, "scripted_gifts": gifts}},
+    fixedSeed))
   # re-apply from the live input log
   var gi = 0
   while rep.tick < 400:
