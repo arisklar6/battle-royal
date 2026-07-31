@@ -87,7 +87,7 @@ proc resultsJson*(s: Sim): string =
        "damage_dealt": damage, "survival_ticks": survival,
        "gifts_received": gifts,
        "winner_slot": s.winnerSlot, "winner_team": winnerTeam,
-       "match_ticks": s.tick, "seed": int64(s.cfg.seed)})
+       "match_ticks": s.tick, "seed": cast[int64](s.cfg.seed)})
 
 proc matchSummaryJson*(s: Sim, seed: uint64): string =
   var deaths = newJArray()
@@ -96,7 +96,7 @@ proc matchSummaryJson*(s: Sim, seed: uint64): string =
       deaths.add(%*{"slot": int(a.slot), "tick": a.deathTick})
   $(%*{"game": ZeroSumGameName, "version": ZeroSumVersion,
        "match_ticks": s.tick, "winner_slot": s.winnerSlot,
-       "alive": s.aliveCount(), "seed": int64(seed), "deaths": deaths})
+       "alive": s.aliveCount(), "seed": cast[int64](seed), "deaths": deaths})
 
 proc buildReplayZip*(workDir: string, effectiveConfig: string, s: Sim): string =
   ## Returns the zip BYTES. workDir holds the temporary stream file.

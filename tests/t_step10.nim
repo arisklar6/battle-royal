@@ -101,6 +101,23 @@ block player_config_shape:
   doAssert c["stats"]["budget"].getInt() == 20
   doAssert c["sponsor"]["catalog"]["sword"].getInt() == 120
 
+block full_64bit_seed_round_trip:
+  ## Regression: a top-bit-set seed must survive JSON emission + re-parse
+  ## (the competition-crash bug: %int64(uint64) raised RangeDefect).
+  let original = %*{"max_ticks": 200, "freeze_ticks": 48}
+  let big = 0xDEADBEEFCAFEBABE'u64
+  let cfg = parseSimConfig(original, proc(): uint64 = big)
+  doAssert cfg.seed == big
+  let eff = parseJson(effectiveConfigJson(cfg, original))
+  let cfg2 = parseSimConfig(eff, proc(): uint64 = 1'u64)
+  doAssert cfg2.seed == big                        # wrapped round trip
+  var a = initSim(cfg)
+  var b = initSim(cfg2)
+  for _ in 0 ..< 100:
+    a.step()
+    b.step()
+  doAssert a.hashes == b.hashes
+
 block minted_seed_round_trip:
   ## League-integrity test (owner directive): seedless run -> effective config
   ## carries the minted seed -> re-run from it -> identical hash streams.

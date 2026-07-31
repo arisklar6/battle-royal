@@ -165,7 +165,7 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   result.maxTicks = node{"max_ticks"}.getInt(9120)
   result.freezeTicks = node{"freeze_ticks"}.getInt(240)
   if node.hasKey("seed"):
-    result.seed = uint64(node["seed"].getBiggestInt())
+    result.seed = cast[uint64](node["seed"].getBiggestInt())
     result.seedWasMinted = false
   else:
     result.seed = mintSeed()
@@ -222,7 +222,9 @@ proc effectiveConfigJson*(cfg: SimConfig, original: JsonNode): string =
   ## ALL auth material stripped (runner tokens + sponsor tokens — gifts replay
   ## from the input log, so the secrets are never needed downstream).
   var eff = copy(original)
-  eff["seed"] = %int64(cfg.seed)
+  # cast, not convert: a full-64-bit seed must round-trip through JSON int64
+  # (parse side wraps back via uint64 cast — deterministic both ways)
+  eff["seed"] = %cast[int64](cfg.seed)
   if eff.hasKey("tokens"):
     eff.delete("tokens")
   if eff.hasKey("sponsor") and eff["sponsor"].kind == JObject and

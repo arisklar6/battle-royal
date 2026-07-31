@@ -50,10 +50,13 @@ var appState: AppState
 
 proc mintSeedFromOs(): uint64 =
   ## Entropy at the boundary only (DESIGN §17.1). urandom via std/sysrand.
+  ## Masked to 63 bits so the seed always fits a JSON int64 cleanly (63 bits
+  ## of entropy is ample; artifacts stay non-negative and human-friendly).
   var b: array[8, byte]
   discard urandom(b)
   for i in 0 .. 7:
     result = (result shl 8) or uint64(b[i])
+  result = result and 0x7FFF_FFFF_FFFF_FFFF'u64
 
 proc queryParam(uri, key: string): string =
   let parts = uri.split('?')
