@@ -54,7 +54,10 @@ proc sponsorLogJson*(s: Sim): string =
                "tick_landed": (if r.tickLanded >= 0: %r.tickLanded else: newJNull()),
                "sponsor": r.sponsor,
                "team": (if r.team in 0 .. 7: %TeamNames[r.team] else: newJNull()),
-               "recipient_slot": r.recipientSlot, "item": r.itemId,
+               "recipient_slot": r.recipientSlot,
+               "target": (if r.target.x >= 0: %[r.target.x, r.target.y]
+                          else: newJNull()),
+               "item": r.itemId,
                "cost": r.cost, "status": $r.status,
                "reason": (if r.reason.len > 0: %r.reason else: newJNull()),
                "balance_after": r.balanceAfter})

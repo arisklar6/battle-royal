@@ -128,8 +128,11 @@ ws.onmessage = (ev) => {
     if (tickerKeys.has(key)) continue;
     tickerKeys.add(key);
     const d = document.createElement('div'); d.className = 'row';
+    const dest = g.recipient_slot < 0
+      ? `tile (${g.target ? esc(g.target[0]) + ',' + esc(g.target[1]) : '?,?'})`
+      : `P${g.recipient_slot}`;
     d.innerHTML = g.status === 'accepted'
-      ? `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → P${g.recipient_slot} <span style="color:#56606a">(bal ${g.balance})</span>`
+      ? `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → ${dest} <span style="color:#56606a">(bal ${g.balance})</span>`
       : `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> <span class="crim">REJECTED</span> ${esc(g.item)} (${esc(g.reason)})`;
     tick.prepend(d);
   }
@@ -138,9 +141,12 @@ ws.onmessage = (ev) => {
     if (tickerKeys.has(key)) continue;
     tickerKeys.add(key);
     const d = document.createElement('div'); d.className = 'row';
-    d.innerHTML = ic.stolen
+    const looter = ic.looter_slot < 0 ? '?' : ic.looter_slot;
+    d.innerHTML = ic.recipient_slot < 0
+      ? `[${fmtT(ic.tick)}] <span class="gold">${esc(ic.item.toUpperCase())} CLAIMED BY AGENT P${looter}</span>`
+      : ic.stolen
       ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${esc(ic.item.toUpperCase())} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
-      : `[${fmtT(ic.tick)}] ${esc(ic.item.toUpperCase())} secured by P${ic.looter_slot < 0 ? '?' : ic.looter_slot}`;
+      : `[${fmtT(ic.tick)}] ${esc(ic.item.toUpperCase())} secured by P${looter}`;
     tick.prepend(d);
   }
 

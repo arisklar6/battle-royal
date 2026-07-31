@@ -235,6 +235,16 @@ LOCKED frame: no platform economy exists — softcoin is a per-team budget fully
 - **Casual-live variant**: `sponsor.live: true` — **local `coworld play` only** (explicit scope: hosted variants have no sanctioned secret channel for per-team sponsor tokens; a `coworld.game_config_overlay.v1` secret overlay is the v2 route if hosted live-sponsorship is ever wanted). Sponsor tokens enter via runtime config, never the manifest.
 - With `live: false` the `/sponsor` WS and `/client/sponsor` return 403.
 
+### 9.6 v0.2 audience pivot (DECIDED 2026-07-31)
+- Agents are AI-only: **no human controls any agent mid-game**. The ONLY mid-game human interaction is sponsorship. Human seats are gone from casual play — bots fill all 16 seats (supersedes §21.2's "keyboard play remains available in casual-live" note).
+- Sponsors **adopt a team** (A–H) and spend that team's budget (300, §9.1 unchanged).
+- Purchases are **tile-targeted**: the sponsor picks any tile; landing = nearest free tile by the pinned spiral (same spiral as §9.3 step 3, origin = the chosen tile instead of the recipient's position).
+- **One purchase at a time per team**: 60 s lockout (`GiftLockoutTicks = 1440`; new reject reason `lockout`).
+- The lockout applies ONLY to tile-mode purchases, so v0.1 recipient-mode replay logs re-simulate unchanged. Recipient mode remains in the wire + input-log grammar as a legacy/replay path under its old rules (incl. `recipient_dead`, `not_own_team`) and with NO lockout.
+- Wire deltas (§11): `gift_request` gains `target: [x,y]`; `sponsor_welcome` now carries `static_map` + `lockout_ticks`; `sponsor_state` carries `lockout_remaining`.
+- Artifact deltas (§14): `GiftRecord` and `sponsor_log.json` gain `target`; `recipient_slot` is `-1` for tile gifts.
+- New **read-only WS `/watch?slot=N`**: `player_config` + that slot's observation stream + `final`. No token, no inputs — leaks nothing `/global` does not already show. `/client/player` is now the read-only **Agent Cam** built on it.
+
 ---
 
 ## 10. Player protocol — `zero_sum.player.v1`

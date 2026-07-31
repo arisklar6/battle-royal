@@ -47,6 +47,8 @@ type
     playerQueue: seq[(int, string)]      # (slot, payload)
     playerJoined: seq[int]               # slots needing player_config
     analysts: Table[WebSocket, bool]     # /analyst JSON telemetry feed
+    watchers: Table[WebSocket, int]      # /watch read-only agent views (ws->slot)
+    watcherJoined: seq[WebSocket]        # need player_config on next tick
 
 var appState: AppState
 
@@ -98,6 +100,29 @@ proc httpHandler(request: Request) =
     {.gcsafe.}:
       withLock appState.lock:
         appState.analysts[websocket] = true
+    return
+  if request.httpMethod == "GET" and path == "/watch":
+    # v0.2: read-only per-agent fog view. No token, no inputs — watching a
+    # seat never touches the agent's own /player connection. Leaks nothing
+    # the /global viewer doesn't already show.
+    var slot = -1
+    try:
+      slot = parseInt(queryParam(request.uri, "slot"))
+    except CatchableError:
+      discard
+    if slot notin 0 .. 15:
+      headers["Content-Type"] = "text/plain"
+      request.respond(400, headers, "bad slot")
+      return
+    if not request.isWsHandshake():
+      headers["Content-Type"] = "text/plain"
+      request.respond(200, headers, "zero_sum watch websocket endpoint")
+      return
+    let websocket = request.upgradeToWebSocket()
+    {.gcsafe.}:
+      withLock appState.lock:
+        appState.watchers[websocket] = slot
+        appState.watcherJoined.add(websocket)
     return
   if request.httpMethod == "GET" and path == "/player":
     # slot+token auth (platform contract: bad token MUST fail the upgrade)
@@ -198,6 +223,7 @@ proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
         appState.closed.add(websocket)
         appState.sponsors.del(websocket)
         appState.analysts.del(websocket)
+        appState.watchers.del(websocket)
         if websocket in appState.players:
           let slot = appState.players[websocket]
           if appState.slotConnected[slot] and
@@ -267,6 +293,7 @@ proc startServer(rc: RuntimeConfig) =
   initLock(appState.lock)
   appState.viewers = initTable[WebSocket, ViewerState]()
   appState.analysts = initTable[WebSocket, bool]()
+  appState.watchers = initTable[WebSocket, int]()
   httpServer = newServer(httpHandler, websocketHandler,
                          workerThreads = 4, tcpNoDelay = true)
   createThread(serverThread, serverThreadProc, ServerThreadArgs(
@@ -363,11 +390,19 @@ proc runLive(rc: RuntimeConfig) =
         if catalog.len > 1: catalog.add(",")
         catalog.add("\"" & key & "\":" & $g.price)
       catalog.add("}")
+      var rows = "["
+      for row in staticMapRows(s.arena):
+        if rows.len > 1: rows.add(",")
+        rows.add(escapeJson(row))
+      rows.add("]")
       try:
         ws.send("""{"type":"sponsor_welcome","team":"""" & TeamNames[ti] &
                 """","budget":""" & $s.teamBudget[ti] &
                 ""","catalog":""" & catalog &
                 ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
+                ""","lockout_ticks":""" & $GiftLockoutTicks &
+                ""","arena_size":""" & $ArenaSize &
+                ""","static_map":""" & rows &
                 ""","tick":""" & $s.tick & "}", TextMessage)
       except CatchableError:
         discard
@@ -376,8 +411,15 @@ proc runLive(rc: RuntimeConfig) =
       try:
         let j = parseJson(req.payload)
         if j{"type"}.getStr() == "gift_request":
+          # v0.2 audience pivot: sponsors target a TILE. recipient_slot kept
+          # for wire back-compat; target wins when both are present.
+          var tgt = Pos(x: -1, y: -1)
+          if j.hasKey("target") and j["target"].kind == JArray and
+             j["target"].len == 2:
+            tgt = Pos(x: j["target"][0].getInt(-1), y: j["target"][1].getInt(-1))
           let outc = s.requestGift("live:" & TeamNames[req.teamIdx],
-            req.teamIdx, j{"recipient_slot"}.getInt(-1), j{"item_id"}.getStr(""))
+            req.teamIdx, j{"recipient_slot"}.getInt(-1), j{"item_id"}.getStr(""),
+            tgt)
           let reqId = j{"request_id"}.getStr("")
           reply =
             if outc.accepted:
@@ -468,6 +510,36 @@ proc runLive(rc: RuntimeConfig) =
           conns[i][1].send(finalJson(s, i), TextMessage)
       except CatchableError:
         discard
+    # read-only /watch mirrors: same per-slot observation stream, no inputs
+    var watchConns: seq[(WebSocket, int)] = @[]
+    var watchFresh: seq[WebSocket] = @[]
+    {.gcsafe.}:
+      withLock appState.lock:
+        for ws, slot in appState.watchers.pairs:
+          watchConns.add((ws, slot))
+        watchFresh = appState.watcherJoined
+        appState.watcherJoined.setLen(0)
+    for ws in watchFresh:
+      for (w, slot) in watchConns:
+        if w == ws:
+          try:
+            ws.send(playerConfigJson(s, slot), TextMessage)
+          except CatchableError:
+            discard
+          break
+    var watchObs: array[16, string]
+    for (ws, slot) in watchConns:
+      try:
+        if s.agents[slot].alive:
+          if watchObs[slot].len == 0:
+            watchObs[slot] = observationJson(s, slot)
+          ws.send(watchObs[slot], TextMessage)
+        elif s.agents[slot].deathTick == s.tick - 1:
+          ws.send(finalJson(s, slot), TextMessage)
+      except CatchableError:
+        {.gcsafe.}:
+          withLock appState.lock:
+            appState.watchers.del(ws)
     # sponsor state push every 24 ticks
     if s.tick mod 24 == 0:
       var sponsorConns: seq[(WebSocket, int)] = @[]
@@ -485,6 +557,7 @@ proc runLive(rc: RuntimeConfig) =
           ws.send("""{"type":"sponsor_state","tick":""" & $s.tick &
                   ""","budget":""" & $s.teamBudget[ti] &
                   ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
+                  ""","lockout_remaining":""" & $s.giftLockoutRemaining(ti) &
                   ""","team_alive":[""" & aliveArr & "]}", TextMessage)
         except CatchableError:
           discard

@@ -2,32 +2,108 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Zero Sum - Sponsor Console</title>
+<title>Zero Sum - Sponsor Console v0.2</title>
 <style>
-  body { font-family: monospace; background: #14170f; color: #e8e8e0; margin: 0; padding: 16px; }
-  h1 { font-size: 16px; color: #d4af37; }
-  #status { color: #9a9; }
-  #budget { font-size: 20px; color: #d4af37; }
-  .shop { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; max-width: 560px; }
-  button { font-family: monospace; background: #232a1c; color: #e8e8e0; border: 1px solid #565; padding: 6px 10px; cursor: pointer; }
-  button:hover { background: #37422c; }
-  select { font-family: monospace; background: #232a1c; color: #e8e8e0; border: 1px solid #565; padding: 4px; }
-  #log { white-space: pre-wrap; font-size: 12px; margin-top: 12px; border-top: 1px solid #333; padding-top: 8px; max-height: 40vh; overflow-y: auto; }
-  iframe { border: 1px solid #333; width: 100%; height: 420px; margin-top: 12px; background: #000; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Consolas, monospace;
+    background: #0B0C10;
+    color: #C5C6C7;
+    margin: 0;
+    padding: 12px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #1F2833;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  #teamchip {
+    width: 18px; height: 18px;
+    background: #3a4552;
+    border: 1px solid #0B0C10;
+    flex: 0 0 auto;
+  }
+  #teamname { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+  #alive { font-size: 12px; color: #C5C6C7; opacity: 0.8; }
+  .spacer { flex: 1; }
+  #budget { font-size: 20px; color: #C5A059; font-weight: bold; }
+  #countdown { font-size: 14px; min-width: 170px; text-align: right; }
+  #countdown.locked { color: #FF0055; font-weight: bold; }
+  #countdown.closed { color: #66FCF1; }
+  #countdown.open { color: #39FF14; }
+  #status { font-size: 11px; opacity: 0.7; }
+  #status.on { color: #39FF14; opacity: 1; }
+  #status.off { color: #FF0055; opacity: 1; }
+  main { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .panel { background: #1F2833; padding: 10px; }
+  #map { display: block; background: #12141b; cursor: crosshair; }
+  #sel { font-size: 12px; margin-top: 8px; color: #66FCF1; min-height: 15px; }
+  #right { flex: 1; min-width: 300px; max-width: 460px; }
+  h2 {
+    font-size: 12px; letter-spacing: 2px; color: #C5C6C7;
+    border-bottom: 1px solid #0B0C10; padding-bottom: 4px;
+    margin: 0 0 8px 0;
+  }
+  h2 + h2, #log { margin-top: 6px; }
+  #shop { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #shop button {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    background: #0B0C10;
+    color: #C5C6C7;
+    border: 1px solid #66FCF1;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  #shop button .price { color: #C5A059; }
+  #shop button:hover:not(:disabled) { background: #66FCF1; color: #0B0C10; }
+  #shop button:hover:not(:disabled) .price { color: #0B0C10; }
+  #shop button:disabled {
+    border-color: #3a4552; color: #555; cursor: not-allowed;
+  }
+  #shop button:disabled .price { color: #555; }
+  #toast {
+    min-height: 16px; font-size: 12px; color: #FF0055;
+    margin-bottom: 10px; visibility: hidden;
+  }
+  #toast.show { visibility: visible; }
+  #log { list-style: none; margin: 0; padding: 0; font-size: 11px; }
+  #log li { padding: 2px 0; border-bottom: 1px solid rgba(11,12,16,0.5); }
+  #log li.ok { color: #39FF14; }
+  #log li.bad { color: #FF0055; }
 </style>
 </head>
 <body>
-<h1>ZERO SUM &mdash; SPONSOR CONSOLE</h1>
-<div id="status">connecting&hellip;</div>
-<div>budget: <span id="budget">?</span> softcoin</div>
-<div>
-  recipient:
-  <select id="recipient"></select>
-</div>
-<div class="shop" id="shop"></div>
-<div id="log"></div>
-<iframe src="/client/global"></iframe>
+<header>
+  <div id="teamchip"></div>
+  <div id="teamname">TEAM ?</div>
+  <div id="alive"></div>
+  <div class="spacer"></div>
+  <div id="budget">&mdash;</div>
+  <div id="countdown"></div>
+  <div id="status">connecting&hellip;</div>
+</header>
+<main>
+  <section class="panel">
+    <canvas id="map" width="576" height="576"></canvas>
+    <div id="sel">click a tile to set the drop target</div>
+  </section>
+  <section class="panel" id="right">
+    <h2>SUPPLY DROPS</h2>
+    <div id="shop"></div>
+    <div id="toast"></div>
+    <h2>EVENT LOG</h2>
+    <ul id="log"></ul>
+  </section>
+</main>
 <script>
+'use strict';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
 // Client-page WS contract (DESIGN §11): honor ?address= when present, else
 // same-origin derivation with the /client/sponsor -> /sponsor path rewrite.
 const pageUrl = new URL(window.location.href);
@@ -44,57 +120,255 @@ function websocketAddress(path) {
   target.hash = '';
   return target;
 }
+
+const TEAM_ACCENTS = {A:'#FF7F8C', B:'#45DCFF', C:'#FFBF00', D:'#7A3CDC',
+                      E:'#DC143C', F:'#EBF5FF', G:'#FF6E1E', H:'#E15AEB'};
+const TILE_COLORS = {'#':'#3a4552', 'F':'#4a5867', 'R':'#5a4a3a',
+                     'P':'#C5A059', 'B':'#1e5c28'};
+const TPS = 24;           // ticks per second
+const TILE = 12;          // px per tile
+
 // fallback only; sponsor_welcome carries the authoritative catalog
 let CATALOG = {rations: 20, knives: 30, arrows: 30, darts: 35, net: 50,
                first_aid: 60, backpack: 70, camouflage: 80, spear: 90,
                blowgun: 100, sword: 120, bow: 150};
-const logEl = document.getElementById('log');
+
+let team = null;
+let budget = null;
+let shopOpensTick = null;
+let lockoutTicks = 1440;
+let lockoutEndTick = 0;   // absolute tick when lockout ends
+let arenaSize = 48;
+let staticMap = null;
+let lastTick = 0;
+let lastTickAt = performance.now();
+let wsOpen = false;
+let selected = null;      // [x, y] target tile
+const markers = [];       // {x, y, item, landsTick} persisted for the match
+const pending = {};       // request_id -> {item, target}
+const logEntries = [];    // {text, ok} newest first, capped at 10
+
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
 const shopEl = document.getElementById('shop');
-const recEl = document.getElementById('recipient');
-let reqN = 0;
-function log(line) { logEl.textContent = line + "\n" + logEl.textContent; }
-const ws = new WebSocket(websocketAddress('/sponsor'));
-ws.onopen = () => { document.getElementById('status').textContent = 'connected'; };
-ws.onclose = () => { document.getElementById('status').textContent = 'disconnected'; };
-ws.onmessage = (ev) => {
-  try {
-    const m = JSON.parse(ev.data);
-    if (m.type === 'sponsor_welcome') {
-      document.getElementById('budget').textContent = m.budget;
-      if (m.catalog) { CATALOG = m.catalog; buildShop(); }
-      log(`welcome team ${m.team}, shop opens t=${m.shop_opens_tick}`);
-    } else if (m.type === 'sponsor_state') {
-      document.getElementById('budget').textContent = m.budget;
-      const current = recEl.value;
-      recEl.innerHTML = '';
-      for (const slot of m.team_alive) {
-        const o = document.createElement('option');
-        o.value = slot; o.textContent = 'P' + String(slot).padStart(2, '0');
-        recEl.appendChild(o);
-      }
-      if (current) recEl.value = current;
-    } else if (m.type === 'gift_result') {
-      log(m.accepted
-        ? `ACCEPTED ${m.request_id} cost=${m.cost} lands t=${m.lands_tick} at (${m.landing}) balance=${m.balance}`
-        : `REJECTED ${m.request_id} reason=${m.reason} balance=${m.balance}`);
-    }
-  } catch (e) { /* ignore */ }
-};
+const toastEl = document.getElementById('toast');
+const logEl = document.getElementById('log');
+const budgetEl = document.getElementById('budget');
+const countdownEl = document.getElementById('countdown');
+const statusEl = document.getElementById('status');
+const selEl = document.getElementById('sel');
+let shopButtons = [];     // {btn, item, price}
+let toastTimer = null;
+
+function estTick() {
+  return lastTick + (performance.now() - lastTickAt) / 1000 * TPS;
+}
+function syncTick(t) {
+  if (typeof t === 'number') { lastTick = t; lastTickAt = performance.now(); }
+}
+function secs(ticks) { return Math.max(0, Math.ceil(ticks / TPS)); }
+
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4000);
+}
+
+function addLog(text, ok) {
+  logEntries.unshift({text, ok});
+  if (logEntries.length > 10) logEntries.length = 10;
+  logEl.innerHTML = logEntries
+    .map(e => `<li class="${e.ok ? 'ok' : 'bad'}">${esc(e.text)}</li>`)
+    .join('');
+}
+
+function setBudget(v) {
+  if (typeof v === 'number') { budget = v; budgetEl.textContent = v + ' sc'; }
+}
+
+function itemLabel(id) { return String(id).replace(/_/g, ' '); }
+
 function buildShop() {
   shopEl.innerHTML = '';
+  shopButtons = [];
   for (const [item, price] of Object.entries(CATALOG)) {
     const b = document.createElement('button');
-    b.textContent = `${item} (${price})`;
-    b.onclick = () => {
-      const req = {type: 'gift_request', request_id: 'r' + (++reqN),
-                   recipient_slot: Number(recEl.value), item_id: item};
-      ws.send(JSON.stringify(req));
-      log(`sent ${req.request_id}: ${item} -> P${recEl.value}`);
-    };
+    b.disabled = true;
+    b.innerHTML = `${esc(itemLabel(item))} <span class="price">${esc(price)}</span>`;
+    b.onclick = () => buy(item, price);
     shopEl.appendChild(b);
+    shopButtons.push({btn: b, item, price});
   }
 }
+
+function buy(item, price) {
+  if (!selected || !wsOpen) return;
+  const request_id = 'r' + Math.random().toString(36).slice(2, 10);
+  pending[request_id] = {item, target: selected.slice()};
+  ws.send(JSON.stringify({type: 'gift_request', item_id: item,
+                          target: selected.slice(), request_id}));
+}
+
+// ---- websocket ----
+const ws = new WebSocket(websocketAddress('/sponsor'));
+ws.onopen = () => {
+  wsOpen = true;
+  statusEl.textContent = 'LIVE';
+  statusEl.className = 'on';
+};
+ws.onclose = () => {
+  wsOpen = false;
+  statusEl.textContent = 'DISCONNECTED';
+  statusEl.className = 'off';
+};
+ws.onmessage = (ev) => {
+  let m;
+  try { m = JSON.parse(ev.data); } catch (e) { return; }
+  if (m.type === 'sponsor_welcome') {
+    team = m.team;
+    const accent = TEAM_ACCENTS[team] || '#66FCF1';
+    document.getElementById('teamchip').style.background = accent;
+    const tn = document.getElementById('teamname');
+    tn.textContent = 'TEAM ' + team;
+    tn.style.color = accent;
+    setBudget(m.budget);
+    if (m.catalog) CATALOG = m.catalog;
+    buildShop();
+    if (typeof m.shop_opens_tick === 'number') shopOpensTick = m.shop_opens_tick;
+    if (typeof m.lockout_ticks === 'number') lockoutTicks = m.lockout_ticks;
+    if (typeof m.arena_size === 'number') arenaSize = m.arena_size;
+    canvas.width = arenaSize * TILE;
+    canvas.height = arenaSize * TILE;
+    if (Array.isArray(m.static_map)) staticMap = m.static_map;
+    syncTick(m.tick);
+  } else if (m.type === 'sponsor_state') {
+    setBudget(m.budget);
+    if (typeof m.shop_opens_tick === 'number') shopOpensTick = m.shop_opens_tick;
+    syncTick(m.tick);
+    if (typeof m.lockout_remaining === 'number') {
+      lockoutEndTick = m.tick + m.lockout_remaining;  // server is authoritative
+    }
+    if (Array.isArray(m.team_alive)) {
+      document.getElementById('alive').textContent =
+        'alive ' + m.team_alive.length;
+    }
+  } else if (m.type === 'gift_result') {
+    const req = pending[m.request_id] || {};
+    delete pending[m.request_id];
+    setBudget(m.balance);
+    if (m.accepted) {
+      const [lx, ly] = m.landing;
+      markers.push({x: lx, y: ly, item: itemLabel(req.item || '?'),
+                    landsTick: m.lands_tick});
+      lockoutEndTick = Math.max(lockoutEndTick, estTick() + lockoutTicks);
+      addLog(`DROP ${itemLabel(req.item || '?')} -> (${lx},${ly}) cost ${m.cost}`, true);
+    } else {
+      showToast(`REJECTED: ${m.reason}`);
+      addLog(`REJECTED ${itemLabel(req.item || '?')}: ${m.reason}`, false);
+    }
+  }
+};
+
+// ---- map ----
+canvas.addEventListener('click', (e) => {
+  const r = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) * (canvas.width / r.width) / TILE);
+  const y = Math.floor((e.clientY - r.top) * (canvas.height / r.height) / TILE);
+  if (x < 0 || y < 0 || x >= arenaSize || y >= arenaSize) return;
+  selected = [x, y];
+  selEl.textContent = `target: (${x}, ${y})`;
+});
+
+function draw() {
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#12141b';
+  ctx.fillRect(0, 0, w, h);
+  if (staticMap) {
+    for (let y = 0; y < arenaSize; y++) {
+      const row = staticMap[y] || '';
+      for (let x = 0; x < arenaSize; x++) {
+        const c = TILE_COLORS[row[x]];
+        if (c) { ctx.fillStyle = c; ctx.fillRect(x * TILE, y * TILE, TILE, TILE); }
+      }
+    }
+  }
+  // subtle grid
+  ctx.strokeStyle = '#1F2833';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= arenaSize; i++) {
+    ctx.moveTo(i * TILE + 0.5, 0); ctx.lineTo(i * TILE + 0.5, h);
+    ctx.moveTo(0, i * TILE + 0.5); ctx.lineTo(w, i * TILE + 0.5);
+  }
+  ctx.stroke();
+  // drop markers (persist for the match)
+  const et = estTick();
+  ctx.font = '9px Consolas, monospace';
+  for (const mk of markers) {
+    const cx = mk.x * TILE + TILE / 2, cy = mk.y * TILE + TILE / 2;
+    ctx.fillStyle = '#C5A059';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy);
+    ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.textAlign = 'center';
+    const above = mk.y > 1;
+    ctx.fillText(mk.item, cx, above ? cy - 8 : cy + 15);
+    if (typeof mk.landsTick === 'number' && et < mk.landsTick) {
+      ctx.fillStyle = '#66FCF1';
+      ctx.fillText(`lands in ${secs(mk.landsTick - et)}s`,
+                   cx, above ? cy - 18 : cy + 25);
+    }
+  }
+  // selection crosshair
+  if (selected) {
+    const [sx, sy] = selected;
+    const cx = sx * TILE + TILE / 2, cy = sy * TILE + TILE / 2;
+    ctx.strokeStyle = 'rgba(102,252,241,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+    ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+    ctx.stroke();
+    ctx.strokeStyle = '#66FCF1';
+    ctx.strokeRect(sx * TILE + 0.5, sy * TILE + 0.5, TILE - 1, TILE - 1);
+    ctx.fillStyle = '#66FCF1';
+    ctx.font = '10px Consolas, monospace';
+    ctx.textAlign = sx > arenaSize - 8 ? 'right' : 'left';
+    const tx = sx > arenaSize - 8 ? cx - 8 : cx + 8;
+    ctx.fillText(`(${sx},${sy})`, tx, sy > 1 ? cy - 8 : cy + 18);
+  }
+}
+
+// ---- client-side timers (24 ticks = 1 s), re-synced by sponsor_state ----
+function refresh() {
+  const et = estTick();
+  const shopClosed = shopOpensTick !== null && et < shopOpensTick;
+  const locked = et < lockoutEndTick;
+  if (!wsOpen && team === null) {
+    countdownEl.textContent = '';
+    countdownEl.className = '';
+  } else if (shopClosed) {
+    countdownEl.textContent = `SHOP OPENS IN ${secs(shopOpensTick - et)}s`;
+    countdownEl.className = 'closed';
+  } else if (locked) {
+    countdownEl.textContent = `LOCKOUT ${secs(lockoutEndTick - et)}s`;
+    countdownEl.className = 'locked';
+  } else {
+    countdownEl.textContent = 'SHOP OPEN';
+    countdownEl.className = 'open';
+  }
+  const noBuy = !wsOpen || !selected || shopClosed || locked;
+  for (const {btn, price} of shopButtons) {
+    btn.disabled = noBuy || (budget !== null && price > budget);
+  }
+  draw();
+}
 buildShop();
+setInterval(refresh, 100);
+refresh();
 </script>
 </body>
 </html>

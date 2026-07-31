@@ -60,6 +60,9 @@ const
   PoisonPulsePeriod* = 24
   NetTicks* = 72
   CamoRevealTicks* = 120
+  GiftLockoutTicks* = 1440      # 60 s between tile-targeted purchases per team
+                                # (DECIDED 2026-07-31; tile mode only, so v0.1
+                                # recipient-gift replays re-simulate unchanged)
 
 type
   GiftDef* = object

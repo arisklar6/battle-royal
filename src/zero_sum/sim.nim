@@ -39,7 +39,8 @@ type
   ScriptedGift* = object
     tick*: int
     team*: int                 # 0..7
-    recipientSlot*: int
+    recipientSlot*: int        # legacy targeting (v0.1 replay compat)
+    target*: Pos               # tile targeting (v0.2); x = -1 when unused
     itemId*: string            # catalog key
 
   SponsorConfig* = object
@@ -66,7 +67,8 @@ type
     tickLanded*: int           # -1 until landed / for rejects
     sponsor*: string
     team*: int
-    recipientSlot*: int
+    recipientSlot*: int        # -1 for tile-targeted (v0.2) gifts
+    target*: Pos               # requested tile; x = -1 for legacy gifts
     itemId*: string
     cost*: int
     status*: GiftStatus
@@ -123,6 +125,7 @@ type
     hashes*: seq[(int, uint64)]
     winnerSlot*: int
     teamBudget*: array[8, int]
+    lastGiftTick*: array[8, int]   # tile-gift lockout bookkeeping (v0.2)
     sponsorLog*: seq[GiftRecord]
     pods*: seq[Pod]
     finaleEmitted*: bool
@@ -140,6 +143,9 @@ type
     pendingSet: array[16, bool]
 
 proc allocDeadlineTick*(s: Sim): int = s.cfg.freezeTicks - 24
+proc giftLockoutRemaining*(s: Sim, teamIdx: int): int =
+  ## Ticks until the team may buy the next tile-targeted package.
+  max(0, GiftLockoutTicks - (s.tick - s.lastGiftTick[teamIdx]))
 proc moveCooldown*(a: Agent): int = 16 - a.stats.speed
 proc visionRadius*(a: Agent): int = 5 + (a.stats.intelligence + 1) div 2
 proc hazardScaled*(a: Agent, centi: int): int =
@@ -192,10 +198,15 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
         for ti, tn in TeamNames:
           if tn == teamStr:
             teamIdx = ti
+        var tgt = Pos(x: -1, y: -1)
+        if g.hasKey("target") and g["target"].kind == JArray and
+           g["target"].len == 2:
+          tgt = Pos(x: g["target"][0].getInt(-1), y: g["target"][1].getInt(-1))
         result.sponsor.scriptedGifts.add(ScriptedGift(
           tick: g{"tick"}.getInt(),
           team: (if teamIdx >= 0: teamIdx else: g{"team"}.getInt(-1)),
           recipientSlot: g{"recipient_slot"}.getInt(-1),
+          target: tgt,
           itemId: g{"item_id"}.getStr("")))
   for i in 0 .. 15:
     result.playerNames.add("P" & (if i < 10: "0" else: "") & $i)
@@ -417,6 +428,7 @@ proc initSim*(cfg: SimConfig): Sim =
     result.lastActionResult[i] = "ok"
   for t in 0 .. 7:
     result.teamBudget[t] = cfg.sponsor.budgetPerTeam
+    result.lastGiftTick[t] = -GiftLockoutTicks
   result.generateLoot()
 
 proc initReplaySim*(cfg: SimConfig): Sim =
@@ -997,48 +1009,72 @@ proc findLandingTile(s: Sim, origin: Pos): Pos =
   best
 
 proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
-                  recipientSlot: int, itemId: string): GiftOutcome =
+                  recipientSlot: int, itemId: string,
+                  target: Pos = Pos(x: -1, y: -1)): GiftOutcome =
   ## Atomic (DESIGN §9.1): full-cost accept or zero-effect reject. Both logged.
+  ## Two targeting modes:
+  ##  - tile (v0.2, target.x >= 0): sponsor picks the landing tile; the pinned
+  ##    spiral finds the nearest free tile. One purchase per team per
+  ##    GiftLockoutTicks. recipientSlot is recorded as -1.
+  ##  - recipient (v0.1 legacy, target.x < 0): pod lands near the recipient.
+  ##    NO lockout — pre-pivot replay logs must re-simulate unchanged.
+  let tileMode = target.x >= 0
   var rec = GiftRecord(tickRequested: s.tick, tickLanded: -1, sponsor: sponsor,
-                       team: teamIdx, recipientSlot: recipientSlot,
+                       team: teamIdx,
+                       recipientSlot: (if tileMode: -1 else: recipientSlot),
+                       target: (if tileMode: target else: Pos(x: -1, y: -1)),
                        itemId: itemId, status: gsRejected)
   template reject(why: string): GiftOutcome =
     rec.reason = why
     rec.balanceAfter = (if teamIdx in 0 .. 7: s.teamBudget[teamIdx] else: 0)
     s.sponsorLog.add(rec)
     GiftOutcome(accepted: false, reason: why, balance: rec.balanceAfter)
-  if s.phase == phEnded or teamIdx notin 0 .. 7 or recipientSlot notin 0 .. 15:
+  if s.phase == phEnded or teamIdx notin 0 .. 7:
+    return reject("malformed")
+  if tileMode:
+    if not inBounds(target):
+      return reject("malformed")
+  elif recipientSlot notin 0 .. 15:
     return reject("malformed")
   let (known, gift) = giftLookup(itemId)
   if not known:
     return reject("unknown_item")
   if s.tick < s.cfg.sponsor.shopOpensTick:
     return reject("shop_locked")
-  if not s.agents[recipientSlot].alive:
-    return reject("recipient_dead")
-  if team(AgentId(recipientSlot)) != teamIdx:
-    return reject("not_own_team")
+  if tileMode and s.tick - s.lastGiftTick[teamIdx] < GiftLockoutTicks:
+    return reject("lockout")
+  if not tileMode:
+    if not s.agents[recipientSlot].alive:
+      return reject("recipient_dead")
+    if team(AgentId(recipientSlot)) != teamIdx:
+      return reject("not_own_team")
   if s.teamBudget[teamIdx] < gift.price:
     return reject("insufficient_funds")
 
   s.teamBudget[teamIdx] -= gift.price
-  let origin = s.agents[recipientSlot].pos
+  if tileMode:
+    s.lastGiftTick[teamIdx] = s.tick
+  let origin = (if tileMode: target else: s.agents[recipientSlot].pos)
   let landing = s.findLandingTile(origin)
   let landsTick = s.tick + 120
   s.pods.add(Pod(landing: landing, itemId: itemId,
-                 recipientSlot: recipientSlot, spawnTick: s.tick,
+                 recipientSlot: rec.recipientSlot, spawnTick: s.tick,
                  landsTick: landsTick))
   rec.status = gsAccepted
   rec.cost = gift.price
   rec.balanceAfter = s.teamBudget[teamIdx]
   s.sponsorLog.add(rec)
-  s.inputLog.add(AppliedInput(tick: s.tick, slot: recipientSlot,
+  let targeting =
+    if tileMode: ""","target":[""" & $target.x & "," & $target.y & "]"
+    else: ""","recipient_slot":""" & $recipientSlot
+  s.inputLog.add(AppliedInput(tick: s.tick,
+    slot: (if tileMode: 0 else: recipientSlot),
     payload: """{"gift":{"sponsor":""" & escapeJson(sponsor) &
-             ""","team":""" & $teamIdx & ""","recipient_slot":""" & $recipientSlot &
+             ""","team":""" & $teamIdx & targeting &
              ""","item_id":""" & escapeJson(itemId) & "}}"))
-  s.emit(evGiftIncoming, recipientSlot, landing,
+  s.emit(evGiftIncoming, rec.recipientSlot, landing,
     """{"item":"""" & itemId & """","lands_tick":""" & $landsTick &
-    ""","recipient":""" & $recipientSlot & "}")
+    ""","recipient":""" & $rec.recipientSlot & "}")
   GiftOutcome(accepted: true, cost: gift.price, balance: s.teamBudget[teamIdx],
               landsTick: landsTick, landing: landing)
 
@@ -1075,7 +1111,8 @@ proc processScriptedGifts(s: var Sim) =
     return
   for g in s.cfg.sponsor.scriptedGifts:
     if g.tick == s.tick:
-      discard s.requestGift("script", g.team, g.recipientSlot, g.itemId)
+      discard s.requestGift("script", g.team, g.recipientSlot, g.itemId,
+                            g.target)
 
 # ---------------------------------------------------------------- deaths
 
@@ -1372,8 +1409,13 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
       return
     let g = j["gift"]
     if g.kind == JObject:
+      var tgt = Pos(x: -1, y: -1)
+      if g.hasKey("target") and g["target"].kind == JArray and
+         g["target"].len == 2:
+        tgt = Pos(x: g["target"][0].getInt(-1), y: g["target"][1].getInt(-1))
       discard s.requestGift(g{"sponsor"}.getStr("script"), g{"team"}.getInt(-1),
-                            g{"recipient_slot"}.getInt(-1), g{"item_id"}.getStr(""))
+                            g{"recipient_slot"}.getInt(-1),
+                            g{"item_id"}.getStr(""), tgt)
   elif j.hasKey("talk"):
     let t = j["talk"]
     if t.kind != JObject:

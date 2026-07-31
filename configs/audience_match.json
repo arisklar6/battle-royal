@@ -1,0 +1,11 @@
+{
+  "max_ticks": 9120,
+  "freeze_ticks": 240,
+  "player_connect_timeout_seconds": 60,
+  "tokens": ["t0","t1","t2","t3","t4","t5","t6","t7",
+              "t8","t9","t10","t11","t12","t13","t14","t15"],
+  "sponsor": {"live": true, "budget_per_team": 300,
+               "shop_opens_tick": 1680,
+               "sponsor_tokens": {"A": "sA", "B": "sB", "C": "sC", "D": "sD",
+                                   "E": "sE", "F": "sF", "G": "sG", "H": "sH"}}
+}

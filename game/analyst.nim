@@ -42,7 +42,7 @@ proc track*(t: var AnalystTracker, s: Sim) =
     t.interceptions.add(Interception(
       tick: s.tick, itemId: old.itemId, recipientSlot: old.recipientSlot,
       looterSlot: looter,
-      stolen: looter >= 0 and
+      stolen: looter >= 0 and old.recipientSlot >= 0 and
               team(AgentId(looter)) != team(AgentId(old.recipientSlot))))
   t.prevPods = s.pods
 
@@ -84,6 +84,8 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     ticker.add(%*{"tick": g.tickRequested, "sponsor": g.sponsor,
                    "team": (if g.team in 0 .. 7: TeamNames[g.team] else: "?"),
                    "recipient_slot": g.recipientSlot, "item": g.itemId,
+                   "target": (if g.target.x >= 0: %[g.target.x, g.target.y]
+                              else: newJNull()),
                    "cost": g.cost, "status": $g.status, "reason": g.reason,
                    "balance": g.balanceAfter, "landed_tick": g.tickLanded})
   var steals = newJArray()

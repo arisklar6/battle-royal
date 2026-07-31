@@ -93,18 +93,22 @@ shooter); zone/mines/hazards credit nobody. Mutual kills count for both.
 
 ## Sponsors (softcoin economy)
 
-Each team has a fixed softcoin budget (300 league-standard). Gifts are bought
-from a fixed catalog — exact wire keys: `rations` 20, `knives` 30, `arrows`
-30, `darts` 35, `net` 50, `first_aid` 60, `backpack` 70, `camouflage` 80,
-`spear` 90, `blowgun` 100, `sword` 120, `bow` 150 — and AIRDROP near the
-recipient 5 seconds after purchase. The shop opens
+Humans NEVER control an agent mid-game — sponsoring is the only mid-game
+human input. A sponsor adopts a team (A-H) and spends that team's fixed
+softcoin budget (300 league-standard). Gifts are bought from a fixed catalog
+— exact wire keys: `rations` 20, `knives` 30, `arrows` 30, `darts` 35,
+`net` 50, `first_aid` 60, `backpack` 70, `camouflage` 80, `spear` 90,
+`blowgun` 100, `sword` 120, `bow` 150 — and are TILE-TARGETED: the sponsor
+picks the landing tile, the drop snaps to the nearest free tile by spiral
+search, and it lands 5 seconds after purchase. One package at a time per
+team: a 60 s lockout separates purchases. The shop opens
 60 s after ignition. Critical properties:
 - Drops are announced ARENA-WIDE with landing tile AND contents.
 - Once landed, ANY agent may loot the crate — contested airdrops are a core
   mechanic; steal enemy deliveries.
-- Sponsor spending never affects score. Gifts to dead recipients are
-  rejected. In league play every team gets an identical scripted schedule; in
-  casual play live human sponsors use a browser console.
+- Sponsor spending never affects score. In league play every team gets an
+  identical scripted schedule; in casual play live human sponsors use a
+  browser console — the only live human input a match ever receives.
 
 ## Communication (public forever)
 
