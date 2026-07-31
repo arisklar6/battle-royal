@@ -46,3 +46,4 @@ nimbledeps
 libcurl.dll
 nim.cfg.local
 _to_delete/
+dist/

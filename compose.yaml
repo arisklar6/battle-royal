@@ -1,0 +1,6 @@
+services:
+  zero-sum:
+    image: coworld-zero-sum:latest
+    platform: linux/amd64
+    build:
+      context: .
