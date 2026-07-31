@@ -277,6 +277,36 @@ proc runLive(rc: RuntimeConfig) =
           appState.playerTokens.add(tok.getStr())
   let demoMode = original{"demo_script"}.getBool(false)
 
+  # Player-connect grace (Paint Arena idiom, hosted k8s pods cold-start
+  # slowly): when the config carries a full token set, hold the match until
+  # every seat has connected or the grace deadline passes. Pure wall-clock
+  # boundary BEFORE tick 0 — the sim itself stays deterministic.
+  let connectGraceSeconds = original{"player_connect_timeout_seconds"}.getInt(180)
+  var expectSeats = false
+  {.gcsafe.}:
+    withLock appState.lock:
+      expectSeats = appState.playerTokens.len == 16
+  if expectSeats and connectGraceSeconds > 0:
+    let graceDeadline = getMonoTime() + initDuration(seconds = connectGraceSeconds)
+    var waitLast = getMonoTime()
+    while getMonoTime() < graceDeadline:
+      var connected = 0
+      {.gcsafe.}:
+        withLock appState.lock:
+          for i in 0 .. 15:
+            if appState.slotConnected[i]:
+              inc connected
+      if connected == 16:
+        break
+      runFrameLimiter(waitLast)
+    var connected = 0
+    {.gcsafe.}:
+      withLock appState.lock:
+        for i in 0 .. 15:
+          if appState.slotConnected[i]:
+            inc connected
+    echo "match starting with ", connected, "/16 seats connected"
+
   var last = getMonoTime()
   var echoedTalks = 0
   var echoedGifts = 0

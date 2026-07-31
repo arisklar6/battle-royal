@@ -30,6 +30,13 @@ CONFIG_SCHEMA = {
                            "(recorded in results and the replay's effective config).",
         },
         "max_ticks": {"type": "integer", "minimum": 100, "maximum": 20000},
+        "player_connect_timeout_seconds": {
+            "type": "integer", "minimum": 0, "maximum": 600,
+            "description": "Wall-clock grace before the countdown starts: the "
+                           "game waits until all 16 seats connect or this many "
+                           "seconds pass (default 180). Pre-tick-0 boundary; "
+                           "the simulation itself stays deterministic.",
+        },
         "freeze_ticks": {"type": "integer", "minimum": 48, "maximum": 480},
         "stat_budget": {"type": "integer", "minimum": 4, "maximum": 40},
         "zone": {
