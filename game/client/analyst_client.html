@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Zero Sum - Analyst Desk</title>
+<style>
+  :root { --bg:#0B0C10; --panel:#1F2833; --teal:#66FCF1; --gold:#C5A059;
+          --crim:#FF0055; --toxic:#39FF14; --hurt:#FFA500; --text:#C5C6C7; }
+  body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
+         margin: 0; padding: 12px; }
+  h2 { color: var(--teal); font-size: 13px; letter-spacing: 3px; margin: 0 0 6px 0;
+       border-bottom: 1px solid #2b3a4a; padding-bottom: 3px; }
+  #grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
+  .panel { background: var(--panel); border: 1px solid #2b3a4a; border-radius: 3px; padding: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { color: #56606a; text-align: left; font-weight: normal; padding: 2px 4px; }
+  td { padding: 2px 4px; border-top: 1px solid #14181f; }
+  tr.dead td { color: #4a525a; }
+  .team-chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+               margin-right: 4px; vertical-align: -1px; }
+  .gold { color: var(--gold); } .crim { color: var(--crim); }
+  .toxic { color: var(--toxic); } .tealc { color: var(--teal); }
+  #topbar { display: flex; gap: 24px; align-items: baseline; margin-bottom: 10px; }
+  #clock { font-size: 26px; color: var(--teal); letter-spacing: 2px; }
+  #alive { font-size: 18px; color: var(--gold); }
+  #zonebox { font-size: 13px; }
+  #ticker { height: 260px; overflow-y: auto; font-size: 11px; }
+  #ticker .row { padding: 2px 0; border-bottom: 1px solid #14181f; }
+  #ticker .steal { color: var(--crim); font-weight: bold; }
+  #matrix td, #matrix th { text-align: center; }
+  #matrixNote { font-size: 10px; color: #56606a; margin-top: 4px; }
+  #finale { position: fixed; inset: 0; display: none; align-items: center;
+            justify-content: center; background: rgba(255,0,85,0.12);
+            pointer-events: none; z-index: 10; }
+  #finale div { font-size: 64px; color: var(--crim); letter-spacing: 12px;
+                text-shadow: 0 0 30px rgba(255,0,85,0.8); font-weight: bold; }
+  #winner { position: fixed; inset: 0; display: none; align-items: center;
+            justify-content: center; pointer-events: none; z-index: 11; }
+  #winner div { font-size: 48px; color: var(--gold); letter-spacing: 8px;
+                text-shadow: 0 0 24px rgba(197,160,89,0.9); }
+  #hpbar { height: 4px; background: #0d1117; }
+  #hpbar i { display: block; height: 100%; }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <span id="clock">--:--</span>
+  <span id="alive"></span>
+  <span id="zonebox"></span>
+  <span id="status" style="color:#56606a">connecting&hellip;</span>
+</div>
+<div id="grid">
+  <div class="panel">
+    <h2>LIVE PROJECTED SCOREBOARD</h2>
+    <table id="board"><thead><tr>
+      <th></th><th>AGENT</th><th>HP</th><th>K</th><th>DMG</th><th>PLACE</th><th>PROJ</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+  <div class="panel">
+    <h2>SOFTCOIN TICKER</h2>
+    <table id="budgets"><tbody></tbody></table>
+    <div id="ticker"></div>
+  </div>
+  <div class="panel">
+    <h2>STAT MATRIX <span id="lockTag" class="crim"></span></h2>
+    <table id="matrix"><thead><tr>
+      <th>AGENT</th><th>SPD</th><th>STR</th><th>INT</th><th>ATH</th>
+    </tr></thead><tbody></tbody></table>
+    <div id="matrixNote"></div>
+  </div>
+</div>
+<div id="finale"><div>CIVIL WAR</div></div>
+<div id="winner"><div></div></div>
+<script>
+const pageUrl = new URL(window.location.href);
+function websocketAddress(path) {
+  const address = pageUrl.searchParams.get('address');
+  const target = new URL(address || window.location.href, window.location.href);
+  if (target.protocol === 'http:') target.protocol = 'ws:';
+  if (target.protocol === 'https:') target.protocol = 'wss:';
+  if (!address) target.pathname = target.pathname.replace(/\/client\/analyst$/, path);
+  target.hash = '';
+  return target;
+}
+const TEAM = {A:'#FF7F8C', B:'#45DCFF', C:'#FFBF00', D:'#7A3CDC',
+              E:'#DC143C', F:'#EBF5FF', G:'#FF6E1E', H:'#E15AEB'};
+const el = id => document.getElementById(id);
+let finaleShown = false, tickerKeys = new Set();
+function fmtT(tick) {
+  const s = Math.floor(tick / 24);
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+const ws = new WebSocket(websocketAddress('/analyst'));
+ws.onopen = () => { el('status').textContent = 'LIVE'; el('status').style.color = '#39FF14'; };
+ws.onclose = () => { el('status').textContent = 'FEED CLOSED'; el('status').style.color = '#FF0055'; };
+ws.onmessage = (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.type !== 'analyst') return;
+  el('clock').textContent = fmtT(m.tick);
+  el('alive').textContent = m.alive + ' ALIVE';
+  const z = m.zone;
+  el('zonebox').innerHTML = 'RING <span class="' + (z.damage_per_s >= 8 ? 'crim' : 'tealc') + '">r=' + z.radius + '</span> ' + z.damage_per_s + ' DMG/s';
+
+  // scoreboard: sort by projected score desc, then placement
+  const rows = [...m.agents].sort((a, b) => b.projected_score - a.projected_score || a.placement - b.placement);
+  el('board').tBodies[0].innerHTML = rows.map(a => {
+    const band = a.hp > 66 ? '#39FF14' : a.hp >= 33 ? '#FFA500' : '#FF0055';
+    return `<tr class="${a.alive ? '' : 'dead'}">
+      <td><span class="team-chip" style="background:${TEAM[a.team]}"></span>${a.team}</td>
+      <td>P${a.slot} ${a.name || ''}</td>
+      <td>${a.alive ? a.hp + '<div id="hpbar"><i style="width:' + a.hp + '%;background:' + band + '"></i></div>' : '<span class="crim">✝ ' + fmtT(a.death_tick) + '</span>'}</td>
+      <td>${a.kills}</td><td>${a.damage_dealt}</td>
+      <td>${a.placement}</td><td class="gold"><b>${a.projected_score}</b></td>
+    </tr>`;
+  }).join('');
+
+  // budgets + ticker
+  el('budgets').tBodies[0].innerHTML = '<tr>' + m.teams.map(t =>
+    `<td><span class="team-chip" style="background:${TEAM[t.team]}"></span>${t.team} <b class="gold">${t.budget}</b></td>`).join('') + '</tr>';
+  const tick = el('ticker');
+  for (const g of m.ticker) {
+    const key = 'g' + g.tick + g.team + g.item + g.recipient_slot;
+    if (tickerKeys.has(key)) continue;
+    tickerKeys.add(key);
+    const d = document.createElement('div'); d.className = 'row';
+    d.innerHTML = g.status === 'accepted'
+      ? `[${fmtT(g.tick)}] <span style="color:${TEAM[g.team]}">${g.team}</span> BUYS <span class="gold">${g.item.toUpperCase()}</span> −${g.cost} SC → P${g.recipient_slot} <span style="color:#56606a">(bal ${g.balance})</span>`
+      : `[${fmtT(g.tick)}] <span style="color:${TEAM[g.team]}">${g.team}</span> <span class="crim">REJECTED</span> ${g.item} (${g.reason})`;
+    tick.prepend(d);
+  }
+  for (const ic of m.interceptions) {
+    const key = 'i' + ic.tick + ic.item + ic.looter_slot;
+    if (tickerKeys.has(key)) continue;
+    tickerKeys.add(key);
+    const d = document.createElement('div'); d.className = 'row';
+    d.innerHTML = ic.stolen
+      ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${ic.item.toUpperCase()} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
+      : `[${fmtT(ic.tick)}] ${ic.item.toUpperCase()} secured by P${ic.looter_slot < 0 ? '?' : ic.looter_slot}`;
+    tick.prepend(d);
+  }
+
+  // stat matrix: hidden until the alloc deadline, immutable after
+  if (m.stats_locked) {
+    el('lockTag').textContent = '· LOCKED';
+    el('matrix').tBodies[0].innerHTML = m.agents.map(a =>
+      `<tr class="${a.alive ? '' : 'dead'}">
+        <td style="text-align:left"><span class="team-chip" style="background:${TEAM[a.team]}"></span>P${a.slot}</td>
+        <td>${a.stats.speed}</td><td>${a.stats.strength}</td>
+        <td>${a.stats.intelligence}</td><td>${a.stats.athleticism}</td>
+      </tr>`).join('');
+    el('matrixNote').textContent = 'Immutable since t=' + m.alloc_deadline_tick + ' (' + fmtT(m.alloc_deadline_tick) + ')';
+  } else {
+    el('matrixNote').textContent = 'Allocations seal at t=' + m.alloc_deadline_tick + ' (' + fmtT(m.alloc_deadline_tick) + ')';
+  }
+
+  // FINALE overlay
+  if (m.finale && !finaleShown) {
+    finaleShown = true;
+    el('finale').style.display = 'flex';
+    setTimeout(() => { el('finale').style.display = 'none'; }, 6000);
+  }
+  if (m.winner_slot >= 0) {
+    const w = m.agents.find(a => a.slot === m.winner_slot);
+    el('winner').firstElementChild.textContent = 'WINNER  P' + m.winner_slot + (w ? ' · TEAM ' + w.team : '');
+    el('winner').style.display = 'flex';
+  }
+};
+</script>
+</body>
+</html>

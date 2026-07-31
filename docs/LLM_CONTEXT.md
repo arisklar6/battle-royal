@@ -94,9 +94,10 @@ shooter); zone/mines/hazards credit nobody. Mutual kills count for both.
 ## Sponsors (softcoin economy)
 
 Each team has a fixed softcoin budget (300 league-standard). Gifts are bought
-from a fixed catalog (rations 20, knives/arrows 30, darts 35, net 50,
-first-aid 60, backpack 70, camo 80, spear 90, blowgun 100, sword 120, bow
-150) and AIRDROP near the recipient 5 seconds after purchase. The shop opens
+from a fixed catalog — exact wire keys: `rations` 20, `knives` 30, `arrows`
+30, `darts` 35, `net` 50, `first_aid` 60, `backpack` 70, `camouflage` 80,
+`spear` 90, `blowgun` 100, `sword` 120, `bow` 150 — and AIRDROP near the
+recipient 5 seconds after purchase. The shop opens
 60 s after ignition. Critical properties:
 - Drops are announced ARENA-WIDE with landing tile AND contents.
 - Once landed, ANY agent may loot the crate — contested airdrops are a core

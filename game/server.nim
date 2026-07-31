@@ -11,7 +11,7 @@ import std/[json, locks, monotimes, os, strutils, sysrand, tables, times]
 import mummy
 import bitworld/[replays, runtime, spriteprotocol]
 import zero_sum/[prng, types, arena, sim, obs]
-import render, bundle, demo_script, transcript
+import render, bundle, demo_script, transcript, analyst
 
 const
   GlobalClientHtml = staticRead("client/global_client.html")
@@ -20,6 +20,7 @@ const
 
 const SponsorClientHtml = staticRead("client/sponsor_client.html")
 const PlayerClientHtml = staticRead("client/player_client.html")
+const AnalystClientHtml = staticRead("client/analyst_client.html")
 
 type
   ViewerState = object
@@ -45,6 +46,7 @@ type
     slotConnected: array[16, bool]
     playerQueue: seq[(int, string)]      # (slot, payload)
     playerJoined: seq[int]               # slots needing player_config
+    analysts: Table[WebSocket, bool]     # /analyst JSON telemetry feed
 
 var appState: AppState
 
@@ -79,7 +81,8 @@ proc isWsHandshake(request: Request): bool =
 proc httpHandler(request: Request) =
   let path = request.uri.split('?')[0]
   var headers: HttpHeaders
-  if request.httpMethod == "GET" and path in ["/global", "/replay", "/admin"] and
+  if request.httpMethod == "GET" and
+     path in ["/global", "/replay", "/admin", "/analyst"] and
      not request.isWsHandshake():
     headers["Content-Type"] = "text/plain"
     request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
@@ -89,6 +92,12 @@ proc httpHandler(request: Request) =
     {.gcsafe.}:
       withLock appState.lock:
         appState.viewers[websocket] = ViewerState()
+    return
+  if request.httpMethod == "GET" and path == "/analyst":
+    let websocket = request.upgradeToWebSocket()
+    {.gcsafe.}:
+      withLock appState.lock:
+        appState.analysts[websocket] = true
     return
   if request.httpMethod == "GET" and path == "/player":
     # slot+token auth (platform contract: bad token MUST fail the upgrade)
@@ -150,6 +159,9 @@ proc httpHandler(request: Request) =
   of "/client/player":
     headers["Content-Type"] = "text/html; charset=utf-8"
     request.respond(200, headers, PlayerClientHtml)
+  of "/client/analyst":
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    request.respond(200, headers, AnalystClientHtml)
   of "/client/sponsor":
     {.gcsafe.}:
       withLock appState.lock:
@@ -185,6 +197,7 @@ proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
       withLock appState.lock:
         appState.closed.add(websocket)
         appState.sponsors.del(websocket)
+        appState.analysts.del(websocket)
         if websocket in appState.players:
           let slot = appState.players[websocket]
           if appState.slotConnected[slot] and
@@ -229,6 +242,23 @@ proc broadcast(r: var Renderer, s: Sim, update: seq[uint8]) =
         withLock appState.lock:
           appState.viewers.del(ws)
 
+proc broadcastAnalyst(s: Sim, t: AnalystTracker) =
+  var conns: seq[WebSocket] = @[]
+  {.gcsafe.}:
+    withLock appState.lock:
+      for ws in appState.analysts.keys:
+        conns.add(ws)
+  if conns.len == 0:
+    return
+  let payload = analystJson(s, t)
+  for ws in conns:
+    try:
+      ws.send(payload, TextMessage)
+    except CatchableError:
+      {.gcsafe.}:
+        withLock appState.lock:
+          appState.analysts.del(ws)
+
 var
   httpServer: Server
   serverThread: Thread[ServerThreadArgs]
@@ -236,6 +266,7 @@ var
 proc startServer(rc: RuntimeConfig) =
   initLock(appState.lock)
   appState.viewers = initTable[WebSocket, ViewerState]()
+  appState.analysts = initTable[WebSocket, bool]()
   httpServer = newServer(httpHandler, websocketHandler,
                          workerThreads = 4, tcpNoDelay = true)
   createThread(serverThread, serverThreadProc, ServerThreadArgs(
@@ -264,6 +295,7 @@ proc runLive(rc: RuntimeConfig) =
   let cfg = parseSimConfig(original, mintSeedFromOs)
   var s = initSim(cfg)
   var r: Renderer
+  var tracker: AnalystTracker
   startServer(rc)
   {.gcsafe.}:
     withLock appState.lock:
@@ -467,6 +499,9 @@ proc runLive(rc: RuntimeConfig) =
     while echoedTalks < s.talkLog.len:
       echo "CHAT ", talkLine(s, s.talkLog[echoedTalks])
       inc echoedTalks
+    tracker.track(s)
+    if s.tick mod 6 == 0 or s.phase == phEnded:
+      broadcastAnalyst(s, tracker)
     r.broadcast(s, r.updatePacket(s))
     runFrameLimiter(last)
 
@@ -536,6 +571,8 @@ proc runReplay(rc: RuntimeConfig) =
     doAssert not cfg.seedWasMinted, "effective config must carry the seed"
     var s = initReplaySim(cfg)
     var r: Renderer
+    var tracker: AnalystTracker
+    tracker.reset()
     r.resetForLoop()
     {.gcsafe.}:
       withLock appState.lock:
@@ -558,6 +595,9 @@ proc runReplay(rc: RuntimeConfig) =
         echo "HASH MISMATCH at tick ", s.tick - 1
         if rc.mismatchQuit:
           quit(1)
+      tracker.track(s)
+      if s.tick mod 6 == 0 or s.phase == phEnded:
+        broadcastAnalyst(s, tracker)
       r.broadcast(s, r.updatePacket(s))
       runFrameLimiter(last)
     for _ in 0 ..< 48:                          # end-of-loop beat
