@@ -2,27 +2,58 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Zero Sum - Player</title>
+<title>Zero Sum - Tactical</title>
 <style>
-  body { font-family: monospace; background: #14170f; color: #e8e8e0; margin: 0; padding: 12px; display: flex; gap: 16px; }
+  :root { --bg:#0B0C10; --panel:#1F2833; --teal:#66FCF1; --gold:#C5A059;
+          --crim:#FF0055; --toxic:#39FF14; --hurt:#FFA500; --text:#C5C6C7; }
+  body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
+         margin: 0; padding: 10px; display: flex; gap: 12px; }
   #left { flex: 0 0 auto; }
-  canvas { border: 1px solid #444; image-rendering: pixelated; }
-  #hud { margin: 6px 0; color: #d4af37; }
-  #keys { color: #888; font-size: 12px; max-width: 300px; }
-  #chatlog { font-size: 12px; height: 120px; overflow-y: auto; border: 1px solid #333; padding: 4px; width: 300px; white-space: pre-wrap; }
-  input { font-family: monospace; background: #232a1c; color: #e8e8e0; border: 1px solid #565; width: 230px; }
-  #obs { font-size: 10px; white-space: pre; max-height: 90vh; overflow: auto; color: #9a9; }
+  canvas { border: 1px solid var(--panel); image-rendering: pixelated; display: block; }
+  .panel { background: var(--panel); border: 1px solid #2b3a4a; border-radius: 3px;
+           padding: 6px 8px; margin-bottom: 8px; }
+  #right { flex: 0 0 300px; display: flex; flex-direction: column; min-height: 96vh; }
+  #hud { color: var(--teal); font-size: 13px; letter-spacing: 1px; }
+  #hpbarWrap { background: #0d1117; height: 14px; border: 1px solid #2b3a4a; margin: 4px 0; }
+  #hpbar { height: 100%; width: 100%; background: var(--toxic); transition: width .2s; }
+  .tag { display: inline-block; padding: 1px 5px; margin: 1px 2px; font-size: 10px;
+         border-radius: 2px; color: #0B0C10; font-weight: bold; }
+  .tag.poison { background: var(--toxic); } .tag.netted { background: #c0c8d0; }
+  .tag.channeling { background: var(--teal); } .tag.camo_revealed { background: var(--crim); color:#fff; }
+  #stats, #inv, #zoneinfo, #ares { font-size: 11px; }
+  #inv b { color: var(--gold); }
+  #keys { color: #56606a; font-size: 10px; }
+  #chatlog { font-size: 11px; flex: 1 1 auto; min-height: 90px; overflow-y: auto;
+             white-space: pre-wrap; }
+  input { font-family: inherit; background: #0d1117; color: var(--text);
+          border: 1px solid #2b3a4a; width: 100%; box-sizing: border-box; padding: 3px; }
+  .crit { color: var(--crim); } .warn { color: var(--hurt); } .ok { color: var(--toxic); }
+  #banner { position: absolute; left: 240px; top: 260px; font-size: 28px;
+            color: var(--gold); text-shadow: 0 0 12px #000; letter-spacing: 4px;
+            pointer-events: none; display: none; }
 </style>
 </head>
 <body>
-<div id="left">
-  <div id="hud">connecting&hellip;</div>
-  <canvas id="cv" width="480" height="480"></canvas>
-  <div id="keys">arrows/QWEASDZXC move (8-dir) &middot; shift+dir attack &middot; G pickup &middot; F interact &middot; 1-4 use pack slot</div>
-  <div id="chatlog"></div>
-  <input id="chat" placeholder="talk (enter: broadcast, /t team, /d N dm)">
+<div id="left" style="position:relative">
+  <canvas id="cv" width="672" height="672"></canvas>
+  <div id="banner"></div>
+  <div id="keys" class="panel">arrows/QWEASDZXC move &middot; shift+dir attack &middot; G pickup &middot; F forage &middot; 1-4 use pack &middot; H use hand item</div>
 </div>
-<div id="obs"></div>
+<div id="right">
+  <div class="panel">
+    <div id="hud">CONNECTING&hellip;</div>
+    <div id="hpbarWrap"><div id="hpbar"></div></div>
+    <div id="tags"></div>
+    <div id="stats"></div>
+  </div>
+  <div class="panel" id="inv"></div>
+  <div class="panel" id="zoneinfo"></div>
+  <div class="panel" id="ares"></div>
+  <div class="panel" style="flex:1 1 auto; display:flex; flex-direction:column">
+    <div id="chatlog"></div>
+    <input id="chat" placeholder="talk (enter: broadcast, /t team, /d N dm)">
+  </div>
+</div>
 <script>
 // WS contract (DESIGN §11): ?address= override, else same-origin rewrite.
 const pageUrl = new URL(window.location.href);
@@ -39,62 +70,216 @@ function websocketAddress(path) {
   target.hash = '';
   return target;
 }
-const cv = document.getElementById('cv');
-const ctx = cv.getContext('2d');
-const hud = document.getElementById('hud');
-const chatlog = document.getElementById('chatlog');
-const obsEl = document.getElementById('obs');
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const el = id => document.getElementById(id);
 let cfg = null;
-const TEAM = ['#dc3c3c','#466ee6','#46be5a','#e6c83c','#a050dc','#46c8d2','#f08c32','#f06eb4'];
+// Team accents (DESIGN §21.3) — index = slot>>1
+const TEAM = ['#FF7F8C','#45DCFF','#FFBF00','#7A3CDC','#DC143C','#EBF5FF','#FF6E1E','#E15AEB'];
+const BAND = { healthy: '#39FF14', hurt: '#FFA500', critical: '#FF0055' };
+const WEAPON_GLYPH = { sword:'S', spear:'P', bow:'B', knives:'K', blowgun:'G', net:'N',
+                       first_aid:'+', rations:'R', backpack:'Δ', camo:'C', arrows:'a', darts:'d' };
+const ITEM_GLYPH = { sword:'⚔', spear:'†', bow:'D', arrows:'➹', knives:'✕', blowgun:'~',
+                     darts:'·', net:'#', first_aid:'✚', rations:'▲', backpack:'◘', camo:'▒' };
+const S = 14;             // px per tile
+// LOS mirror of obs.nim losClear: Bresenham, blocked by '#'/'R'/'F'
+let blockMap = null;
+function losClear(ax, ay, bx, by) {
+  let x0 = ax, y0 = ay;
+  const dx = Math.abs(bx - x0), dy = -Math.abs(by - y0);
+  const sx = x0 < bx ? 1 : -1, sy = y0 < by ? 1 : -1;
+  let err = dx + dy;
+  while (true) {
+    if (!(x0 === ax && y0 === ay) && !(x0 === bx && y0 === by)) {
+      if (blockMap[y0][x0]) return false;
+    }
+    if (x0 === bx && y0 === by) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+  return true;
+}
+// crosshatch pattern for LOS shadow
+const hatch = document.createElement('canvas'); hatch.width = hatch.height = 6;
+{ const h = hatch.getContext('2d');
+  h.strokeStyle = 'rgba(102,252,241,0.14)'; h.lineWidth = 1;
+  h.beginPath(); h.moveTo(0, 6); h.lineTo(6, 0); h.stroke(); }
+let hatchPat = null;
+
 const ws = new WebSocket(websocketAddress('/player'));
-ws.onopen = () => { hud.textContent = 'connected - allocating 6/6/4/4';
+ws.onopen = () => { el('hud').textContent = 'CONNECTED — ALLOC 6/6/4/4';
   ws.send(JSON.stringify({type:'allocate_stats', speed:6, strength:6, intelligence:4, athleticism:4})); };
-ws.onclose = () => { hud.textContent = 'disconnected'; };
+ws.onclose = () => { el('hud').textContent = 'DISCONNECTED'; };
+let bannerUntil = 0;
+function showBanner(txt, color) {
+  const b = el('banner'); b.textContent = txt; b.style.color = color || '#C5A059';
+  b.style.display = 'block'; bannerUntil = Date.now() + 4000;
+  setTimeout(() => { if (Date.now() >= bannerUntil) b.style.display = 'none'; }, 4100);
+}
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
-  if (m.type === 'player_config') { cfg = m; return; }
-  if (m.type === 'final') { hud.textContent = `FINAL place=${m.placement} score=${m.score} winner=P${m.winner_slot}`; return; }
+  if (m.type === 'player_config') {
+    cfg = m;
+    cfg.itemDefs = {};
+    for (const d of cfg.items) cfg.itemDefs[d.id] = d;
+    blockMap = cfg.arena.static_map.map(row => [...row].map(ch => ch === '#' || ch === 'R' || ch === 'F'));
+    hatchPat = ctx.createPattern(hatch, 'repeat');
+    return;
+  }
+  if (m.type === 'final') {
+    el('hud').textContent = `FINAL  PLACE ${m.placement}  SCORE ${m.score}  WINNER P${m.winner_slot}`;
+    showBanner(m.reason === 'winner' ? 'VICTORY' : 'ELIMINATED',
+               m.reason === 'winner' ? '#C5A059' : '#FF0055');
+    return;
+  }
   if (m.type !== 'observation' || !cfg) return;
-  obsEl.textContent = JSON.stringify(m, null, 1).slice(0, 4000);
-  hud.textContent = `t=${m.tick} ${m.phase}  HP ${m.you.hp}  hand ${m.you.hand.id}` +
-    (m.you.effects.length ? '  [' + m.you.effects.map(e=>e.id).join(',') + ']' : '');
+  const you = m.you, N = cfg.arena.size;
+  const vr = 5 + ((you.stats.intelligence + 1) >> 1);
+  const [px, py] = you.pos;
+
+  // ---- side panels ----
+  const secs = Math.floor(m.tick / 24);
+  el('hud').textContent = `P${cfg.slot} ${String(m.phase).replace('ph','').toUpperCase()}  T ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}  HP ${you.hp}  K ${you.kills}`;
+  const band = you.hp > 66 ? 'healthy' : you.hp >= 33 ? 'hurt' : 'critical';
+  const bar = el('hpbar'); bar.style.width = you.hp + '%'; bar.style.background = BAND[band];
+  el('tags').innerHTML = you.effects.map(e =>
+    `<span class="tag ${e.id}">${e.id.toUpperCase()}${e.ticks_left ? ' ' + Math.ceil(e.ticks_left/24) + 's' : ''}</span>`).join('');
+  el('stats').textContent = `SPD ${you.stats.speed}  STR ${you.stats.strength}  INT ${you.stats.intelligence}  ATH ${you.stats.athleticism}   VIS ${vr}`;
+  const dur = you.hand.durability !== undefined ? ` (${you.hand.durability})` : '';
+  const n = you.hand.n !== undefined ? ` ×${you.hand.n}` : '';
+  let inv = `HAND <b>${you.hand.id}</b>${dur}${n}   BODY <b>${you.body || '—'}</b><br>`;
+  (you.pack || []).forEach((p, i) => {
+    inv += `[${i+1}] ` + (p ? `<b>${p.id}</b>${p.n > 1 ? ' ×' + p.n : ''}${p.durability !== undefined ? ' (' + p.durability + ')' : ''}` : '·') + '  ';
+  });
+  el('inv').innerHTML = inv;
+  const zdps = m.zone.damage_per_s;
+  el('zoneinfo').innerHTML =
+    `RING <span class="${zdps >= 8 ? 'crit' : zdps > 0 ? 'warn' : 'ok'}">r=${m.zone.radius} → ${m.zone.next_radius}</span>  DMG ${zdps}/s` +
+    (m.zone.shrink_tick > m.tick ? `  SHRINK IN ${Math.ceil((m.zone.shrink_tick - m.tick)/24)}s` : '');
+  el('ares').textContent = `LAST: ${you.action_result || '—'}` +
+    (you.damage_taken.length ? '   HIT: ' + you.damage_taken.map(d => `${d.source} ${d.amount}`).join(', ') : '');
   for (const c of m.chat) {
-    chatlog.textContent = `[${c.tick}] P${c.from} (${c.channel}): ${c.text}\n` + chatlog.textContent;
+    el('chatlog').textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : c.channel === 'team' ? '·team' : ''}] ${c.text}\n` + el('chatlog').textContent;
   }
-  // draw: static map + visible entities, 10px tiles
-  const S = 10, N = cfg.arena.size;
-  ctx.fillStyle = '#0c0e0a'; ctx.fillRect(0, 0, cv.width, cv.height);
+  for (const e of m.events) {
+    if (e.kind === 'ignition') showBanner('IGNITION', '#C5A059');
+    else if (e.kind === 'finale') showBanner('CIVIL WAR', '#FF0055');
+    else if (e.kind === 'zone_warning') showBanner('RING SHRINKS', '#FFA500');
+  }
+
+  // ---- tactical map ----
+  ctx.fillStyle = '#0B0C10'; ctx.fillRect(0, 0, cv.width, cv.height);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = x - px, dy = y - py;
+    const inRadius = dx*dx + dy*dy <= vr*vr;
+    const seen = inRadius && losClear(px, py, x, y);
     const t = cfg.arena.static_map[y][x];
-    if (t === '#') ctx.fillStyle = '#5c5c64';
-    else if (t === 'F') ctx.fillStyle = '#9c9ca6';
-    else if (t === 'R') ctx.fillStyle = '#7a5838';
-    else if (t === 'P') ctx.fillStyle = '#8a7020';
-    else if (t === 'B') ctx.fillStyle = '#347636';
-    else continue;
-    ctx.fillRect(x * S, y * S, S, S);
+    // terrain (public in player_config): full color when seen, ghost elsewhere
+    let col = null;
+    if (t === '#') col = '#3a4552'; else if (t === 'F') col = '#4a5867';
+    else if (t === 'R') col = '#5a4a3a'; else if (t === 'P') col = '#C5A059';
+    else if (t === 'B') col = '#1e5c28';
+    if (seen) {
+      ctx.fillStyle = '#12141b'; ctx.fillRect(x*S, y*S, S, S);
+      if (col) { ctx.fillStyle = col; ctx.fillRect(x*S, y*S, S, S); }
+      ctx.strokeStyle = 'rgba(31,40,51,0.6)'; ctx.strokeRect(x*S+.5, y*S+.5, S-1, S-1);
+    } else {
+      // black matte fog; ghost terrain at low alpha
+      if (col) { ctx.globalAlpha = 0.13; ctx.fillStyle = col; ctx.fillRect(x*S, y*S, S, S); ctx.globalAlpha = 1; }
+      if (inRadius) { ctx.fillStyle = hatchPat; ctx.fillRect(x*S, y*S, S, S); } // LOS shadow crosshatch
+    }
   }
-  // zone circle
-  ctx.strokeStyle = '#e05820'; ctx.beginPath();
-  ctx.arc(m.zone.center[0] * S + S/2, m.zone.center[1] * S + S/2, m.zone.radius * S, 0, 7);
-  ctx.stroke();
-  for (const it of m.visible.items) { ctx.fillStyle = '#cfc26a'; ctx.fillRect(it.pos[0]*S+2, it.pos[1]*S+2, S-4, S-4); }
-  for (const p of m.visible.pods) { ctx.fillStyle = p.landed ? '#eee' : '#f04040'; ctx.fillRect(p.pos[0]*S+1, p.pos[1]*S+1, S-2, S-2); }
-  for (const a of m.visible.agents) { ctx.fillStyle = TEAM[Math.floor(a.slot/2)]; ctx.fillRect(a.pos[0]*S, a.pos[1]*S, S, S); }
-  ctx.fillStyle = '#fff'; ctx.fillRect(m.you.pos[0]*S+1, m.you.pos[1]*S+1, S-2, S-2);
-  ctx.strokeStyle = TEAM[Math.floor(cfg.slot/2)]; ctx.strokeRect(m.you.pos[0]*S, m.you.pos[1]*S, S, S);
+  // zone ring: teal plasma, crimson once crit
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = zdps >= 8 ? '#FF0055' : '#66FCF1';
+  ctx.beginPath(); ctx.arc(m.zone.center[0]*S + S/2, m.zone.center[1]*S + S/2, m.zone.radius*S, 0, 7); ctx.stroke();
+  if (m.zone.next_radius < m.zone.radius) {
+    ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(255,0,85,0.5)';
+    ctx.beginPath(); ctx.arc(m.zone.center[0]*S + S/2, m.zone.center[1]*S + S/2, m.zone.next_radius*S, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.lineWidth = 1;
+  ctx.font = '9px Consolas'; ctx.textBaseline = 'top';
+  // bushes: charge integers
+  for (const b of m.visible.bushes) {
+    ctx.fillStyle = '#2e8c3c'; ctx.fillRect(b.pos[0]*S+2, b.pos[1]*S+2, S-4, S-4);
+    ctx.fillStyle = '#fff'; ctx.fillText(String(b.charges), b.pos[0]*S+5, b.pos[1]*S+3);
+  }
+  // ground items: symbol + count
+  for (const it of m.visible.items) {
+    ctx.fillStyle = '#C5A059';
+    ctx.fillText((ITEM_GLYPH[it.id] || '?') + (it.n > 1 ? it.n : ''), it.pos[0]*S+2, it.pos[1]*S+3);
+  }
+  // pods: gold diamond inbound / gold crate landed, item label
+  for (const p of m.visible.pods) {
+    const cx = p.pos[0]*S + S/2, cy = p.pos[1]*S + S/2;
+    ctx.strokeStyle = '#C5A059'; ctx.fillStyle = p.landed ? '#C5A059' : 'rgba(197,160,89,0.25)';
+    ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx+6, cy); ctx.lineTo(cx, cy+6); ctx.lineTo(cx-6, cy);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#C5A059'; ctx.fillText(p.item, cx - 3*p.item.length, cy - 14);
+  }
+  // projectiles: tracer + direction tail
+  const DIRV = {N:[0,-1],NE:[1,-1],E:[1,0],SE:[1,1],S:[0,1],SW:[-1,1],W:[-1,0],NW:[-1,-1]};
+  for (const p of m.visible.projectiles) {
+    const cx = p.pos[0]*S + S/2, cy = p.pos[1]*S + S/2;
+    const v = DIRV[p.dir] || [0,0];
+    ctx.strokeStyle = 'rgba(235,245,255,0.6)';
+    ctx.beginPath(); ctx.moveTo(cx - v[0]*8, cy - v[1]*8); ctx.lineTo(cx, cy); ctx.stroke();
+    ctx.fillStyle = '#EBF5FF'; ctx.fillRect(cx-1, cy-1, 3, 3);
+  }
+  // enemy/teammate tokens: team accent core, hp-band ring, weapon glyph, status pips
+  for (const a of m.visible.agents) {
+    const cx = a.pos[0]*S + S/2, cy = a.pos[1]*S + S/2;
+    const mate = (a.slot >> 1) === (cfg.slot >> 1);
+    ctx.fillStyle = TEAM[a.slot >> 1];
+    ctx.beginPath();
+    if (mate) { ctx.moveTo(cx, cy-6); ctx.lineTo(cx+6, cy); ctx.lineTo(cx, cy+6); ctx.lineTo(cx-6, cy); ctx.closePath(); }
+    else ctx.arc(cx, cy, 5, 0, 7);
+    ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = BAND[a.hp_band] || '#fff';
+    ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, 7); ctx.stroke(); ctx.lineWidth = 1;
+    if (a.hand && a.hand !== 'none') {
+      ctx.fillStyle = '#0B0C10'; ctx.fillText(WEAPON_GLYPH[a.hand] || '?', cx-2.5, cy-4);
+    }
+    let pip = 0;
+    const pips = [];
+    if (a.poisoned) pips.push('#39FF14');
+    if (a.netted) pips.push('#c0c8d0');
+    if (a.channeling) pips.push('#66FCF1');
+    for (const c of pips) { ctx.fillStyle = c; ctx.fillRect(cx - 6 + pip*5, cy - 11, 4, 3); pip++; }
+    ctx.fillStyle = '#C5C6C7'; ctx.fillText('P' + a.slot, cx - 5, cy + 8);
+  }
+  // self token: cyan, cooldown gauges, stacked status tags drawn as pips
+  {
+    const cx = px*S + S/2, cy = py*S + S/2;
+    ctx.strokeStyle = 'rgba(102,252,241,0.35)';
+    ctx.beginPath(); ctx.arc(cx, cy, vr*S, 0, 7); ctx.stroke();   // vision edge
+    ctx.fillStyle = '#66FCF1';
+    ctx.beginPath(); ctx.arc(cx, cy, 5.5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#EBF5FF'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke(); ctx.lineWidth = 1;
+    // cooldown gauges under token: move (cyan) + attack (gold)
+    const mvCd = Math.max(1, 16 - you.stats.speed);
+    const mv = 1 - Math.min(1, you.move_ready_in / mvCd);
+    const atkTotal = (you.hand && cfg.itemDefs[you.hand.id]) ? cfg.itemDefs[you.hand.id].cooldown || 12 : 12;
+    const atk = 1 - Math.min(1, you.attack_ready_in / atkTotal);
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(cx-8, cy+9, 16, 2); ctx.fillRect(cx-8, cy+12, 16, 2);
+    ctx.fillStyle = '#66FCF1'; ctx.fillRect(cx-8, cy+9, 16*mv, 2);
+    ctx.fillStyle = '#C5A059'; ctx.fillRect(cx-8, cy+12, 16*atk, 2);
+  }
 };
 const DIRKEYS = {ArrowUp:'N', ArrowDown:'S', ArrowLeft:'W', ArrowRight:'E',
   q:'NW', w:'N', e:'NE', a:'W', d:'E', z:'SW', x:'S', c:'SE'};
 document.addEventListener('keydown', (ev) => {
-  if (document.activeElement === document.getElementById('chat')) return;
+  if (document.activeElement === el('chat')) return;
   const dir = DIRKEYS[ev.key] || DIRKEYS[ev.key.toLowerCase()];
   if (dir) { ws.send(JSON.stringify({type:'action', do: ev.shiftKey ? 'attack' : 'move', dir})); ev.preventDefault(); }
   else if (ev.key === 'g' || ev.key === 'G') ws.send(JSON.stringify({type:'action', do:'pickup'}));
   else if (ev.key === 'f' || ev.key === 'F') ws.send(JSON.stringify({type:'action', do:'interact'}));
+  else if (ev.key === 'h' || ev.key === 'H') ws.send(JSON.stringify({type:'action', do:'use', slot:-1}));
   else if (ev.key >= '1' && ev.key <= '4') ws.send(JSON.stringify({type:'action', do:'use', slot: Number(ev.key)-1}));
 });
-document.getElementById('chat').addEventListener('keydown', (ev) => {
+el('chat').addEventListener('keydown', (ev) => {
   if (ev.key !== 'Enter') return;
   let text = ev.target.value.trim();
   if (!text) return;
