@@ -301,6 +301,39 @@ proc startServer(rc: RuntimeConfig) =
   httpServer.waitUntilReady()
   echo "zero_sum server on ", rc.host, ":", rc.port
 
+proc serviceWatchers(s: Sim) =
+  ## Read-only /watch mirrors: per-slot observation stream, no inputs.
+  ## Shared by the live and replay loops (replay POV, VISUAL_REDESIGN §5.7).
+  var watchConns: seq[(WebSocket, int)] = @[]
+  var watchFresh: seq[WebSocket] = @[]
+  {.gcsafe.}:
+    withLock appState.lock:
+      for ws, slot in appState.watchers.pairs:
+        watchConns.add((ws, slot))
+      watchFresh = appState.watcherJoined
+      appState.watcherJoined.setLen(0)
+  for ws in watchFresh:
+    for (w, slot) in watchConns:
+      if w == ws:
+        try:
+          ws.send(playerConfigJson(s, slot), TextMessage)
+        except CatchableError:
+          discard
+        break
+  var watchObs: array[16, string]
+  for (ws, slot) in watchConns:
+    try:
+      if s.agents[slot].alive:
+        if watchObs[slot].len == 0:
+          watchObs[slot] = observationJson(s, slot)
+        ws.send(watchObs[slot], TextMessage)
+      elif s.agents[slot].deathTick == s.tick - 1:
+        ws.send(finalJson(s, slot), TextMessage)
+    except CatchableError:
+      {.gcsafe.}:
+        withLock appState.lock:
+          appState.watchers.del(ws)
+
 proc runLive(rc: RuntimeConfig) =
   let original =
     if rc.config.len > 0: parseJson(rc.config)
@@ -510,36 +543,7 @@ proc runLive(rc: RuntimeConfig) =
           conns[i][1].send(finalJson(s, i), TextMessage)
       except CatchableError:
         discard
-    # read-only /watch mirrors: same per-slot observation stream, no inputs
-    var watchConns: seq[(WebSocket, int)] = @[]
-    var watchFresh: seq[WebSocket] = @[]
-    {.gcsafe.}:
-      withLock appState.lock:
-        for ws, slot in appState.watchers.pairs:
-          watchConns.add((ws, slot))
-        watchFresh = appState.watcherJoined
-        appState.watcherJoined.setLen(0)
-    for ws in watchFresh:
-      for (w, slot) in watchConns:
-        if w == ws:
-          try:
-            ws.send(playerConfigJson(s, slot), TextMessage)
-          except CatchableError:
-            discard
-          break
-    var watchObs: array[16, string]
-    for (ws, slot) in watchConns:
-      try:
-        if s.agents[slot].alive:
-          if watchObs[slot].len == 0:
-            watchObs[slot] = observationJson(s, slot)
-          ws.send(watchObs[slot], TextMessage)
-        elif s.agents[slot].deathTick == s.tick - 1:
-          ws.send(finalJson(s, slot), TextMessage)
-      except CatchableError:
-        {.gcsafe.}:
-          withLock appState.lock:
-            appState.watchers.del(ws)
+    serviceWatchers(s)
     # sponsor state push every 24 ticks
     if s.tick mod 24 == 0:
       var sponsorConns: seq[(WebSocket, int)] = @[]
@@ -645,6 +649,8 @@ proc runLive(rc: RuntimeConfig) =
   writeFile("results" / "chat_transcript.txt", buildTranscriptText(s))
   writeFile("results" / "chat_transcript.json", buildTranscriptJson(s))
   writeFile("results" / "sponsor_log.json", sponsorLogJson(s))
+  # full event stream for timeline/highlight tooling (§5.7)
+  writeFile("results" / "events.json", eventHistoryJson(s))
   echo "match over: winner=", s.winnerSlot, " ticks=", s.tick
   quit(0)
 
@@ -684,6 +690,10 @@ proc runReplay(rc: RuntimeConfig) =
           keys.add(ws)
         for ws in keys:
           appState.viewers[ws] = ViewerState(initialized: false)
+        # replay POV: connected watchers get a fresh player_config each loop
+        appState.watcherJoined.setLen(0)
+        for ws in appState.watchers.keys:
+          appState.watcherJoined.add(ws)
     while s.phase != phEnded:
       if s.tick in inputsByTick:
         for (slot, payload) in inputsByTick[s.tick]:
@@ -701,6 +711,7 @@ proc runReplay(rc: RuntimeConfig) =
       tracker.track(s)
       if s.tick mod 6 == 0 or s.phase == phEnded:
         broadcastAnalyst(s, tracker)
+      serviceWatchers(s)
       r.broadcast(s, r.updatePacket(s))
       runFrameLimiter(last)
     for _ in 0 ..< 48:                          # end-of-loop beat

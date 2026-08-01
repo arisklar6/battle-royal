@@ -481,6 +481,15 @@ function clearBlack(){
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
 
+// Zero Sum interpolation: agents (100-215), projectiles (42000-42063),
+// and agent chrome (labels/hp bands 45000-45115) tween across one tick.
+const LerpMs=42;
+const lerpReduced=window.matchMedia&&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function lerpableId(id){
+  return (id>=100&&id<216)||(id>=42000&&id<42064)||(id>=45000&&id<45116);
+}
+
 let drawPending=false;
 function scheduleDraw(){
   if(drawPending)return;
@@ -911,6 +920,7 @@ function layerScreenPos(layer){
 
 function draw(){
   if(!socket||socket.readyState===WebSocket.CLOSED)return;
+  let anyLerping=false;
   ctx.imageSmoothingEnabled=false;
   clearBlack();
   const orderedLayers=[...layers.values()].sort((a,b)=>
@@ -923,20 +933,36 @@ function draw(){
     );
     if(isUiLayer(layer)&&ordered.length===0)continue;
     layer.image.data.fill(0);
+    const nowMs=performance.now();
     for(const object of ordered){
       const sprite=sprites.get(object.spriteId);
       if(!sprite)continue;
-      const startX=Math.max(0,-object.x);
-      const startY=Math.max(0,-object.y);
-      const endX=Math.min(sprite.width,layer.width-object.x);
-      const endY=Math.min(sprite.height,layer.height-object.y);
+      // stepped tween: 3 sub-moves across one tick, then snap
+      let ox=object.x,oy=object.y;
+      if(object.moveAt){
+        const t=(nowMs-object.moveAt)/LerpMs;
+        if(t<1){
+          const q=Math.ceil(Math.max(0.001,t)*3)/3;
+          ox=Math.round(object.fromX+(object.x-object.fromX)*q);
+          oy=Math.round(object.fromY+(object.y-object.fromY)*q);
+          anyLerping=true;
+        }else{
+          object.moveAt=0;
+        }
+      }
+      object.renderX=ox;
+      object.renderY=oy;
+      const startX=Math.max(0,-ox);
+      const startY=Math.max(0,-oy);
+      const endX=Math.min(sprite.width,layer.width-ox);
+      const endY=Math.min(sprite.height,layer.height-oy);
       if(startX>=endX||startY>=endY)continue;
       for(let y=startY;y<endY;y++){
         for(let x=startX;x<endX;x++){
           putSpritePixel(
             layer,
-            object.x+x,
-            object.y+y,
+            ox+x,
+            oy+y,
             sprite,
             (y*sprite.width+x)*4
           );
@@ -953,6 +979,7 @@ function draw(){
       }
     }
   }
+  if(anyLerping)scheduleDraw();
   setStatus("");
 }
 
@@ -1003,7 +1030,18 @@ function parse(bytes){
       const z=readI16(bytes,offset+6);
       const layer=bytes[offset+8];
       const spriteId=readU16(bytes,offset+9);
-      objects.set(id,{id,x,y,z,layer,spriteId});
+      // Zero Sum: tween small moves of agents/chrome/projectiles between
+      // ticks (stepped sub-moves, VISUAL_REDESIGN §7) — motion, not soup
+      let fromX=x,fromY=y,moveAt=0;
+      const prev=objects.get(id);
+      if(!lerpReduced&&prev&&prev.layer===layer&&lerpableId(id)&&
+         (prev.x!==x||prev.y!==y)&&
+         Math.abs(prev.x-x)<=14&&Math.abs(prev.y-y)<=14){
+        fromX=prev.renderX!==undefined?prev.renderX:prev.x;
+        fromY=prev.renderY!==undefined?prev.renderY:prev.y;
+        moveAt=performance.now();
+      }
+      objects.set(id,{id,x,y,z,layer,spriteId,fromX,fromY,moveAt});
       offset+=11;
     }else if(type===0x03){
       objects.delete(readU16(bytes,offset));

@@ -50,6 +50,13 @@
   #comms .ch-team { color: var(--teal); }
   #comms .ch-dm { color: var(--gold); }
   #mini { image-rendering: pixelated; display: block; }
+  #timeline { display: block; width: 100%; height: 16px; margin-bottom: 10px;
+              background: #10171E; border: 1px solid #2b3a4a; }
+  #sndbtn { margin-left: auto; align-self: center; background: none;
+            border: 1px solid #36444F; color: #8a95a3; font: inherit; font-size: 10px;
+            letter-spacing: 2px; padding: 2px 8px; border-radius: 2px; cursor: pointer; }
+  #sndbtn.on { color: var(--teal); border-color: var(--teal); }
+  #sndbtn.armed { border-style: dashed; }
 </style>
 </head>
 <body>
@@ -58,7 +65,9 @@
   <span id="alive"></span>
   <span id="zonebox"></span>
   <span id="status" style="color:#8a95a3">connecting&hellip;</span>
+  <button id="sndbtn" title="toggle event sounds">SND OFF</button>
 </div>
+<canvas id="timeline" width="1200" height="16"></canvas>
 <div id="grid">
   <div class="panel">
     <h2>LIVE PROJECTED SCOREBOARD</h2>
@@ -153,6 +162,69 @@ function fmtT(tick) {
   const s = Math.floor(tick / 24);
   return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 }
+// ---- sound module (WebAudio event-sound v1 — VISUAL_REDESIGN Part 9) ----
+// synthesized only, no assets; master ~0.12 (instrument-room quiet); default OFF.
+// The toggle click is the autoplay-policy gesture: preference persists in
+// localStorage but the AudioContext is only created/resumed by a click, every session.
+let sndOn = false, sndCtx = null, sndGain = null, sndPrefOn = false, winnerSounded = false;
+try { sndPrefOn = localStorage.getItem('zs_snd_analyst') === 'on'; } catch (_) {}
+function sndActive() { return sndOn && sndCtx !== null && sndCtx.state === 'running'; }
+function sndRenderBtn() {
+  const b = el('sndbtn');
+  if (!b) return;
+  b.textContent = sndOn ? 'SND ON' : 'SND OFF';
+  b.classList.toggle('on', sndOn);
+  b.classList.toggle('armed', !sndOn && sndPrefOn);
+  b.title = !sndOn && sndPrefOn ? 'sound preference saved ON — click to resume audio'
+                                : 'toggle event sounds';
+}
+function sndToggle() {
+  sndOn = !sndOn;
+  if (sndOn) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) sndOn = false;
+      else {
+        if (!sndCtx) {
+          sndCtx = new AC();
+          sndGain = sndCtx.createGain();
+          sndGain.gain.value = 0.12;
+          sndGain.connect(sndCtx.destination);
+        }
+        if (sndCtx.state !== 'running') sndCtx.resume().catch(() => {});
+      }
+    } catch (_) { sndOn = false; }
+  } else if (sndCtx && sndCtx.state === 'running') {
+    try { sndCtx.suspend().catch(() => {}); } catch (_) {}
+  }
+  sndPrefOn = sndOn;
+  try { localStorage.setItem('zs_snd_analyst', sndOn ? 'on' : 'off'); } catch (_) {}
+  sndRenderBtn();
+}
+// fire-and-forget oscillator: envelope via gain ramps, explicit stop, no refs kept
+function sndTone(freq, dur, type, vol, freqEnd, at) {
+  if (!sndActive()) return;
+  try {
+    const t0 = sndCtx.currentTime + (at || 0);
+    const o = sndCtx.createOscillator(), g = sndCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (freqEnd !== undefined) o.frequency.linearRampToValueAtTime(freqEnd, t0 + dur);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.005);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
+    o.connect(g); g.connect(sndGain);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  } catch (_) {}
+}
+const sfxThunk  = at => { sndTone(90, 0.08, 'sine', 0.9, undefined, at || 0);   // ledger thunk
+                          sndTone(1000, 0.03, 'sine', 0.3, undefined, (at || 0) + 0.08); };
+const sfxStolen = () => { sndTone(440, 0.2, 'sine', 0.45);                      // minor-second wrongness
+                          sndTone(466, 0.2, 'sine', 0.45); };
+const sfxFinale = () => { sndTone(98, 0.18, 'sine', 0.9, undefined, 0.3);       // 300 ms silence, then slam
+                          sndTone(87, 0.35, 'sine', 0.9, undefined, 0.5); };
+const sfxWinner = () => sndTone(523, 1.5, 'triangle', 0.55);                    // sustained, fading
+el('sndbtn').addEventListener('click', sndToggle);
+sndRenderBtn();
 const ws = new WebSocket(websocketAddress('/analyst'));
 ws.onopen = () => { el('status').textContent = 'LIVE'; el('status').style.color = '#A5E3EE'; };
 ws.onclose = () => { el('status').textContent = 'FEED CLOSED'; el('status').style.color = '#FF4A36'; };
@@ -169,6 +241,29 @@ ws.onmessage = (ev) => {
       : ' → ' + z.next_radius + ' <span class="crim">NOW</span>';
   }
   el('zonebox').innerHTML = ringTxt;
+
+  // match timeline strip: settlements in bone, airdrop landings in amber,
+  // elapsed bar + now-cursor in magenta/phosphor
+  {
+    const tl = el('timeline'), tctx = tl.getContext('2d');
+    const span = Math.max(m.max_ticks || 9120, m.tick + 1);
+    const X = t => Math.floor(t / span * tl.width);
+    tctx.fillStyle = '#10171E'; tctx.fillRect(0, 0, tl.width, tl.height);
+    tctx.fillStyle = 'rgba(255,79,163,0.45)';
+    tctx.fillRect(0, tl.height - 3, X(m.tick), 3);
+    for (const g of (m.ticker || [])) {
+      if (g.landed_tick >= 0) {
+        tctx.fillStyle = '#FFB454';
+        tctx.fillRect(X(g.landed_tick), 4, 2, 8);
+      }
+    }
+    for (const st of (m.settlements || [])) {
+      tctx.fillStyle = '#E9E4D8';
+      tctx.fillRect(X(st.tick), 0, 2, tl.height);
+    }
+    tctx.fillStyle = '#A5E3EE';
+    tctx.fillRect(X(m.tick), 0, 2, tl.height);
+  }
 
   // MINIMAP
   if (!arenaMap && m.arena) arenaMap = m.arena;
@@ -205,6 +300,7 @@ ws.onmessage = (ev) => {
       : `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> <span class="crim">REJECTED</span> ${esc(g.item)} (${esc(g.reason)})`;
     tick.prepend(d);
   }
+  let sndStolenNew = false;
   for (const ic of m.interceptions) {
     const key = 'i' + ic.tick + ic.item + ic.looter_slot;
     if (tickerKeys.has(key)) continue;
@@ -217,7 +313,9 @@ ws.onmessage = (ev) => {
       ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${esc(ic.item.toUpperCase())} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
       : `[${fmtT(ic.tick)}] ${esc(ic.item.toUpperCase())} secured by P${looter}`;
     tick.prepend(d);
+    if (ic.recipient_slot >= 0 && ic.stolen) sndStolenNew = true;
   }
+  if (sndStolenNew) sfxStolen();
   // live chat: agent-authored text — esc() is mandatory (XSS)
   const comms = el('comms');
   for (const c of (m.chat || [])) {
@@ -231,6 +329,7 @@ ws.onmessage = (ev) => {
     comms.prepend(d);
   }
   const ordinal = n => n + (n % 100 > 10 && n % 100 < 14 ? 'TH' : ({1:'ST',2:'ND',3:'RD'}[n % 10] || 'TH'));
+  let sndSettleNew = 0;
   for (const st of (m.settlements || [])) {
     const key = 'set' + st.victim;
     if (tickerKeys.has(key)) continue;
@@ -239,6 +338,9 @@ ws.onmessage = (ev) => {
     const by = st.killer >= 0 ? ' BY P' + st.killer : ' · ARENA';
     d.innerHTML = `[${fmtT(st.tick)}] <span style="color:${teamColor(st.team)}">${esc(st.team)}</span> <span class="victim">P${st.victim}</span> SETTLED · ${ordinal(st.placement)}${by}`;
     tick.prepend(d);
+    // one thunk per new row, staggered; capped so a backlog burst can't clip
+    if (sndSettleNew < 4) sfxThunk(sndSettleNew * 0.15);
+    sndSettleNew++;
   }
 
   // stat matrix: hidden until the alloc deadline, immutable after
@@ -260,11 +362,13 @@ ws.onmessage = (ev) => {
     finaleShown = true;
     el('finale').style.display = 'flex';
     setTimeout(() => { el('finale').style.display = 'none'; }, 6000);
+    sfxFinale();
   }
   if (m.winner_slot >= 0) {
     const w = m.agents.find(a => a.slot === m.winner_slot);
     el('winner').firstElementChild.textContent = 'WINNER  P' + m.winner_slot + (w ? ' · TEAM ' + w.team : '');
     el('winner').style.display = 'flex';
+    if (!winnerSounded && sndActive()) { winnerSounded = true; sfxWinner(); }
   }
 };
 </script>

@@ -64,6 +64,19 @@ proc buildTranscriptText*(s: Sim): string =
   flushEventsUpTo(int.high)
   result = lines.join("\n") & "\n"
 
+proc eventHistoryJson*(s: Sim): string =
+  ## Full arena event stream (VISUAL_REDESIGN §5.7): the raw feed for
+  ## timeline/scrubber/highlight tooling. Data payloads are re-parsed so
+  ## consumers get structured fields, not embedded strings.
+  var arr = newJArray()
+  for e in s.eventHistory:
+    var j = %*{"tick": e.tick, "type": $e.kind, "slot": e.slot,
+               "pos": [e.pos.x, e.pos.y]}
+    if e.data.len > 0:
+      j["data"] = (try: parseJson(e.data) except CatchableError: %e.data)
+    arr.add(j)
+  $arr
+
 proc buildTranscriptJson*(s: Sim): string =
   var arr = newJArray()
   var ei = 0

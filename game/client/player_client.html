@@ -30,6 +30,11 @@
           box-shadow: 0 0 4px rgba(165,227,238,0.45); }
   .lamp.dead { background: #1C242B; border: 1px solid #36444F; box-shadow: none; }
   .lamp.me { outline: 1px solid #EAF7FA; outline-offset: 1px; }
+  #sndbtn { margin-left: 12px; background: none; border: 1px solid #36444F; color: #8a95a3;
+            font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+            padding: 2px 8px; border-radius: 2px; cursor: pointer; }
+  #sndbtn.on { color: var(--teal); border-color: var(--teal); }
+  #sndbtn.armed { border-style: dashed; }
   #right { flex: 0 0 320px; display: flex; flex-direction: column; min-height: 0; }
   #hud { color: var(--teal); font-size: 13px; letter-spacing: 1px; }
   #hpbarWrap { background: #0d1117; height: 14px; border: 1px solid #2b3a4a; margin: 4px 0; }
@@ -61,6 +66,7 @@
 <div id="topbar" class="panel">
   <div id="ident">AWAITING CONFIG</div>
   <div id="lamps"></div>
+  <button id="sndbtn" title="toggle event sounds">SND OFF</button>
 </div>
 <div id="main">
 <div id="left" style="position:relative">
@@ -143,6 +149,99 @@ let bearings = [];  // vision-rim ticks: {dir, color, born, ttl}
 let hazards = [];   // scheduled hazards: {kind, rect|center+radius, from, until}
 const deadSeen = new Set();
 
+// ---- sound module (WebAudio event-sound v1 — VISUAL_REDESIGN Part 9) ----
+// synthesized only, no assets; master ~0.12 (instrument-room quiet); default OFF.
+// The toggle click is the autoplay-policy gesture: preference persists in
+// localStorage but the AudioContext is only created/resumed by a click, every session.
+let sndOn = false, sndCtx = null, sndGain = null, sndPrefOn = false;
+try { sndPrefOn = localStorage.getItem('zs_snd_player') === 'on'; } catch (_) {}
+function sndActive() { return sndOn && sndCtx !== null && sndCtx.state === 'running'; }
+function sndRenderBtn() {
+  const b = el('sndbtn');
+  if (!b) return;
+  b.textContent = sndOn ? 'SND ON' : 'SND OFF';
+  b.classList.toggle('on', sndOn);
+  b.classList.toggle('armed', !sndOn && sndPrefOn);
+  b.title = !sndOn && sndPrefOn ? 'sound preference saved ON — click to resume audio'
+                                : 'toggle event sounds';
+}
+function sndToggle() {
+  sndOn = !sndOn;
+  if (sndOn) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) sndOn = false;
+      else {
+        if (!sndCtx) {
+          sndCtx = new AC();
+          sndGain = sndCtx.createGain();
+          sndGain.gain.value = 0.12;
+          sndGain.connect(sndCtx.destination);
+        }
+        if (sndCtx.state !== 'running') sndCtx.resume().catch(() => {});
+      }
+    } catch (_) { sndOn = false; }
+  } else if (sndCtx && sndCtx.state === 'running') {
+    try { sndCtx.suspend().catch(() => {}); } catch (_) {}
+  }
+  sndPrefOn = sndOn;
+  try { localStorage.setItem('zs_snd_player', sndOn ? 'on' : 'off'); } catch (_) {}
+  sndRenderBtn();
+}
+// fire-and-forget oscillator: envelope via gain ramps, explicit stop, no refs kept
+function sndTone(freq, dur, type, vol, freqEnd, at) {
+  if (!sndActive()) return;
+  try {
+    const t0 = sndCtx.currentTime + (at || 0);
+    const o = sndCtx.createOscillator(), g = sndCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (freqEnd !== undefined) o.frequency.linearRampToValueAtTime(freqEnd, t0 + dur);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.005);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
+    o.connect(g); g.connect(sndGain);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  } catch (_) {}
+}
+// fire-and-forget filtered noise click (own damage / poison Geiger)
+function sndClick(dur, vol, hz) {
+  if (!sndActive()) return;
+  try {
+    const t0 = sndCtx.currentTime;
+    const n = Math.max(1, Math.floor(sndCtx.sampleRate * dur));
+    const buf = sndCtx.createBuffer(1, n, sndCtx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) ch[i] = Math.random() * 2 - 1;
+    const s = sndCtx.createBufferSource(); s.buffer = buf;
+    const f = sndCtx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = hz; f.Q.value = 1.4;
+    const g = sndCtx.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.linearRampToValueAtTime(0, t0 + dur);
+    s.connect(f); f.connect(g); g.connect(sndGain);
+    s.start(t0); s.stop(t0 + dur + 0.02);
+  } catch (_) {}
+}
+const sfxDeath      = () => sndTone(140, 0.25, 'sine', 0.9, 60);            // low sine drop
+const sfxBoom       = () => sndTone(140, 0.15, 'sine', 0.4, 60);            // same, quieter/shorter
+const sfxZoneWarn   = () => { sndTone(520, 0.12, 'square', 0.22);           // calm two-note klaxon
+                              sndTone(392, 0.12, 'square', 0.22, undefined, 0.13); };
+const sfxEventWarn  = () => { sndTone(416, 0.12, 'square', 0.22);           // klaxon, a third lower
+                              sndTone(311, 0.12, 'square', 0.22, undefined, 0.13); };
+const sfxGiftIn     = () => { sndTone(880, 0.09, 'triangle', 0.5);          // amber two-note chime
+                              sndTone(1174, 0.09, 'triangle', 0.5, undefined, 0.1); };
+const sfxGiftLand   = () => sndTone(1174, 0.09, 'triangle', 0.5);           // single ping
+const sfxHit        = () => sndClick(0.04, 0.7, 1400);                      // own damage
+const sfxGeiger     = () => sndClick(0.015, 0.6, 2600);                     // poison cadence tick
+const sfxVictory    = () => { sndTone(392, 0.16, 'triangle', 0.55);         // rising resolve
+                              sndTone(523, 0.16, 'triangle', 0.55, undefined, 0.17);
+                              sndTone(659, 0.3, 'triangle', 0.55, undefined, 0.34); };
+const sfxEliminated = () => { sndTone(392, 0.16, 'triangle', 0.55);         // falling
+                              sndTone(311, 0.16, 'triangle', 0.55, undefined, 0.17);
+                              sndTone(233, 0.3, 'triangle', 0.55, undefined, 0.34); };
+el('sndbtn').addEventListener('click', sndToggle);
+sndRenderBtn();
+
 const ws = new WebSocket(websocketAddress('/watch'));
 ws.onopen = () => { el('hud').textContent = 'CONNECTED — AWAITING FEED'; };
 ws.onclose = () => { el('hud').textContent = 'DISCONNECTED'; };
@@ -187,6 +286,7 @@ ws.onmessage = (ev) => {
     el('hud').textContent = `FINAL  PLACE ${m.placement}  SCORE ${m.score}  WINNER P${m.winner_slot}`;
     showBanner(m.reason === 'winner' ? 'VICTORY' : 'ELIMINATED',
                m.reason === 'winner' ? '#FFB454' : '#FF4A36');
+    if (m.reason === 'winner') sfxVictory(); else sfxEliminated();
     return;
   }
   if (m.type !== 'observation' || !cfg) return;
@@ -215,6 +315,9 @@ ws.onmessage = (ev) => {
     (m.zone.shrink_tick > m.tick ? `  SHRINK IN ${Math.ceil((m.zone.shrink_tick - m.tick)/24)}s` : '');
   el('ares').textContent = `LAST: ${you.action_result || '—'}` +
     (you.damage_taken.length ? '   HIT: ' + you.damage_taken.map(d => `${d.source} ${d.amount}`).join(', ') : '');
+  // own-damage click + poison Geiger on the 24-tick damage cadence (Part 9)
+  if (you.damage_taken.length) sfxHit();
+  if ((m.tick % 24) === 0 && you.effects.some(ef => ef.id === 'poison')) sfxGeiger();
   {
     const log = el('chatlog');
     for (const c of m.chat) {
@@ -230,13 +333,19 @@ ws.onmessage = (ev) => {
   for (const e of m.events) {
     if (e.type === 'ignition') showBanner('IGNITION', '#FFB454');
     else if (e.type === 'finale') showBanner('CIVIL WAR', '#FF4A36');
-    else if (e.type === 'zone_warning') showBanner('RING SHRINKS TO ' + e.r_end, '#FFB454');
+    else if (e.type === 'zone_warning') {
+      showBanner('RING SHRINKS TO ' + e.r_end, '#FFB454');
+      sfxZoneWarn();
+    }
     else if (e.type === 'death_fireworks') {
       if (e.slot >= 0) deadSeen.add(e.slot);
       if (e.pos) fx.push({kind: 'death', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 48});
+      sfxDeath();
     }
-    else if (e.type === 'boom')
+    else if (e.type === 'boom') {
       bearings.push({dir: e.direction, color: '#FF4A36', born: m.tick, ttl: 48});
+      sfxBoom();
+    }
     else if (e.type === 'mine_explosion' && e.pos)
       fx.push({kind: 'mine', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 24});
     else if (e.type === 'event_warning') {
@@ -244,12 +353,17 @@ ws.onmessage = (ev) => {
       hazards.push({kind: e.kind, rect: e.rect, center: e.center, radius: e.radius,
                     from: e.from_tick, until: e.from_tick + e.duration});
       showBanner((e.kind === 'flood' ? 'FLOOD' : 'FIRESTORM') + ' INCOMING', '#FF4FA3');
+      sfxEventWarn();
     }
-    else if (e.type === 'gift_incoming' && e.pos)
+    else if (e.type === 'gift_incoming' && e.pos) {
       fx.push({kind: 'gift', x: e.pos[0], y: e.pos[1], born: m.tick,
                ttl: Math.max(1, e.lands_tick - m.tick)});
-    else if (e.type === 'gift_landed' && e.pos)
+      sfxGiftIn();
+    }
+    else if (e.type === 'gift_landed' && e.pos) {
       fx.push({kind: 'gift', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 72});
+      sfxGiftLand();
+    }
   }
   fx = fx.filter(f => m.tick - f.born < f.ttl);
   bearings = bearings.filter(b => m.tick - b.born < b.ttl);

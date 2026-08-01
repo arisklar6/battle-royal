@@ -131,10 +131,6 @@ const
   GoldTone = (255'u8, 180'u8, 84'u8)      # Amber #FFB454
   Bone = (233'u8, 228'u8, 216'u8)         # settlement ink #E9E4D8
 
-  Skin = (232'u8, 190'u8, 150'u8)
-  Hair = (60'u8, 42'u8, 30'u8)
-  Pants = (48'u8, 44'u8, 56'u8)
-  Outline = (18'u8, 16'u8, 14'u8)
 
 type
   Effect = object
@@ -302,85 +298,62 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
 # ---------------------------------------------------------------- humanoids
 
 proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
-  ## 8x12 figure. facing: 0 S (face), 1 N (back), 2 E, 3 W. frame: walk phase.
+  ## AFTERGLOW carrier (VISUAL_REDESIGN §3.3): compact phosphor
+  ## silhouette riding a team-hue diamond — the only polychrome in the
+  ## arena. Drawn inside the legacy 8x12 frame so every offset in the
+  ## pipeline stays valid. facing nudges the sensor pixels; frame is a
+  ## 1px hover bob (the diamond is the ground mark and never lifts).
   result = newSeq[uint8](BodyW * BodyH * 4)
   let tunic = TeamColors[team]
-  let tunicDark = shade(tunic, -40)
-  template P(x, y: int, c: (uint8, uint8, uint8)) =
-    result.put(BodyW, x, y, c)
-  # head rows 0..3 (centered cols 2..5)
+  let lift = (if frame == 1: -1 else: 0)
+  template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
+    result.put(BodyW, x, y + lift, c, a)
+  # chassis rows 3..7, cols 1..6
   for x in 2 .. 5:
-    P(x, 0, Hair)
-  for y in 1 .. 3:
-    P(1, y, Outline)
-    P(6, y, Outline)
+    P(x, 3, PhosphorPeak)
+  for y in 4 .. 6:
+    P(1, y, Phosphor)
+    P(6, y, Phosphor)
     for x in 2 .. 5:
-      P(x, y, Skin)
-  case facing
-  of 0:                        # south: face
-    P(3, 2, Outline)
-    P(4, 2, Outline)
-  of 2:                        # east profile: eye right
-    P(5, 2, Outline)
-    P(2, 1, Hair)
-  of 3:                        # west profile
-    P(2, 2, Outline)
-    P(5, 1, Hair)
-  else:                        # north: hair back
+      P(x, y, Phosphor)
+  for x in 2 .. 5:
+    P(x, 7, shade(Phosphor, -70))
+  # sensor pair, nudged toward the facing
+  let sx = (if facing == 2: 1 elif facing == 3: -1 else: 0)
+  if facing == 1:              # north: dorsal line, no sensors
     for x in 2 .. 5:
-      P(x, 1, Hair)
-  # torso rows 4..8
-  for y in 4 .. 8:
-    for x in 2 .. 5:
-      P(x, y, (if y == 8: tunicDark else: tunic))
-  # arms: swing with frame; side facings show one arm
-  let armUp = frame == 1
-  if facing in [0, 1]:
-    P(1, (if armUp: 4 else: 5), Skin)
-    P(1, (if armUp: 5 else: 6), Skin)
-    P(6, (if armUp: 6 else: 5), Skin)
-    P(6, (if armUp: 5 else: 4), Skin)
-  elif facing == 2:
-    P(6, (if armUp: 4 else: 6), Skin)
-    P(6, 5, Skin)
+      P(x, 4, shade(Phosphor, -50))
   else:
-    P(1, (if armUp: 4 else: 6), Skin)
-    P(1, 5, Skin)
-  # parity pip on chest
+    P(3 + sx, 5, BgDark)
+    P(4 + sx, 5, BgDark)
   if parity == 1:
-    P(3, 5, (250'u8, 250'u8, 250'u8))
-  # legs rows 9..11: stride by frame
-  if frame == 0:
-    for y in 9 .. 11:
-      P(3, y, Pants)
-      P(4, y, Pants)
-  else:
-    P(2, 9, Pants); P(3, 9, Pants); P(4, 9, Pants); P(5, 9, Pants)
-    P(2, 10, Pants); P(5, 10, Pants)
-    P(1, 11, Pants); P(6, 11, Pants)
-  # boots
-  P(3, 11, Outline)
-  P(4, 11, Outline)
+    P(2, 4, PhosphorPeak)      # teammate pip
+  # team diamond rows 9..11 (ground mark, unaffected by the bob)
+  result.put(BodyW, 3, 9, tunic)
+  result.put(BodyW, 4, 9, tunic)
+  for x in 2 .. 5:
+    result.put(BodyW, x, 10, tunic)
+  result.put(BodyW, 3, 11, tunic)
+  result.put(BodyW, 4, 11, tunic)
 
 proc corpsePixels(team, parity: int): seq[uint8] =
-  ## 12x6 fallen figure + dark pool.
+  ## 12x6 decommissioned carrier: shadow pool, toppled cold chassis,
+  ## team-tinted diamond gone dark.
   result = newSeq[uint8](12 * 6 * 4)
-  let tunic = shade(TeamColors[team], -20)
+  let tunic = shade(TeamColors[team], -50)
   template P(x, y: int, c: (uint8, uint8, uint8)) =
     result.put(12, x, y, c)
   for x in 1 .. 10:
-    P(x, 5, (70'u8, 20'u8, 20'u8))                 # pool
-  for x in 2 .. 3:
-    for y in 2 .. 3:
-      P(x, y, Skin)                                 # head left
-  P(1, 2, Hair)
-  for x in 4 .. 8:
-    P(x, 2, tunic)
-    P(x, 3, tunic)
+    P(x, 5, (24'u8, 30'u8, 36'u8))                 # shadow pool
+  for x in 3 .. 8:
+    P(x, 2, EtchDim)
+    P(x, 3, EtchDim)
+  P(2, 2, EtchDim)
+  P(9, 3, EtchDim)
+  P(5, 1, tunic)                                    # cold diamond tip
+  P(6, 1, tunic)
   if parity == 1:
-    P(5, 2, (250'u8, 250'u8, 250'u8))
-  for x in 9 .. 10:
-    P(x, 3, Pants)
+    P(3, 2, (200'u8, 205'u8, 210'u8))
 
 proc weaponGlyph(id: ItemId): seq[uint8] =
   ## 5x5 held-item glyph.
@@ -502,14 +475,12 @@ proc bushPixels(berries: int): seq[uint8] =
     result.put(TileSize, spots[i][0], spots[i][1], (215'u8, 45'u8, 60'u8))
 
 proc glassBodyPixels(): seq[uint8] =
-  ## Camo: refractive glass silhouette — faint outline, near-transparent fill.
+  ## Camo: refractive carrier silhouette — faint outline, near-clear fill.
   result = newSeq[uint8](BodyW * BodyH * 4)
-  for y in 0 ..< BodyH:
+  for y in 3 .. 7:
     for x in 1 .. 6:
-      let isHead = y >= 1 and y <= 3 and x >= 2 and x <= 5
-      let isBody = y >= 4 and y <= 11 and x >= 2 and x <= 5
-      if isHead or isBody:
-        let edge = x == 2 or x == 5 or y == 1 or y == 11
+      if (y >= 4 and y <= 6) or (x >= 2 and x <= 5):
+        let edge = x == 1 or x == 6 or y == 3 or y == 7
         result.put(BodyW, x, y, (200'u8, 235'u8, 255'u8),
                    (if edge: 90'u8 else: 34'u8))
 
@@ -715,11 +686,11 @@ proc pingPixels(big: bool): seq[uint8] =
         result.put(12, x, y, GoldTone, (if big: 90'u8 else: 150'u8))
 
 proc hitFlashPixels(): seq[uint8] =
-  ## 1-frame peak-white body silhouette on any damage taken.
+  ## 1-frame peak-white carrier silhouette on any damage taken.
   result = newSeq[uint8](BodyW * BodyH * 4)
-  for y in 0 ..< BodyH:
+  for y in 3 .. 7:
     for x in 1 .. 6:
-      result.put(BodyW, x, y, PhosphorPeak, 150)
+      result.put(BodyW, x, y, PhosphorPeak, 170)
 
 # --- 3x5 pixel font ---
 const Glyphs = {
@@ -841,7 +812,7 @@ proc etchScar(r: var Renderer, slot: int, pos: Pos) =
     gx += 4
   r.traceActive = true
 
-proc traceSpritePixels(r: Renderer): seq[uint8] =
+proc traceSpritePixels(r: Renderer, s: Sim): seq[uint8] =
   result = newSeq[uint8](WorldPx * WorldPx * 4)
   for i in 0 ..< r.trace.len:
     let t = r.trace[i]
@@ -853,6 +824,34 @@ proc traceSpritePixels(r: Renderer): seq[uint8] =
       result[o+1] = uint8((v shr 16) and 0xFF)
       result[o+2] = uint8((v shr 8) and 0xFF)
       result[o+3] = uint8(v and 0xFF)
+  # Knowledge Layer (VISUAL_REDESIGN §5.4): every living program's vision
+  # disc at low additive phosphor — information itself made visible.
+  # Cumulative alpha capped so Fortress pileups don't wash the board;
+  # traces and scars (alpha > cap) always win.
+  if s.phase != phEnded:
+    for slot in 0 .. 15:
+      let a = s.agents[slot]
+      if not a.alive:
+        continue
+      let vr = (5 + (a.stats.intelligence + 1) div 2) * TileSize
+      let cx = a.pos.x * TileSize + TileSize div 2
+      let cy = a.pos.y * TileSize + TileSize div 2
+      for y in max(0, cy - vr) .. min(WorldPx - 1, cy + vr):
+        for x in max(0, cx - vr) .. min(WorldPx - 1, cx + vr):
+          let dx = x - cx
+          let dy = y - cy
+          if dx * dx + dy * dy <= vr * vr:
+            let o = (y * WorldPx + x) * 4
+            let cur = int(result[o+3])
+            if cur < 36:
+              let na = min(36, cur + 9)
+              result[o] = uint8((int(result[o]) * cur +
+                int(Phosphor[0]) * (na - cur)) div max(1, na))
+              result[o+1] = uint8((int(result[o+1]) * cur +
+                int(Phosphor[1]) * (na - cur)) div max(1, na))
+              result[o+2] = uint8((int(result[o+2]) * cur +
+                int(Phosphor[2]) * (na - cur)) div max(1, na))
+              result[o+3] = uint8(na)
 
 # ---------------------------------------------------------------- packets
 
@@ -1316,7 +1315,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         let na = (a * 4) div 5
         r.trace[i] = (r.trace[i] and 0xFFFFFF00'u32) or
                      (if na < 6: 0'u32 else: na)
-    result.addSprite(SpTraceLayer, WorldPx, WorldPx, r.traceSpritePixels(),
+    result.addSprite(SpTraceLayer, WorldPx, WorldPx, r.traceSpritePixels(s),
                      "trace")
     result.addObject(ObTraceLayer, 0, 0, 3, LayerMap, SpTraceLayer)
     r.traceDrawn = true

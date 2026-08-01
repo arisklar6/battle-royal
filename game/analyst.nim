@@ -133,6 +133,7 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
       break
   $(%*{
     "type": "analyst", "tick": s.tick, "phase": $s.phase,
+    "max_ticks": s.cfg.maxTicks,
     "alive": alive,
     "stats_locked": statsLocked,
     "alloc_deadline_tick": s.allocDeadlineTick(),
