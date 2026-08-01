@@ -547,18 +547,48 @@ proc runLive(rc: RuntimeConfig) =
         withLock appState.lock:
           for ws, ti in appState.sponsors.pairs:
             sponsorConns.add((ws, ti))
+      # drop-targeting context shared by every sponsor: ring geometry and
+      # the public pod list (pods are arena-wide knowledge by spec)
+      var nextR = s.zoneRadius()
+      var shrinkT = 0
+      for st in s.cfg.zone:
+        if s.tick < st.doneT:
+          nextR = st.rEnd
+          shrinkT = st.shrinkT
+          break
+      var podsArr = ""
+      for pod in s.pods:
+        if podsArr.len > 0: podsArr.add(",")
+        podsArr.add("""{"pos":[""" & $pod.landing.x & "," & $pod.landing.y &
+                    """],"item":"""" & pod.itemId & """","landed":""" &
+                    $pod.landed & "}")
       for (ws, ti) in sponsorConns:
         var aliveArr = ""
+        var mates = ""
         for i in 0 .. 15:
           if s.agents[i].alive and team(AgentId(i)) == ti:
             if aliveArr.len > 0: aliveArr.add(",")
             aliveArr.add($i)
+            # own-team positions only; /global is public anyway, so this
+            # leaks nothing the sponsor could not already watch
+            let band = (if s.agents[i].hpCenti > 6600: "healthy"
+                        elif s.agents[i].hpCenti >= 3300: "hurt"
+                        else: "critical")
+            if mates.len > 0: mates.add(",")
+            mates.add("""{"slot":""" & $i & ""","pos":[""" &
+                      $s.agents[i].pos.x & "," & $s.agents[i].pos.y &
+                      """],"hp_band":"""" & band & """"}""")
         try:
           ws.send("""{"type":"sponsor_state","tick":""" & $s.tick &
                   ""","budget":""" & $s.teamBudget[ti] &
                   ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
                   ""","lockout_remaining":""" & $s.giftLockoutRemaining(ti) &
-                  ""","team_alive":[""" & aliveArr & "]}", TextMessage)
+                  ""","team_alive":[""" & aliveArr &
+                  """],"teammates":[""" & mates &
+                  """],"zone":{"radius":""" & $s.zoneRadius() &
+                  ""","next_radius":""" & $nextR &
+                  ""","shrink_tick":""" & $shrinkT &
+                  """},"pods":[""" & podsArr & "]}", TextMessage)
         except CatchableError:
           discard
     while echoedGifts < s.sponsorLog.len:

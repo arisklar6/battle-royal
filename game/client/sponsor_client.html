@@ -63,9 +63,38 @@
   #shop button:hover:not(:disabled) { background: #66FCF1; color: #0B0C10; }
   #shop button:hover:not(:disabled) .price { color: #0B0C10; }
   #shop button:disabled {
-    border-color: #3a4552; color: #555; cursor: not-allowed;
+    border-color: #3a4552; color: #8a95a3; cursor: not-allowed;
   }
-  #shop button:disabled .price { color: #555; }
+  #shop button:disabled .price { color: #8a95a3; }
+  #confirm {
+    display: none; margin-bottom: 10px; padding: 8px 10px;
+    border: 1px solid #C5A059; font-size: 12px; color: #C5A059;
+  }
+  #confirm.show { display: block; }
+  #confirm button {
+    font-family: Consolas, monospace; font-size: 12px; cursor: pointer;
+    background: #0B0C10; padding: 4px 10px; margin-left: 8px;
+  }
+  #confirmYes { color: #C5A059; border: 1px solid #C5A059; }
+  #confirmYes:hover { background: #C5A059; color: #0B0C10; }
+  #confirmNo { color: #C5C6C7; border: 1px solid #3a4552; }
+  #coords { font-size: 12px; margin-top: 6px; color: #8a95a3; }
+  #coords input {
+    width: 52px; background: #0B0C10; color: #C5C6C7;
+    border: 1px solid #3a4552; font-family: Consolas, monospace;
+    font-size: 12px; padding: 3px 5px;
+  }
+  #coords input:focus, #confirm button:focus, #shop button:focus {
+    outline: 2px solid #66FCF1; outline-offset: 1px;
+  }
+  #legend {
+    font-size: 11px; margin-top: 6px; color: #8a95a3;
+    display: flex; flex-wrap: wrap; gap: 3px 12px; max-width: 576px;
+  }
+  #legend i {
+    display: inline-block; width: 9px; height: 9px; margin-right: 4px;
+    vertical-align: -1px;
+  }
   #toast {
     min-height: 16px; font-size: 12px; color: #FF0055;
     margin-bottom: 10px; visibility: hidden;
@@ -90,11 +119,30 @@
 <main>
   <section class="panel">
     <canvas id="map" width="576" height="576"></canvas>
-    <div id="sel">click a tile to set the drop target</div>
+    <div id="sel">click a tile (or use arrow keys) to set the drop target</div>
+    <div id="coords">
+      target
+      x <input id="cx" type="number" min="0" max="47" inputmode="numeric">
+      y <input id="cy" type="number" min="0" max="47" inputmode="numeric">
+    </div>
+    <div id="legend">
+      <span><i style="background:#3a4552"></i>wall</span>
+      <span><i style="background:#4a5867"></i>fortress</span>
+      <span><i style="background:#5a4a3a"></i>rock</span>
+      <span><i style="background:#C5A059"></i>pedestal</span>
+      <span><i style="background:#1e5c28"></i>bush</span>
+      <span><i style="background:#C5A059; transform:rotate(45deg)"></i>airdrop</span>
+      <span><i style="background:#FF4FA3; height:2px; vertical-align:2px"></i>ring (dashed = next)</span>
+      <span><i style="border:1px solid #66FCF1; background:none"></i>your agents</span>
+    </div>
   </section>
   <section class="panel" id="right">
     <h2>SUPPLY DROPS</h2>
     <div id="shop"></div>
+    <div id="confirm"><span id="confirmTxt"></span>
+      <button id="confirmYes">CONFIRM</button>
+      <button id="confirmNo">CANCEL</button>
+    </div>
     <div id="toast"></div>
     <h2>EVENT LOG</h2>
     <ul id="log"></ul>
@@ -144,6 +192,11 @@ let lastTick = 0;
 let lastTickAt = performance.now();
 let wsOpen = false;
 let selected = null;      // [x, y] target tile
+let staged = null;        // {item, price} awaiting explicit confirm
+let zone = null;          // {radius, next_radius, shrink_tick}
+let pods = [];            // public pod list: {pos, item, landed}
+let mates = [];           // own team: {slot, pos, hp_band}
+const BAND_COLORS = {healthy: '#A5E3EE', hurt: '#FFB454', critical: '#FF4A36'};
 const markers = [];       // {x, y, item, landsTick} persisted for the match
 const pending = {};       // request_id -> {item, target}
 const logEntries = [];    // {text, ok} newest first, capped at 10
@@ -196,19 +249,63 @@ function buildShop() {
     const b = document.createElement('button');
     b.disabled = true;
     b.innerHTML = `${esc(itemLabel(item))} <span class="price">${esc(price)}</span>`;
-    b.onclick = () => buy(item, price);
+    b.onclick = () => stage(item, price);
     shopEl.appendChild(b);
     shopButtons.push({btn: b, item, price});
   }
 }
 
-function buy(item, price) {
-  if (!selected || !wsOpen) return;
-  const request_id = 'r' + Math.random().toString(36).slice(2, 10);
-  pending[request_id] = {item, target: selected.slice()};
-  ws.send(JSON.stringify({type: 'gift_request', item_id: item,
-                          target: selected.slice(), request_id}));
+function setTarget(x, y) {
+  x = Math.max(0, Math.min(arenaSize - 1, x));
+  y = Math.max(0, Math.min(arenaSize - 1, y));
+  selected = [x, y];
+  selEl.textContent = `target: (${x}, ${y})`;
+  document.getElementById('cx').value = x;
+  document.getElementById('cy').value = y;
+  updateConfirm();
 }
+
+// spending real budget is irreversible and lockout-punished: stage the
+// purchase, then require an explicit confirm
+function stage(item, price) {
+  if (!selected || !wsOpen) return;
+  staged = {item, price};
+  updateConfirm();
+}
+
+function updateConfirm() {
+  const bar = document.getElementById('confirm');
+  if (staged && selected) {
+    document.getElementById('confirmTxt').textContent =
+      `SEND ${itemLabel(staged.item).toUpperCase()} ${staged.price} SC → (${selected[0]},${selected[1]})?`;
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function confirmBuy() {
+  if (!staged || !selected || !wsOpen) return;
+  const request_id = 'r' + Math.random().toString(36).slice(2, 10);
+  pending[request_id] = {item: staged.item, target: selected.slice()};
+  ws.send(JSON.stringify({type: 'gift_request', item_id: staged.item,
+                          target: selected.slice(), request_id}));
+  staged = null;
+  updateConfirm();
+}
+
+function cancelStage() { staged = null; updateConfirm(); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  const cur = selected || [Math.floor(arenaSize / 2), Math.floor(arenaSize / 2)];
+  if (e.key === 'ArrowLeft') { setTarget(cur[0] - 1, cur[1]); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { setTarget(cur[0] + 1, cur[1]); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { setTarget(cur[0], cur[1] - 1); e.preventDefault(); }
+  else if (e.key === 'ArrowDown') { setTarget(cur[0], cur[1] + 1); e.preventDefault(); }
+  else if (e.key === 'Enter' && staged) { confirmBuy(); e.preventDefault(); }
+  else if (e.key === 'Escape') cancelStage();
+});
 
 // ---- websocket ----
 const ws = new WebSocket(websocketAddress('/sponsor'));
@@ -253,6 +350,9 @@ ws.onmessage = (ev) => {
       document.getElementById('alive').textContent =
         'alive ' + m.team_alive.length;
     }
+    if (m.zone) zone = m.zone;
+    if (Array.isArray(m.pods)) pods = m.pods;
+    if (Array.isArray(m.teammates)) mates = m.teammates;
   } else if (m.type === 'gift_result') {
     const req = pending[m.request_id] || {};
     delete pending[m.request_id];
@@ -276,9 +376,17 @@ canvas.addEventListener('click', (e) => {
   const x = Math.floor((e.clientX - r.left) * (canvas.width / r.width) / TILE);
   const y = Math.floor((e.clientY - r.top) * (canvas.height / r.height) / TILE);
   if (x < 0 || y < 0 || x >= arenaSize || y >= arenaSize) return;
-  selected = [x, y];
-  selEl.textContent = `target: (${x}, ${y})`;
+  setTarget(x, y);
 });
+for (const id of ['cx', 'cy']) {
+  document.getElementById(id).addEventListener('change', () => {
+    const x = parseInt(document.getElementById('cx').value, 10);
+    const y = parseInt(document.getElementById('cy').value, 10);
+    if (Number.isInteger(x) && Number.isInteger(y)) setTarget(x, y);
+  });
+}
+document.getElementById('confirmYes').onclick = confirmBuy;
+document.getElementById('confirmNo').onclick = cancelStage;
 
 function draw() {
   const w = canvas.width, h = canvas.height;
@@ -322,6 +430,57 @@ function draw() {
                    cx, above ? cy - 18 : cy + 25);
     }
   }
+  // ring geometry (magenta = commanded path): solid current, dashed next
+  if (zone) {
+    const c = arenaSize / 2 * TILE;
+    ctx.strokeStyle = '#FF4FA3';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(c, c, zone.radius * TILE, 0, Math.PI * 2);
+    ctx.stroke();
+    if (zone.next_radius < zone.radius) {
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(c, c, zone.next_radius * TILE, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.lineWidth = 1;
+  }
+  // every pod on the field (public knowledge): hollow inbound, solid landed
+  ctx.font = '9px Consolas, monospace';
+  ctx.textAlign = 'center';
+  for (const p of pods) {
+    const cx = p.pos[0] * TILE + TILE / 2, cy = p.pos[1] * TILE + TILE / 2;
+    ctx.strokeStyle = '#C5A059';
+    ctx.fillStyle = p.landed ? '#C5A059' : 'rgba(197,160,89,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy);
+    ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#C5A059';
+    ctx.fillText(itemLabel(p.item), cx, p.pos[1] > 1 ? cy - 8 : cy + 15);
+  }
+  // your agents: accent dot, hp-band ring, slot tag
+  const accent = TEAM_ACCENTS[team] || '#66FCF1';
+  for (const a of mates) {
+    const cx = a.pos[0] * TILE + TILE / 2, cy = a.pos[1] * TILE + TILE / 2;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = BAND_COLORS[a.hp_band] || '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#C5C6C7';
+    ctx.fillText('P' + a.slot, cx, cy + 8);
+  }
+  ctx.textAlign = 'left';
   // selection crosshair
   if (selected) {
     const [sx, sy] = selected;

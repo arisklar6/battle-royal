@@ -798,7 +798,8 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if poisoned:
         result.addObject(ObHaloBase + slot, a.pos.x * TileSize - 2,
           a.pos.y * TileSize - 2, 9, LayerMap,
-          (if (s.tick div 6) mod 2 == 0: SpPoisonHaloA else: SpPoisonHaloB))
+          (if ((s.tick div 6) + slot) mod 2 == 0: SpPoisonHaloA
+           else: SpPoisonHaloB))
         r.haloOn[slot] = true
       elif r.haloOn[slot]:
         result.addDeleteObject(ObHaloBase + slot)
@@ -816,7 +817,8 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if a.channeling.kind != chNone:
         result.addObject(ObChannelBase + slot, a.pos.x * TileSize - 2,
           a.pos.y * TileSize - 2, 9, LayerMap,
-          (if (s.tick div 6) mod 2 == 0: SpChannelA else: SpChannelB))
+          (if ((s.tick div 6) + slot) mod 2 == 0: SpChannelA
+           else: SpChannelB))
         r.channelOn[slot] = true
       elif r.channelOn[slot]:
         result.addDeleteObject(ObChannelBase + slot)
@@ -914,14 +916,17 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
           let dy = ty - ev.center.y
           if dx * dx + dy * dy <= ev.radius * ev.radius:
             result.addObject(ObRegionBase + regIdx, tx * TileSize, ty * TileSize,
-              14, LayerMap, (if phase == 0: SpFirestormA else: SpFirestormB))
+              14, LayerMap,
+              (if (phase + tx + ty) mod 2 == 0: SpFirestormA
+               else: SpFirestormB))
             inc regIdx
     of ecFlood:
       for ty in max(1, ev.rect[1]) .. min(ArenaSize - 2, ev.rect[3]):
         for tx in max(1, ev.rect[0]) .. min(ArenaSize - 2, ev.rect[2]):
           if regIdx >= RegionPool: break
           result.addObject(ObRegionBase + regIdx, tx * TileSize, ty * TileSize,
-            14, LayerMap, (if phase == 0: SpFloodA else: SpFloodB))
+            14, LayerMap,
+            (if (phase + tx + ty) mod 2 == 0: SpFloodA else: SpFloodB))
           inc regIdx
   for stale in regIdx ..< r.regionDrawn:
     result.addDeleteObject(ObRegionBase + stale)

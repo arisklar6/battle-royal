@@ -13,9 +13,9 @@
   #grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
   .panel { background: var(--panel); border: 1px solid #2b3a4a; border-radius: 3px; padding: 8px; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th { color: #56606a; text-align: left; font-weight: normal; padding: 2px 4px; }
+  th { color: #8a95a3; text-align: left; font-weight: normal; padding: 2px 4px; }
   td { padding: 2px 4px; border-top: 1px solid #14181f; }
-  tr.dead td { color: #4a525a; }
+  tr.dead td { color: #8a95a3; }
   .team-chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
                margin-right: 4px; vertical-align: -1px; }
   .gold { color: var(--gold); } .crim { color: var(--crim); }
@@ -30,7 +30,7 @@
   #ticker .settle { color: #E9E4D8; }
   #ticker .settle .victim { text-decoration: line-through; }
   #matrix td, #matrix th { text-align: center; }
-  #matrixNote { font-size: 10px; color: #56606a; margin-top: 4px; }
+  #matrixNote { font-size: 10px; color: #8a95a3; margin-top: 4px; }
   #finale { position: fixed; inset: 0; display: none; align-items: center;
             justify-content: center; background: rgba(255,0,85,0.12);
             pointer-events: none; z-index: 10; }
@@ -50,7 +50,7 @@
   <span id="clock">--:--</span>
   <span id="alive"></span>
   <span id="zonebox"></span>
-  <span id="status" style="color:#56606a">connecting&hellip;</span>
+  <span id="status" style="color:#8a95a3">connecting&hellip;</span>
 </div>
 <div id="grid">
   <div class="panel">
@@ -142,7 +142,7 @@ ws.onmessage = (ev) => {
       ? `tile (${g.target ? esc(g.target[0]) + ',' + esc(g.target[1]) : '?,?'})`
       : `P${g.recipient_slot}`;
     d.innerHTML = g.status === 'accepted'
-      ? `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → ${dest} <span style="color:#56606a">(bal ${g.balance})</span>`
+      ? `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → ${dest} <span style="color:#8a95a3">(bal ${g.balance})</span>`
       : `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> <span class="crim">REJECTED</span> ${esc(g.item)} (${esc(g.reason)})`;
     tick.prepend(d);
   }
