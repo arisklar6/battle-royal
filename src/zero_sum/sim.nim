@@ -208,8 +208,17 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
           recipientSlot: g{"recipient_slot"}.getInt(-1),
           target: tgt,
           itemId: g{"item_id"}.getStr("")))
+  const DefaultNames = [
+    "Adino", "Tryphena",       # team A
+    "Carpus", "Tazkia",        # team B
+    "Luqman", "Sherah",        # team C
+    "Karna", "Damaris",        # team D
+    "Archippus", "Balqees",    # team E
+    "Kaysan", "Urvasi",        # team F
+    "Sanjaya", "Tirzah",       # team G
+    "Zimri", "Bhishma"]        # team H
   for i in 0 .. 15:
-    result.playerNames.add("P" & (if i < 10: "0" else: "") & $i)
+    result.playerNames.add(DefaultNames[i])
   if node.hasKey("players"):
     for i, p in node["players"].elems:
       if i < 16 and p.kind == JObject and p{"name"}.getStr("").len > 0:
