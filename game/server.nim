@@ -49,6 +49,10 @@ type
     analysts: Table[WebSocket, bool]     # /analyst JSON telemetry feed
     watchers: Table[WebSocket, int]      # /watch read-only agent views (ws->slot)
     watcherJoined: seq[WebSocket]        # need player_config on next tick
+    # replay transport (VISUAL_REDESIGN §5.8) — only the replay loop reads
+    ctlPaused: bool
+    ctlSpeed: float                      # 0.25..8.0 playback multiplier
+    ctlSeek: int                         # target tick, -1 = none
 
 var appState: AppState
 
@@ -88,6 +92,34 @@ proc httpHandler(request: Request) =
      not request.isWsHandshake():
     headers["Content-Type"] = "text/plain"
     request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
+    return
+  if request.httpMethod == "GET" and path == "/control":
+    # Replay transport control (VISUAL_REDESIGN §5.8): pause/play/speed/seek.
+    # Live matches never read these; only runReplay's loop consumes them.
+    let cmd = queryParam(request.uri, "cmd")
+    var ok = true
+    {.gcsafe.}:
+      withLock appState.lock:
+        case cmd
+        of "pause": appState.ctlPaused = true
+        of "play": appState.ctlPaused = false
+        of "speed":
+          try:
+            appState.ctlSpeed = clamp(
+              parseFloat(queryParam(request.uri, "value")), 0.25, 8.0)
+          except CatchableError:
+            ok = false
+        of "seek":
+          try:
+            appState.ctlSeek = clamp(
+              parseInt(queryParam(request.uri, "tick")), 0, 100_000)
+          except CatchableError:
+            ok = false
+        else:
+          ok = false
+    headers["Content-Type"] = "application/json"
+    request.respond(if ok: 200 else: 400, headers,
+                    """{"ok":""" & $ok & "}")
     return
   if request.httpMethod == "GET" and path in ["/global", "/replay", "/admin"]:
     let websocket = request.upgradeToWebSocket()
@@ -246,6 +278,15 @@ proc runFrameLimiter(previous: var MonoTime) =
     sleep(int((frameDuration - elapsed).inMilliseconds))
   previous = getMonoTime()
 
+proc runFrameLimiter(previous: var MonoTime, speed: float) =
+  ## Replay transport: pace at TargetFps * speed.
+  let frameDuration = initDuration(
+    milliseconds = max(1, int(1000.0 / (TargetFps * max(0.1, speed)))))
+  let elapsed = getMonoTime() - previous
+  if elapsed < frameDuration:
+    sleep(int((frameDuration - elapsed).inMilliseconds))
+  previous = getMonoTime()
+
 proc broadcast(r: var Renderer, s: Sim, update: seq[uint8]) =
   var viewers: seq[(WebSocket, ViewerState)] = @[]
   {.gcsafe.}:
@@ -294,6 +335,8 @@ proc startServer(rc: RuntimeConfig) =
   appState.viewers = initTable[WebSocket, ViewerState]()
   appState.analysts = initTable[WebSocket, bool]()
   appState.watchers = initTable[WebSocket, int]()
+  appState.ctlSpeed = 1.0
+  appState.ctlSeek = -1
   httpServer = newServer(httpHandler, websocketHandler,
                          workerThreads = 4, tcpNoDelay = true)
   createThread(serverThread, serverThreadProc, ServerThreadArgs(
@@ -675,6 +718,7 @@ proc runReplay(rc: RuntimeConfig) =
     storedHash[int(h.tick)] = h.hash
 
   var last = getMonoTime()
+  var pendingSeek = -1
   while true:                                   # autoplay + LOOP
     let cfg = parseSimConfig(loaded.effectiveConfig, mintSeedFromOs)
     doAssert not cfg.seedWasMinted, "effective config must carry the seed"
@@ -683,6 +727,8 @@ proc runReplay(rc: RuntimeConfig) =
     var tracker: AnalystTracker
     tracker.reset()
     r.resetForLoop()
+    var target = pendingSeek
+    pendingSeek = -1
     {.gcsafe.}:
       withLock appState.lock:
         var keys: seq[WebSocket] = @[]
@@ -695,6 +741,27 @@ proc runReplay(rc: RuntimeConfig) =
         for ws in appState.watchers.keys:
           appState.watcherJoined.add(ws)
     while s.phase != phEnded:
+      # transport control (§5.8): pause / speed / seek. Backward seek
+      # restarts the episode (deterministic re-sim is the seek mechanism);
+      # forward seek fast-forwards without broadcasting.
+      var paused = false
+      var speed = 1.0
+      {.gcsafe.}:
+        withLock appState.lock:
+          paused = appState.ctlPaused
+          speed = appState.ctlSpeed
+          if appState.ctlSeek >= 0:
+            if appState.ctlSeek >= s.tick:
+              target = appState.ctlSeek
+            else:
+              pendingSeek = appState.ctlSeek
+            appState.ctlSeek = -1
+      if pendingSeek >= 0:
+        break
+      if paused and target < 0:
+        r.broadcast(s, @[])
+        runFrameLimiter(last)
+        continue
       if s.tick in inputsByTick:
         for (slot, payload) in inputsByTick[s.tick]:
           let j =
@@ -709,11 +776,27 @@ proc runReplay(rc: RuntimeConfig) =
         if rc.mismatchQuit:
           quit(1)
       tracker.track(s)
+      if target >= 0:
+        if s.tick < target:
+          continue                        # fast-forward: no frames, no pacing
+        target = -1
+        # renderer diffs diverged during the skip: rebuild the full scene
+        r.resetForLoop()
+        {.gcsafe.}:
+          withLock appState.lock:
+            var keys: seq[WebSocket] = @[]
+            for ws in appState.viewers.keys:
+              keys.add(ws)
+            for ws in keys:
+              appState.viewers[ws] = ViewerState(initialized: false)
+            appState.watcherJoined.setLen(0)
+            for ws in appState.watchers.keys:
+              appState.watcherJoined.add(ws)
       if s.tick mod 6 == 0 or s.phase == phEnded:
         broadcastAnalyst(s, tracker)
       serviceWatchers(s)
       r.broadcast(s, r.updatePacket(s))
-      runFrameLimiter(last)
+      runFrameLimiter(last, speed)
     for _ in 0 ..< 48:                          # end-of-loop beat
       r.broadcast(s, @[])
       runFrameLimiter(last)

@@ -717,6 +717,67 @@ const Glyphs = {
   '>': 0b100_010_001_010_100, '.': 0b000_000_000_000_010,
   ' ': 0}.toTable
 
+# --- 5x7 display font (banners/HUD/kill feed; 3x5 stays for in-world tags) ---
+const Glyphs7 = {
+  '0': 0b01110_10001_10011_10101_11001_10001_01110,
+  '1': 0b00100_01100_00100_00100_00100_00100_01110,
+  '2': 0b01110_10001_00001_00010_00100_01000_11111,
+  '3': 0b11111_00010_00100_00010_00001_10001_01110,
+  '4': 0b00010_00110_01010_10010_11111_00010_00010,
+  '5': 0b11111_10000_11110_00001_00001_10001_01110,
+  '6': 0b00110_01000_10000_11110_10001_10001_01110,
+  '7': 0b11111_00001_00010_00100_01000_01000_01000,
+  '8': 0b01110_10001_10001_01110_10001_10001_01110,
+  '9': 0b01110_10001_10001_01111_00001_00010_01100,
+  'A': 0b01110_10001_10001_11111_10001_10001_10001,
+  'B': 0b11110_10001_10001_11110_10001_10001_11110,
+  'C': 0b01110_10001_10000_10000_10000_10001_01110,
+  'D': 0b11100_10010_10001_10001_10001_10010_11100,
+  'E': 0b11111_10000_10000_11110_10000_10000_11111,
+  'F': 0b11111_10000_10000_11110_10000_10000_10000,
+  'G': 0b01110_10001_10000_10111_10001_10001_01111,
+  'H': 0b10001_10001_10001_11111_10001_10001_10001,
+  'I': 0b01110_00100_00100_00100_00100_00100_01110,
+  'J': 0b00111_00010_00010_00010_00010_10010_01100,
+  'K': 0b10001_10010_10100_11000_10100_10010_10001,
+  'L': 0b10000_10000_10000_10000_10000_10000_11111,
+  'M': 0b10001_11011_10101_10101_10001_10001_10001,
+  'N': 0b10001_10001_11001_10101_10011_10001_10001,
+  'O': 0b01110_10001_10001_10001_10001_10001_01110,
+  'P': 0b11110_10001_10001_11110_10000_10000_10000,
+  'Q': 0b01110_10001_10001_10001_10101_10010_01101,
+  'R': 0b11110_10001_10001_11110_10100_10010_10001,
+  'S': 0b01111_10000_10000_01110_00001_00001_11110,
+  'T': 0b11111_00100_00100_00100_00100_00100_00100,
+  'U': 0b10001_10001_10001_10001_10001_10001_01110,
+  'V': 0b10001_10001_10001_10001_10001_01010_00100,
+  'W': 0b10001_10001_10001_10101_10101_10101_01010,
+  'X': 0b10001_10001_01010_00100_01010_10001_10001,
+  'Y': 0b10001_10001_10001_01010_00100_00100_00100,
+  'Z': 0b11111_00001_00010_00100_01000_10000_11111,
+  ':': 0b00000_00100_00000_00000_00100_00000_00000,
+  '-': 0b00000_00000_00000_01110_00000_00000_00000,
+  '>': 0b01000_00100_00010_00001_00010_00100_01000,
+  '.': 0b00000_00000_00000_00000_00000_00000_00100,
+  ' ': 0}.toTable
+
+proc textPixels7(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
+  ## Display-face line: 5x7 glyphs, 6px advance, on the standard plate.
+  let w = 2 + text.len * 6
+  let h = 9
+  var px = newSeq[uint8](w * h * 4)
+  for y in 0 ..< h:
+    for x in 0 ..< w:
+      px.put(w, x, y, BgDark, 220)
+  for i, ch in text:
+    let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
+    let bits = Glyphs7.getOrDefault(up, 0)
+    for gy in 0 ..< 7:
+      for gx in 0 ..< 5:
+        if ((bits shr ((6 - gy) * 5 + (4 - gx))) and 1) == 1:
+          px.put(w, 1 + i * 6 + gx, 1 + gy, (r, g, b))
+  (w, h, px)
+
 proc textPixels(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
   let w = 2 + text.len * 4
   let h = 7
@@ -1327,7 +1388,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   if lampMask != r.lastLampMask:
     r.lastLampMask = lampMask
     result.addSprite(SpLampRow, 81, 6, lampRowPixels(lampMask), "lamps")
-    result.addObject(ObLampRow, 2, 38, 0, LayerHudTL, SpLampRow)
+    result.addObject(ObLampRow, 2, 44, 0, LayerHudTL, SpLampRow)
   # exterior treatment tracks the shrinking ring: re-bake the background
   # whenever the integer safe radius OR the de-rez stage changes
   let bgR = s.effectiveSafeRadius()
@@ -1371,15 +1432,15 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.lastHud1 = hud1
     let spId = SpHudBase + (r.hudFlip mod 2)
     inc r.hudFlip
-    let (w, h, px) = textPixels(hud1, PhosphorPeak[0], PhosphorPeak[1],
-                                PhosphorPeak[2])
+    let (w, h, px) = textPixels7(hud1, PhosphorPeak[0], PhosphorPeak[1],
+                                 PhosphorPeak[2])
     result.addSprite(spId, w, h, px, "hud1")
     result.addObject(ObHudLine1, 2, 2, 0, LayerHudTL, spId)
   if hud2 != r.lastHud2:
     r.lastHud2 = hud2
     let spId = SpHudBase + 2 + (r.hudFlip mod 2)
     inc r.hudFlip
-    let (w, h, px) = textPixels(hud2, GoldTone[0], GoldTone[1], GoldTone[2])
+    let (w, h, px) = textPixels7(hud2, GoldTone[0], GoldTone[1], GoldTone[2])
     result.addSprite(spId, w, h, px, "hud2")
     result.addObject(ObHudLine2, 2, 2, 0, LayerHudBL, spId)
   # kill feed under the status line (Tier 1)
@@ -1387,9 +1448,9 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.killDirty = false
     for i in 0 ..< r.killFeed.len:
       let spId = SpKillBase + i * 2 + (r.killFlip mod 2)
-      let (w, h, px) = textPixels(r.killFeed[i], 233, 228, 216)
+      let (w, h, px) = textPixels7(r.killFeed[i], 233, 228, 216)
       result.addSprite(spId, w, h, px, "kill" & $i)
-      result.addObject(ObKillLineBase + i, 2, 13 + i * 7, 0, LayerHudTL, spId)
+      result.addObject(ObKillLineBase + i, 2, 13 + i * 9, 0, LayerHudTL, spId)
     inc r.killFlip
     for stale in r.killFeed.len ..< r.killLinesDrawn:
       result.addDeleteObject(ObKillLineBase + stale)
@@ -1410,7 +1471,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       r.bannerUntil = s.tick + 96
       let spId = SpBanner + (r.bannerFlip mod 2)
       inc r.bannerFlip
-      let (w, h, px) = textPixels(txt, GoldTone[0], GoldTone[1], GoldTone[2])
+      let (w, h, px) = textPixels7(txt, GoldTone[0], GoldTone[1], GoldTone[2])
       result.addSprite(spId, w, h, px, "banner")
       result.addObject(ObBanner, 4, 4, 0, LayerBanner, spId)
   if r.bannerText.len > 0 and s.tick >= r.bannerUntil:
@@ -1423,9 +1484,9 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   result.addLayer(LayerMap, 0x00, 0x01)
   result.addViewport(LayerMap, WorldPx, WorldPx)
   result.addLayer(LayerHudTL, 0x01, 0x02)
-  result.addViewport(LayerHudTL, 208, 46)
+  result.addViewport(LayerHudTL, 240, 52)
   result.addLayer(LayerHudBL, 0x04, 0x02)
-  result.addViewport(LayerHudBL, 280, 12)
+  result.addViewport(LayerHudBL, 320, 14)
   result.addLayer(LayerBanner, 0x05, 0x02)
   result.addViewport(LayerBanner, 120, 16)
   result.add(spriteDefs(s))

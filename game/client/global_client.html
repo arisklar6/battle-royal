@@ -140,6 +140,18 @@ body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   overflow-wrap:anywhere;
   line-height:1.15;
 }
+#directorChip{
+  position:fixed;
+  right:12px;
+  bottom:12px;
+  padding:4px 8px;
+  color:#A5E3EE;
+  background:rgba(12,17,22,.8);
+  font:11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.12em;
+  pointer-events:none;
+}
+#directorChip.hidden{display:none}
 </style>
 </head>
 <body>
@@ -160,6 +172,7 @@ body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   </div>
   <div id="debugSprites"></div>
 </div>
+<div id="directorChip" class="hidden">DIRECTOR</div>
 <script src="snappyjs.min.js"></script>
 <script>
 const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
@@ -1216,6 +1229,226 @@ addEventListener("pagehide",resetPlayerButtons);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden)resetPlayerButtons();
 });
+
+// DIRECTOR MODE (VISUAL_REDESIGN §5.6): deterministic computed camera.
+// Second WebSocket to the /analyst JSON feed (same host as the sprite
+// stream); the sprite-stream logic above is never touched. All camera
+// moves are 3 hard stepped sub-moves ~120ms apart — no easing.
+const directorChip=document.getElementById("directorChip");
+const DirTilePx=6,DirWorldPx=288;
+const DirTickMs=400,DirStepMs=120,DirPunchMs=3000,DirSuspendMs=10000;
+const DirRetryMs=5000,DirMargin=1.3,DirMinZoom=1,DirMaxZoom=8;
+let directorActive=false,dirEverEnabled=false;
+let dirSocket=null,dirRetryTimer=0,dirData=null;
+let dirState="IDLE",dirPunchUntil=0,dirSuspendedUntil=0;
+let dirPrimed=false,dirSeen=new Set(),dirStepTimers=[];
+
+function analystStreamAddress(){
+  // Same derivation as websocketAddress(): honor ?address= (it points at
+  // the sprite stream), swap the trailing stream segment for /analyst so
+  // any path prefix survives (e.g. /foo/global -> /foo/analyst).
+  try{
+    const wsUrl=new URL(address,location.href);
+    if(wsUrl.protocol==="http:")wsUrl.protocol="ws:";
+    if(wsUrl.protocol==="https:")wsUrl.protocol="wss:";
+    const swapped=wsUrl.pathname.replace(
+      /\/(global|replay|player|reward|admin|watch)$/,"/analyst"
+    );
+    wsUrl.pathname=/\/analyst$/.test(swapped)?swapped:"/analyst";
+    wsUrl.search="";
+    wsUrl.hash="";
+    return wsUrl.toString();
+  }catch(e){
+    const protocol=location.protocol==="https:"?"wss:":"ws:";
+    return protocol+"//"+(location.host||"localhost:8080")+"/analyst";
+  }
+}
+
+function dirSyncSeen(data){
+  if(!data||!Array.isArray(data.settlements))return;
+  for(const st of data.settlements)dirSeen.add(st.victim+":"+st.tick);
+}
+
+function scheduleAnalystRetry(){
+  if(dirRetryTimer||!dirEverEnabled)return;
+  dirRetryTimer=setTimeout(()=>{
+    dirRetryTimer=0;
+    if(dirEverEnabled)connectAnalyst();
+  },DirRetryMs);
+}
+
+function connectAnalyst(){
+  if(dirSocket)return;
+  let ws;
+  try{
+    ws=new WebSocket(analystStreamAddress());
+  }catch(e){
+    scheduleAnalystRetry();
+    return;
+  }
+  dirSocket=ws;
+  ws.onmessage=event=>{
+    if(dirSocket!==ws)return;
+    let m;
+    try{m=JSON.parse(event.data)}catch(e){return}
+    if(!m||m.type!=="analyst")return;
+    dirData=m;
+    // while inactive, keep the death ledger current so re-enabling the
+    // director never punches on stale settlements
+    if(!directorActive)dirSyncSeen(m);
+  };
+  ws.onclose=()=>{
+    if(dirSocket===ws){
+      dirSocket=null;
+      scheduleAnalystRetry();
+    }
+  };
+  ws.onerror=()=>{
+    try{ws.close()}catch(e){}
+  };
+}
+
+function dirCancelSteps(){
+  for(const timer of dirStepTimers)clearTimeout(timer);
+  dirStepTimers=[];
+}
+
+function dirMoveTo(targetZoom,targetPanX,targetPanY){
+  if(Math.abs(targetZoom-zoom)<0.01&&
+     Math.abs(targetPanX-panX)<1&&Math.abs(targetPanY-panY)<1)return;
+  dirCancelSteps();
+  const fromZoom=zoom,fromPanX=panX,fromPanY=panY;
+  for(let i=1;i<=3;i++){
+    const q=i/3;
+    const apply=()=>{
+      if(!directorActive)return;
+      autoFit=false;
+      zoom=fromZoom+(targetZoom-fromZoom)*q;
+      panX=fromPanX+(targetPanX-fromPanX)*q;
+      panY=fromPanY+(targetPanY-fromPanY)*q;
+      applyView();
+      scheduleDraw();
+    };
+    if(i===1)apply();
+    else dirStepTimers.push(setTimeout(apply,(i-1)*DirStepMs));
+  }
+}
+
+function dirAliveBox(data){
+  if(!data||!Array.isArray(data.agents))return null;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,any=false;
+  for(const agent of data.agents){
+    if(!agent||!agent.alive||!Array.isArray(agent.pos))continue;
+    const x=agent.pos[0]*DirTilePx,y=agent.pos[1]*DirTilePx;
+    minX=Math.min(minX,x);
+    minY=Math.min(minY,y);
+    maxX=Math.max(maxX,x+DirTilePx);
+    maxY=Math.max(maxY,y+DirTilePx);
+    any=true;
+  }
+  return any?{minX,minY,maxX,maxY}:null;
+}
+
+function dirFitZoom(box){
+  const w=Math.max(DirTilePx,box.maxX-box.minX);
+  const h=Math.max(DirTilePx,box.maxY-box.minY);
+  const fit=Math.min(innerWidth/(w*DirMargin),innerHeight/(h*DirMargin));
+  return Math.max(DirMinZoom,Math.min(DirMaxZoom,fit));
+}
+
+function dirCenterOn(worldX,worldY,targetZoom){
+  dirMoveTo(
+    targetZoom,
+    Math.round(innerWidth/2-worldX*targetZoom),
+    Math.round(innerHeight/2-worldY*targetZoom)
+  );
+}
+
+function directorTick(){
+  if(!directorActive)return;
+  const data=dirData;
+  if(!data)return;
+  const now=performance.now();
+  if(now<dirSuspendedUntil){
+    // manual override in progress: absorb settlements without punching
+    dirSyncSeen(data);
+    return;
+  }
+  if(data.finale)dirState="FINALE";
+  if(!dirPrimed){
+    dirSyncSeen(data);
+    dirPrimed=true;
+  }
+  if(dirState!=="FINALE"&&Array.isArray(data.settlements)){
+    let newest=null;
+    for(const st of data.settlements){
+      const key=st.victim+":"+st.tick;
+      if(!dirSeen.has(key)){
+        dirSeen.add(key);
+        newest=st;
+      }
+    }
+    if(newest){
+      const victim=Array.isArray(data.agents)?data.agents[newest.victim]:null;
+      if(victim&&Array.isArray(victim.pos)){
+        dirState="PUNCH";
+        dirPunchUntil=now+DirPunchMs;
+        const box=dirAliveBox(data);
+        const punchZoom=Math.min(DirMaxZoom,(box?dirFitZoom(box):DirMinZoom)*2);
+        dirCenterOn(
+          victim.pos[0]*DirTilePx+DirTilePx/2,
+          victim.pos[1]*DirTilePx+DirTilePx/2,
+          punchZoom
+        );
+        return;
+      }
+    }
+  }
+  if(dirState==="PUNCH"){
+    if(now<dirPunchUntil)return; // hold the punch shot
+    dirState="IDLE";
+  }
+  // IDLE frames all alive agents; FINALE frames the last 2 permanently
+  const box=dirAliveBox(data);
+  if(!box)return;
+  const targetZoom=dirFitZoom(box);
+  dirCenterOn((box.minX+box.maxX)/2,(box.minY+box.maxY)/2,targetZoom);
+}
+
+function setDirector(active){
+  directorActive=active;
+  directorChip.classList.toggle("hidden",!active);
+  if(active){
+    dirEverEnabled=true;
+    connectAnalyst();
+  }else{
+    dirCancelSteps();
+  }
+}
+
+function dirSuspend(){
+  if(!directorActive)return;
+  dirSuspendedUntil=performance.now()+DirSuspendMs;
+  dirCancelSteps();
+}
+
+// additive hooks: these run after the existing wheel/drag handlers and
+// never replace them — any manual camera input parks the director 10s
+addEventListener("wheel",dirSuspend,{passive:true});
+addEventListener("pointerdown",()=>{
+  if(draggingMap)dirSuspend();
+});
+addEventListener("pointermove",()=>{
+  if(draggingMap)dirSuspend();
+});
+addEventListener("keydown",event=>{
+  if(event.key!=="d"&&event.key!=="D")return;
+  if(typing)return;
+  setDirector(!directorActive);
+});
+setInterval(directorTick,DirTickMs);
+if(url.searchParams.get("director")==="1")setDirector(true);
+
 fit();
 </script>
 </body>
