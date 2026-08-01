@@ -50,6 +50,11 @@ const
   SpHpBandBase = 830       # 830 + band: hp semaphore bar (0 healthy/1 hurt/2 crit)
   SpRingGhost = 834        # dashed next-radius preview tile
   SpKillBase = 840         # 840..845: kill-feed lines (3 lines x 2 buffers)
+  SpChannelA = 850         # phosphor channel halo (heal/eat window)
+  SpChannelB = 851
+  SpRevealMark = 852       # red "camo blown" mark
+  SpPodCrateBase = 900     # 900 + ord(ItemId): contents-keyed crates
+  SpPodLabelBase = 1000    # 1000 + pod index: persistent cargo labels
 
   # object ids
   ObBackground = 1
@@ -78,8 +83,11 @@ const
   ObMouthBase = 44200       # 8 gold mouth tiles
   ObPodBeamBase = 44300
   ObPodLabelBase = 44400
+  ObChannelBase = 44500     # channel halo per slot
+  ObRevealBase = 44600      # camo-reveal mark per slot
   ObSlotLabelBase = 45000   # + slot: identity tag under each agent
   ObHpBandBase = 45100      # + slot: hp semaphore over each agent
+  ObCorpseBase = 46000      # + slot: persistent corpse (lives to match end)
   ObKillLineBase = 50020    # + 0..2: kill-feed lines, newest first
 
   LayerHudTL = 1
@@ -147,6 +155,9 @@ type
     killLinesDrawn: int
     nextRingDrawn: int
     lastBgRadius: int         # last safe radius baked into the background
+    channelOn: array[16, bool]
+    revealOn: array[16, bool]
+    podLabelText: seq[string] # per pod index, for sprite-rebuild detection
 
 # ---------------------------------------------------------------- helpers
 
@@ -395,7 +406,9 @@ proc stormPixels(phase: int): seq[uint8] =
       if (x + y + phase) mod 2 == 0:
         result.put(TileSize, x, y, (255'u8, 90'u8, 30'u8), 120)
 
-proc podCratePixels(): seq[uint8] =
+proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
+  ## Crate keyed to contents: the strap carries the item color so a
+  ## contested drop stays identified after touchdown.
   result = newSeq[uint8](TileSize * TileSize * 4)
   let wood = (150'u8, 105'u8, 55'u8)
   for y in 0 ..< TileSize:
@@ -403,7 +416,8 @@ proc podCratePixels(): seq[uint8] =
       let edge = x == 0 or y == 0 or x == TileSize - 1 or y == TileSize - 1
       result.put(TileSize, x, y, (if edge: shade(wood, -40) else: wood))
   for x in 0 ..< TileSize:
-    result.put(TileSize, x, TileSize div 2, (220'u8, 40'u8, 40'u8))
+    result.put(TileSize, x, TileSize div 2, band)
+  result.put(TileSize, 1, 1, band)
 
 proc podChutePixels(): seq[uint8] =
   ## 10x12: canopy + lines + crate.
@@ -582,6 +596,34 @@ proc ringGhostPixels(): seq[uint8] =
     result.put(TileSize, 0, i, bone, 130)
     result.put(TileSize, TileSize - 1, i, bone, 130)
 
+proc channelHaloPixels(phase: int): seq[uint8] =
+  ## Phosphor ring: the 48-tick heal/eat channel made visible. Sparser
+  ## dash rhythm than the poison halo so the two never read alike.
+  result = newSeq[uint8](10 * 10 * 4)
+  for y in 0 ..< 10:
+    for x in 0 ..< 10:
+      let dx = x * 2 + 1 - 10
+      let dy = y * 2 + 1 - 10
+      let d2 = dx * dx + dy * dy
+      if d2 > 36 and d2 <= 81 and (x + 2 * y + phase) mod 3 == 0:
+        result.put(10, x, y, (165'u8, 227'u8, 238'u8), 150)
+
+proc revealMarkPixels(): seq[uint8] =
+  ## Red exclamation over a camo agent whose 120-tick reveal window runs.
+  result = newSeq[uint8](5 * 5 * 4)
+  let c = (255'u8, 74'u8, 54'u8)
+  result.put(5, 2, 0, c)
+  result.put(5, 2, 1, c)
+  result.put(5, 2, 2, c)
+  result.put(5, 2, 4, c)
+
+proc upperLabel(s: string): string =
+  ## 3x5-font-safe: uppercase, underscores become spaces.
+  for ch in s:
+    if ch == '_': result.add(' ')
+    elif ch >= 'a' and ch <= 'z': result.add(chr(ord(ch) - 32))
+    else: result.add(ch)
+
 # --- 3x5 pixel font ---
 const Glyphs = {
   '0': 0b111_101_101_101_111, '1': 0b010_110_010_010_111,
@@ -667,8 +709,14 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpFirestormB, TileSize, TileSize, stormPixels(1), "stormB")
   result.addSprite(SpFloodA, TileSize, TileSize, floodPixels(0), "floodA")
   result.addSprite(SpFloodB, TileSize, TileSize, floodPixels(1), "floodB")
-  result.addSprite(SpPodCrate, TileSize, TileSize, podCratePixels(), "pod")
+  for id in ItemId:
+    if id != iNone:
+      result.addSprite(SpPodCrateBase + ord(id), TileSize, TileSize,
+                       podCratePixels(itemColor(id)), "pod_" & $id)
   result.addSprite(SpPodChute, 10, 12, podChutePixels(), "chute")
+  result.addSprite(SpChannelA, 10, 10, channelHaloPixels(0), "chanA")
+  result.addSprite(SpChannelB, 10, 10, channelHaloPixels(1), "chanB")
+  result.addSprite(SpRevealMark, 5, 5, revealMarkPixels(), "revealed")
   for n in 0 .. 3:
     result.addSprite(SpBushBase + n, TileSize, TileSize, bushPixels(n), "bush" & $n)
   for id in ItemId:
@@ -764,6 +812,24 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       elif r.meshOn[slot]:
         result.addDeleteObject(ObMeshBase + slot)
         r.meshOn[slot] = false
+      # channel halo (Tier 1): the interruptible heal/eat window on air
+      if a.channeling.kind != chNone:
+        result.addObject(ObChannelBase + slot, a.pos.x * TileSize - 2,
+          a.pos.y * TileSize - 2, 9, LayerMap,
+          (if (s.tick div 6) mod 2 == 0: SpChannelA else: SpChannelB))
+        r.channelOn[slot] = true
+      elif r.channelOn[slot]:
+        result.addDeleteObject(ObChannelBase + slot)
+        r.channelOn[slot] = false
+      # camo blown: red mark while the 120-tick reveal window runs
+      if a.body == iCamo and s.tick < a.camoRevealedUntil:
+        result.addObject(ObRevealBase + slot, a.pos.x * TileSize + 1,
+          a.pos.y * TileSize - (BodyH - TileSize) - 10, 13, LayerMap,
+          SpRevealMark)
+        r.revealOn[slot] = true
+      elif r.revealOn[slot]:
+        result.addDeleteObject(ObRevealBase + slot)
+        r.revealOn[slot] = false
     elif not r.deadDrawn[slot]:
       result.addDeleteObject(ObAgentBase + slot)
       result.addDeleteObject(ObSlotLabelBase + slot)
@@ -776,10 +842,17 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if r.meshOn[slot]:
         result.addDeleteObject(ObMeshBase + slot)
         r.meshOn[slot] = false
-      # corpse + vertical void beam (§21.3 death broadcast)
-      r.spawnEffect(result, s, SpCorpseBase + slot,
-        a.pos.x * TileSize + TileSize div 2, a.pos.y * TileSize + TileSize div 2,
-        12, 96)
+      if r.channelOn[slot]:
+        result.addDeleteObject(ObChannelBase + slot)
+        r.channelOn[slot] = false
+      if r.revealOn[slot]:
+        result.addDeleteObject(ObRevealBase + slot)
+        r.revealOn[slot] = false
+      # persistent corpse (Tier 1: board accumulates story) + void beam
+      result.addObject(ObCorpseBase + slot,
+        a.pos.x * TileSize + TileSize div 2 - 6,
+        a.pos.y * TileSize + TileSize div 2 - 6, 5, LayerMap,
+        SpCorpseBase + slot)
       r.spawnEffect(result, s, SpVoidBeam,
         a.pos.x * TileSize + TileSize div 2, a.pos.y * TileSize - 20, 6, 36)
       r.deadDrawn[slot] = true
@@ -859,9 +932,13 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   var beamIdx = 0
   for pod in s.pods:
     if podIdx >= PodPool: break
+    let (_, gift) = giftLookup(pod.itemId)
     if pod.landed:
+      # crate keyed to primary contents — the contest stays identified
+      let keyItem = (if gift.contents.len > 0: gift.contents[0][0] else: iNone)
       result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize,
-                       pod.landing.y * TileSize, 12, LayerMap, SpPodCrate)
+                       pod.landing.y * TileSize, 12, LayerMap,
+                       SpPodCrateBase + ord(keyItem))
     else:
       let total = max(1, pod.landsTick - pod.spawnTick)
       let left = max(0, pod.landsTick - s.tick)
@@ -869,31 +946,35 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize - 2,
                        pod.landing.y * TileSize - height, 19, LayerMap, SpPodChute)
       if beamIdx < 8:
-        # beam + label objects persist; refresh sprite on new beam or 1x/s
+        # beam objects persist; refresh on new beam or 1x/s
         if beamIdx >= r.podBeamsDrawn or s.tick mod 24 == 0:
           result.addObject(ObPodBeamBase + beamIdx, pod.landing.x * TileSize - 1,
                            pod.landing.y * TileSize - 54, 13, LayerMap, SpGoldBeam)
-          # floating cargo typography above the beam
-          let (_, gift) = giftLookup(pod.itemId)
-          let spId = SpCargoBase + (r.labelFlip mod 8)
-          inc r.labelFlip
-          var label = "AIRDROP: "
-          for ch in pod.itemId:
-            label.add(if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
-          label.add(" " & $gift.price & " SC")
-          let (w, h, px) = textPixels(label, GoldTone[0], GoldTone[1], GoldTone[2])
-          result.addSprite(spId, w, h, px, "cargo")
-          result.addObject(ObPodLabelBase + beamIdx,
-                           pod.landing.x * TileSize - w div 2 + 3,
-                           pod.landing.y * TileSize - 62, 21, LayerMap, spId)
         inc beamIdx
+    # cargo label rides the pod for its whole life (Tier 1): full manifest
+    # while inbound, item name above the crate once landed
+    let labelTxt = (if pod.landed: upperLabel(pod.itemId)
+                    else: "AIRDROP: " & upperLabel(pod.itemId) & " " &
+                          $gift.price & " SC")
+    if r.podLabelText.len <= podIdx:
+      r.podLabelText.setLen(podIdx + 1)
+    if r.podLabelText[podIdx] != labelTxt:
+      r.podLabelText[podIdx] = labelTxt
+      let (w, h, px) = textPixels(labelTxt, GoldTone[0], GoldTone[1], GoldTone[2])
+      result.addSprite(SpPodLabelBase + podIdx, w, h, px, "cargo")
+    result.addObject(ObPodLabelBase + podIdx,
+                     pod.landing.x * TileSize - (2 + labelTxt.len * 4) div 2 + 3,
+                     pod.landing.y * TileSize - (if pod.landed: 10 else: 62),
+                     21, LayerMap, SpPodLabelBase + podIdx)
     inc podIdx
   for stale in podIdx ..< r.podsDrawn:
     result.addDeleteObject(ObPodBase + stale)
+    result.addDeleteObject(ObPodLabelBase + stale)
+    if stale < r.podLabelText.len:
+      r.podLabelText[stale] = ""
   r.podsDrawn = podIdx
   for stale in beamIdx ..< r.podBeamsDrawn:
     result.addDeleteObject(ObPodBeamBase + stale)
-    result.addDeleteObject(ObPodLabelBase + stale)
   r.podBeamsDrawn = beamIdx
   # events -> bursts
   for e in s.events:
@@ -1078,6 +1159,12 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   for slot in 0 .. 15:
     if s.agents[slot].alive:
       r.drawAgent(result, s, slot)
+    elif s.agents[slot].deathTick >= 0:
+      # late joiners still see the fallen where they fell
+      result.addObject(ObCorpseBase + slot,
+        s.agents[slot].pos.x * TileSize + TileSize div 2 - 6,
+        s.agents[slot].pos.y * TileSize + TileSize div 2 - 6, 5, LayerMap,
+        SpCorpseBase + slot)
 
 proc resetForLoop*(r: var Renderer) =
   r.effects = @[]
@@ -1090,6 +1177,8 @@ proc resetForLoop*(r: var Renderer) =
     r.haloOn[i] = false
     r.meshOn[i] = false
     r.wasCamoHidden[i] = false
+    r.channelOn[i] = false
+    r.revealOn[i] = false
   r.mouthsDrawn = false
   r.podBeamsDrawn = 0
   r.ringDrawn = 0
@@ -1098,6 +1187,7 @@ proc resetForLoop*(r: var Renderer) =
   r.killDirty = false
   r.killLinesDrawn = 0
   r.lastBgRadius = 0
+  r.podLabelText = @[]
   r.podsDrawn = 0
   r.itemsDrawn = 0
   r.projsDrawn = 0
