@@ -21,6 +21,8 @@ const
 const SponsorClientHtml = staticRead("client/sponsor_client.html")
 const PlayerClientHtml = staticRead("client/player_client.html")
 const AnalystClientHtml = staticRead("client/analyst_client.html")
+const CockpitClientHtml = staticRead("client/cockpit.html")
+const CoachPolicyPath = "coach_policy.json"
 
 type
   ViewerState = object
@@ -93,6 +95,76 @@ proc httpHandler(request: Request) =
     headers["Content-Type"] = "text/plain"
     request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
     return
+  if path == "/coach":
+    # Coach-mode plan exchange (local play): the cockpit saves the human
+    # coach's pre-match plan; the relauncher hands it to the two coached
+    # bots. Content is whitelist-rebuilt — nothing client-sent is stored
+    # verbatim except the capped notes string.
+    if request.httpMethod == "GET":
+      headers["Content-Type"] = "application/json"
+      if fileExists(CoachPolicyPath):
+        request.respond(200, headers, readFile(CoachPolicyPath))
+      else:
+        request.respond(404, headers, "{}")
+      return
+    if request.httpMethod == "POST":
+      headers["Content-Type"] = "application/json"
+      var ok = false
+      try:
+        let j = parseJson(request.body)
+        let teamName = j{"team"}.getStr("")
+        var teamIdx = -1
+        for i, tn in TeamNames:
+          if tn == teamName: teamIdx = i
+        if teamIdx >= 0:
+          var clean = %*{"team": teamName, "slots": newJObject(),
+                          "policy": newJObject(), "notes": ""}
+          for slot in [teamIdx * 2, teamIdx * 2 + 1]:
+            let ss = j{"slots"}{$slot}
+            var stats = %*{"speed": 6, "strength": 6,
+                            "intelligence": 4, "athleticism": 4}
+            if ss != nil and ss.kind == JObject:
+              var total = 0
+              for k in ["speed", "strength", "intelligence", "athleticism"]:
+                let v = clamp(ss{k}.getInt(5), 1, 10)
+                stats[k] = %v
+                total += v
+              if total > 20:
+                stats = %*{"speed": 5, "strength": 5,
+                            "intelligence": 5, "athleticism": 5}
+            clean["slots"][$slot] = stats
+          let p = j{"policy"}
+          var pol = newJObject()
+          pol["opening"] = %(if p{"opening"}.getStr("center") in
+              ["center", "fortress", "outer", "forage"]:
+            p{"opening"}.getStr("center") else: "center")
+          pol["aggression"] = %clamp(p{"aggression"}.getInt(5), 0, 10)
+          pol["heal_at"] = %clamp(p{"heal_at"}.getInt(60), 0, 100)
+          pol["flee_at"] = %clamp(p{"flee_at"}.getInt(35), 0, 100)
+          pol["ring_margin"] = %clamp(p{"ring_margin"}.getInt(1), 0, 4)
+          pol["finale"] = %(if p{"finale"}.getStr("fight") in
+              ["fight", "evade"]: p{"finale"}.getStr("fight") else: "fight")
+          var loot = newJArray()
+          if p{"loot_priority"} != nil and p{"loot_priority"}.kind == JArray:
+            for it in p["loot_priority"]:
+              if loot.len < 12 and it.getStr() in [
+                  "sword", "spear", "bow", "knives", "blowgun", "net",
+                  "first_aid", "rations", "backpack", "camouflage",
+                  "arrows", "darts"]:
+                loot.add(%it.getStr())
+          pol["loot_priority"] = loot
+          clean["policy"] = pol
+          var notes = j{"notes"}.getStr("")
+          if notes.len > 4000:
+            notes.setLen(4000)
+          clean["notes"] = %notes
+          writeFile(CoachPolicyPath, $clean)
+          ok = true
+      except CatchableError:
+        ok = false
+      request.respond(if ok: 200 else: 400, headers,
+                      """{"ok":""" & $ok & "}")
+      return
   if request.httpMethod == "GET" and path == "/control":
     # Replay transport control (VISUAL_REDESIGN §5.8): pause/play/speed/seek.
     # Live matches never read these; only runReplay's loop consumes them.
@@ -219,6 +291,9 @@ proc httpHandler(request: Request) =
   of "/client/analyst":
     headers["Content-Type"] = "text/html; charset=utf-8"
     request.respond(200, headers, AnalystClientHtml)
+  of "/client/cockpit":
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    request.respond(200, headers, CockpitClientHtml)
   of "/client/sponsor":
     {.gcsafe.}:
       withLock appState.lock:

@@ -1,0 +1,591 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Zero Sum - Coach Cockpit</title>
+<style>
+  /* AFTERGLOW tokens (docs/VISUAL_REDESIGN.md §3.1) */
+  :root { --bg:#0C1116; --panel:#141D26; --etch:#36444F; --rule:#2b3a4a;
+          --teal:#A5E3EE; --gold:#FFB454; --mag:#FF4FA3; --crim:#FF4A36;
+          --bone:#E9E4D8; --text:#C2CDD5; --dim:#8a95a3; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; overflow: hidden; display: flex; background: var(--bg);
+         color: var(--text); font-size: 12px;
+         font-family: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace; }
+  iframe { border: 1px solid var(--etch); width: 100%; display: block;
+           background: var(--bg); }
+  #spec { width: 58vw; height: 100vh; flex: none; }
+  #right { width: 42vw; height: 100vh; display: flex; flex-direction: column;
+           overflow-y: auto; padding: 8px; gap: 8px; }
+  #sponsor { height: 340px; flex: none; }
+  #desk { flex: 1; min-height: 300px; }
+  .panel { background: var(--panel); border: 1px solid var(--etch);
+           border-radius: 3px; padding: 10px; flex: none; }
+  .phead { color: var(--teal); font-size: 12px; letter-spacing: 3px;
+           text-transform: uppercase; border-bottom: 1px solid var(--rule);
+           padding-bottom: 4px; margin-bottom: 8px; display: flex;
+           justify-content: space-between; align-items: center; }
+  .cap { font-size: 10px; letter-spacing: 3px; color: var(--dim);
+         margin: 0 0 -4px 2px; flex: none; }
+  .cap.amber { color: var(--gold); }   /* sponsor = money surface */
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim);
+         flex: none; }
+  .dot.live { background: var(--teal);
+              box-shadow: 0 0 6px rgba(165,227,238,.8); }
+  input, select, textarea, button {
+    background: var(--bg); border: 1px solid var(--etch); color: var(--text);
+    font: inherit; padding: 3px 6px; border-radius: 2px; }
+  input[type=range] { accent-color: var(--teal); border: none; padding: 0; }
+  textarea { width: 100%; min-height: 56px; resize: vertical; }
+  :focus-visible { outline: 1px solid var(--teal); outline-offset: 1px; }
+  button { cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
+           color: var(--dim); background: none; font-size: 11px;
+           padding: 4px 12px; }
+  button:hover { color: var(--teal); border-color: var(--teal); }
+  button.primary { color: var(--teal); border-color: var(--teal); }
+  button.primary:hover { color: #EAF7FA; border-color: #EAF7FA; }
+  button:disabled { opacity: .4; cursor: default; }
+  .btnrow { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .err { color: var(--crim); font-size: 11px; min-height: 14px;
+         margin-top: 6px; white-space: pre-wrap; }
+  .caption { color: var(--dim); font-size: 10px; letter-spacing: 1px; }
+  .diamond { width: 11px; height: 11px; transform: rotate(45deg);
+             display: inline-block; flex: none; }
+  /* MY TEAM panel */
+  #teamId { display: flex; align-items: center; gap: 8px; color: var(--bone);
+            letter-spacing: 2px; margin-bottom: 6px; }
+  .agline { margin: 2px 0; }
+  .agline .nm { color: var(--bone); }
+  .agline .st { color: var(--dim); margin-left: 8px; }
+  .agline .st b { color: var(--text); font-weight: normal; }
+  details > summary { cursor: pointer; letter-spacing: 3px; font-size: 11px;
+                      color: var(--teal); text-transform: uppercase;
+                      border-top: 1px solid var(--rule); padding-top: 6px;
+                      margin-top: 8px; list-style: none; }
+  details > summary::before { content: '\25B8\00A0'; }
+  details[open] > summary::before { content: '\25BE\00A0'; }
+  /* wizard overlay */
+  #wizard { position: fixed; inset: 0; z-index: 50; display: none;
+            background: rgba(12,17,22,.96); overflow-y: auto;
+            padding: 4vh 16px; }
+  #wizard.show { display: flex; align-items: flex-start;
+                 justify-content: center; }
+  .wpanel { background: var(--panel); border: 1px solid var(--etch);
+            border-radius: 3px; padding: 16px 18px; width: min(780px, 100%); }
+  .tgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tcard { display: flex; flex-direction: column; align-items: center;
+           gap: 5px; padding: 12px 6px; text-transform: none;
+           letter-spacing: 0; font-size: 12px; }
+  .tcard:hover { border-color: var(--teal); color: var(--text); }
+  .tcard.sel { border-color: var(--teal);
+               box-shadow: inset 0 0 0 1px var(--teal); }
+  .tletter { font-size: 16px; letter-spacing: 2px; color: var(--bone); }
+  .tnames { font-size: 10px; color: var(--dim); text-align: center;
+            line-height: 1.5; }
+  .agents2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .agedit { border: 1px solid var(--rule); border-radius: 3px; padding: 8px; }
+  .agedit h3 { margin: 0 0 6px; font-size: 12px; font-weight: normal;
+               color: var(--bone); letter-spacing: 2px;
+               text-transform: uppercase;
+               border-bottom: 1px solid var(--rule); padding-bottom: 3px; }
+  .statrow { display: grid; grid-template-columns: 42px 52px 1fr;
+             align-items: center; gap: 6px; margin: 5px 0; }
+  .statrow label { font-size: 10px; letter-spacing: 1px; color: var(--dim); }
+  .statrow input { width: 100%; }
+  .statrow .hint { font-size: 10px; color: var(--dim); }
+  .pts { margin-top: 8px; letter-spacing: 2px; font-size: 11px; }
+  .pts.ok { color: var(--teal); }
+  .pts.zero { color: var(--dim); }
+  .pts.bad { color: var(--crim); }
+  .frow { display: grid; grid-template-columns: 118px 1fr; gap: 8px;
+          align-items: center; margin: 7px 0; }
+  .frow > label { font-size: 10px; letter-spacing: 2px; color: var(--dim);
+                  text-transform: uppercase; }
+  .frow .hint { grid-column: 2; font-size: 10px; color: var(--dim); }
+  .frow .rgwrap { display: flex; gap: 8px; align-items: center; }
+  .frow .rgwrap input { flex: 1; }
+  .frow .rgval { color: var(--bone); min-width: 2ch; text-align: right; }
+  .wsteps { min-height: 220px; }
+</style>
+</head>
+<body>
+<iframe id="spec" src="/client/global?director=1&amp;reconnect=3"
+        title="spectator feed"></iframe>
+<div id="right">
+  <div class="panel" id="teamPanel">
+    <div class="phead"><span>MY TEAM</span>
+      <span id="dot" class="dot" title="waiting for next match"></span></div>
+    <div id="teamBody" style="display:none">
+      <div id="teamId"></div>
+      <div id="agents"></div>
+      <details id="polBox">
+        <summary>Policy</summary>
+        <div id="pFields"></div>
+        <div class="btnrow">
+          <button id="saveBtn" class="primary" type="button">Save policy</button>
+          <span class="caption" id="saveNote">applies from the next match</span>
+        </div>
+        <div id="pErr" class="err"></div>
+      </details>
+      <div class="btnrow">
+        <button id="editBtn" type="button">Edit setup</button>
+      </div>
+    </div>
+    <div id="noTeam" class="caption">no coach file yet</div>
+  </div>
+  <div class="cap amber">SPONSOR CONSOLE</div>
+  <iframe id="sponsor" title="sponsor console"></iframe>
+  <div class="cap">ANALYST DESK</div>
+  <iframe id="desk" src="/client/analyst" title="analyst desk"></iframe>
+</div>
+
+<div id="wizard">
+  <div class="wpanel">
+    <div class="phead"><span id="wTag">COACH SETUP · STEP 1 / 3 · TEAM</span></div>
+    <div class="wsteps">
+      <div id="wStep1"><div class="tgrid" id="tGrid"></div></div>
+      <div id="wStep2" style="display:none">
+        <div class="agents2" id="agEdits"></div>
+        <div class="caption" style="margin-top:8px">
+          each stat 1&ndash;10 &middot; the pair share no pool but each agent
+          spends at most 20 points</div>
+      </div>
+      <div id="wStep3" style="display:none"><div id="wFields"></div></div>
+    </div>
+    <div id="wErr" class="err"></div>
+    <div class="btnrow">
+      <button id="wBack" type="button">Back</button>
+      <button id="wNext" class="primary" type="button">Next</button>
+      <button id="wStart" class="primary" type="button"
+              style="display:none">Start match</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// AFTERGLOW team wheel (VISUAL_REDESIGN §3.1)
+const TEAMS = ['A','B','C','D','E','F','G','H'];
+const TEAM_HUE = {A:'#FF8FA8', B:'#49C7E8', C:'#E8C558', D:'#9B7BFF',
+                  E:'#E85D75', F:'#9FB8D8', G:'#E8975D', H:'#D97BE8'};
+// default roster: teams A-H, slots 2i / 2i+1
+const ROSTER = {A:['Adino','Tryphena'],   B:['Carpus','Tazkia'],
+                C:['Luqman','Sherah'],    D:['Karna','Damaris'],
+                E:['Archippus','Balqees'],F:['Kaysan','Urvasi'],
+                G:['Sanjaya','Tirzah'],   H:['Zimri','Bhishma']};
+const STATS = ['speed','strength','intelligence','athleticism'];
+const STAT_TAG = {speed:'SPD', strength:'STR', intelligence:'INT',
+                  athleticism:'ATH'};
+const VALID_ITEMS = ['sword','spear','bow','knives','blowgun','net',
+                     'first_aid','rations','backpack','camouflage',
+                     'arrows','darts'];
+const OPENINGS = {
+  center:   'rush mid-map: early loot, early contact',
+  fortress: 'push the Fortress: best loot in the game, highest risk',
+  outer:    'hug the rim: avoid contact, let the field thin out',
+  forage:   'sweep bushes and crates: gear fully before fighting'};
+const el = id => document.getElementById(id);
+// all user/server-sourced text goes through textContent / .value — never innerHTML
+function mk(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function diamond(team) {
+  const d = mk('span', 'diamond');
+  d.style.background = TEAM_HUE[team] || '#56606a';
+  return d;
+}
+const num = (v, dflt) => { const n = parseInt(v, 10); return isNaN(n) ? dflt : n; };
+
+// ---- coach state (mirrors the /coach file shape) --------------------------
+let state = null;        // {team, slots:{"n":{speed,..}}, policy:{..}, notes}
+let coachLoaded = false; // GET /coach answered at least once
+function defaultPolicy() {
+  return {opening:'center', aggression:5, heal_at:60, flee_at:35,
+          ring_margin:1, loot_priority:[], finale:'fight'};
+}
+function defaultStats() { return {speed:6, strength:6, intelligence:4, athleticism:4}; }
+function slotsFor(team) { const i = TEAMS.indexOf(team); return [2*i, 2*i+1]; }
+function normalize(j) {
+  const team = TEAMS.includes(j.team) ? j.team : 'A';
+  const out = {team, slots:{}, policy:defaultPolicy(), notes:''};
+  for (const s of slotsFor(team)) {
+    const src = (j.slots && j.slots[String(s)]) || {};
+    const st = defaultStats();
+    for (const k of STATS) st[k] = Math.min(10, Math.max(1, num(src[k], st[k])));
+    out.slots[String(s)] = st;
+  }
+  const p = j.policy || {};
+  out.policy.opening = OPENINGS[p.opening] ? p.opening : 'center';
+  out.policy.aggression = Math.min(10, Math.max(0, num(p.aggression, 5)));
+  out.policy.heal_at = Math.min(100, Math.max(0, num(p.heal_at, 60)));
+  out.policy.flee_at = Math.min(100, Math.max(0, num(p.flee_at, 35)));
+  out.policy.ring_margin = Math.min(4, Math.max(0, num(p.ring_margin, 1)));
+  out.policy.finale = p.finale === 'evade' ? 'evade' : 'fight';
+  if (Array.isArray(p.loot_priority))
+    out.policy.loot_priority = p.loot_priority.filter(x => typeof x === 'string');
+  if (typeof j.notes === 'string') out.notes = j.notes;
+  return out;
+}
+
+// ---- policy field group (shared by wizard step 3 and the panel editor) ----
+// buildPolicyFields(root, px) creates controls with ids px+name;
+// readPolicy(px) -> {policy, notes, err}; writePolicy(px, state)
+function frow(labelText, control, hintText) {
+  const r = mk('div', 'frow');
+  const lb = mk('label', null, labelText);
+  if (control.id) lb.htmlFor = control.id;
+  r.append(lb, control);
+  if (hintText !== undefined) r.append(mk('div', 'hint', hintText));
+  return r;
+}
+function buildPolicyFields(root, px) {
+  root.textContent = '';
+  const sel = mk('select'); sel.id = px + 'opening';
+  for (const k of Object.keys(OPENINGS)) sel.append(new Option(k, k));
+  const openHint = mk('div', 'hint', OPENINGS.center);
+  const orow = frow('opening', sel);
+  orow.append(openHint);
+  sel.addEventListener('change', () => { openHint.textContent = OPENINGS[sel.value]; });
+  root.append(orow);
+
+  const wrap = mk('div', 'rgwrap');
+  const rg = mk('input'); rg.type = 'range'; rg.min = 0; rg.max = 10;
+  rg.step = 1; rg.value = 5; rg.id = px + 'aggression';
+  const rv = mk('span', 'rgval', '5'); rv.id = px + 'aggval';
+  rg.addEventListener('input', () => { rv.textContent = rg.value; });
+  wrap.append(rg, rv);
+  root.append(frow('aggression', wrap, '0 = never engage · 10 = force every fight'));
+
+  const mkNum = (name, min, max, dflt) => {
+    const n = mk('input'); n.type = 'number'; n.min = min; n.max = max;
+    n.value = dflt; n.id = px + name; n.style.width = '72px'; return n;
+  };
+  root.append(frow('heal below', mkNum('heal_at', 0, 100, 60),
+                   'use first aid when HP drops under this'));
+  root.append(frow('flee below', mkNum('flee_at', 0, 100, 35),
+                   'disengage and run under this HP'));
+  root.append(frow('ring margin', mkNum('ring_margin', 0, 4, 1),
+                   'stay this many tiles inside the ring edge (0–4)'));
+
+  const lp = mk('input'); lp.type = 'text'; lp.id = px + 'loot_priority';
+  lp.placeholder = 'e.g. sword, first_aid, arrows';
+  lp.setAttribute('spellcheck', 'false');
+  root.append(frow('loot priority', lp,
+                   'comma-separated, best first · ids: ' + VALID_ITEMS.join(' ')));
+
+  const fs = mk('select'); fs.id = px + 'finale';
+  fs.append(new Option('fight', 'fight'), new Option('evade', 'evade'));
+  root.append(frow('finale', fs,
+                   'when the alliance breaks: turn on your partner, or evade'));
+
+  const nt = mk('textarea'); nt.id = px + 'notes';
+  nt.placeholder = 'scouting notes — saved with the policy';
+  root.append(frow('notes', nt));
+}
+function readPolicy(px) {
+  const g = name => el(px + name);
+  const clampNum = (name, min, max, dflt) =>
+    Math.min(max, Math.max(min, num(g(name).value, dflt)));
+  const raw = g('loot_priority').value.split(',')
+    .map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
+  const bad = raw.filter(s => !VALID_ITEMS.includes(s));
+  const err = bad.length
+    ? 'unknown loot ids: ' + bad.join(', ') + '\nvalid: ' + VALID_ITEMS.join(' ')
+    : '';
+  return {
+    policy: {
+      opening: g('opening').value,
+      aggression: clampNum('aggression', 0, 10, 5),
+      heal_at: clampNum('heal_at', 0, 100, 60),
+      flee_at: clampNum('flee_at', 0, 100, 35),
+      ring_margin: clampNum('ring_margin', 0, 4, 1),
+      loot_priority: raw,
+      finale: g('finale').value
+    },
+    notes: g('notes').value,
+    err
+  };
+}
+function writePolicy(px, st) {
+  const g = name => el(px + name);
+  const p = st.policy;
+  g('opening').value = p.opening;
+  g('opening').dispatchEvent(new Event('change'));
+  g('aggression').value = p.aggression;
+  el(px + 'aggval').textContent = String(p.aggression);
+  g('heal_at').value = p.heal_at;
+  g('flee_at').value = p.flee_at;
+  g('ring_margin').value = p.ring_margin;
+  g('loot_priority').value = p.loot_priority.join(', ');
+  g('finale').value = p.finale;
+  g('notes').value = st.notes;
+}
+
+// ---- wizard ---------------------------------------------------------------
+let wStep = 1, wTeam = null;
+const STEP_TAGS = {1:'TEAM', 2:'STATS', 3:'POLICY'};
+function buildTeamGrid() {
+  const grid = el('tGrid');
+  grid.textContent = '';
+  for (const t of TEAMS) {
+    const card = mk('button', 'tcard'); card.type = 'button';
+    card.dataset.team = t;
+    card.append(diamond(t), mk('div', 'tletter', 'TEAM ' + t),
+                mk('div', 'tnames', ROSTER[t][0] + '\n' + ROSTER[t][1]));
+    card.lastChild.style.whiteSpace = 'pre-line';
+    card.addEventListener('click', () => {
+      wTeam = t;
+      for (const c of grid.children) c.classList.toggle('sel', c === card);
+      renderAgentNames();
+      el('wErr').textContent = '';
+    });
+    grid.append(card);
+  }
+}
+// stat editors: two agents, inputs id ag{0|1}_{stat}
+function buildStatEditors() {
+  const host = el('agEdits');
+  host.textContent = '';
+  for (let ix = 0; ix < 2; ix++) {
+    const box = mk('div', 'agedit');
+    const h = mk('h3', null, 'agent'); h.id = 'agName' + ix;
+    box.append(h);
+    for (const s of STATS) {
+      const row = mk('div', 'statrow');
+      const inp = mk('input'); inp.type = 'number'; inp.min = 1; inp.max = 10;
+      inp.value = defaultStats()[s]; inp.id = 'ag' + ix + '_' + s;
+      const lb = mk('label', null, STAT_TAG[s]); lb.htmlFor = inp.id;
+      const hint = mk('span', 'hint', ''); hint.id = inp.id + '_h';
+      inp.addEventListener('input', () => refreshStatHints(ix));
+      row.append(lb, inp, hint);
+      box.append(row);
+    }
+    const pts = mk('div', 'pts', ''); pts.id = 'agPts' + ix;
+    box.append(pts);
+    host.append(box);
+  }
+}
+function readStats(ix) {
+  const st = {};
+  for (const s of STATS) st[s] = num(el('ag' + ix + '_' + s).value, NaN);
+  return st;
+}
+function statErr(st) {
+  for (const s of STATS) {
+    const v = st[s];
+    if (isNaN(v) || v < 1 || v > 10 || v !== Math.floor(v))
+      return STAT_TAG[s] + ' must be an integer 1–10';
+  }
+  const sum = STATS.reduce((a, s) => a + st[s], 0);
+  if (sum > 20) return 'over budget by ' + (sum - 20) + ' (max 20 points)';
+  return '';
+}
+function refreshStatHints(ix) {
+  const st = readStats(ix);
+  const hv = (s, txt) => { el('ag' + ix + '_' + s + '_h').textContent = txt; };
+  const n = s => isNaN(st[s]) ? 0 : st[s];
+  hv('speed', 'move cd ' + (16 - n('speed')) + ' ticks/tile');
+  hv('strength', 'melee ×' + ((5 + n('strength')) / 10).toFixed(1));
+  hv('intelligence', 'vision r' + (5 + Math.floor((n('intelligence') + 1) / 2)) +
+     ' · poison ' + 12 * (20 - n('intelligence')) + 't');
+  hv('athleticism', 'dodge ' + 2 * n('athleticism') + '% · hazard −' +
+     3 * n('athleticism') + '%');
+  const sum = STATS.reduce((a, s) => a + n(s), 0);
+  const left = 20 - sum;
+  const pts = el('agPts' + ix);
+  pts.textContent = left >= 0 ? 'POINTS LEFT: ' + left
+                              : 'OVER BUDGET: ' + (-left);
+  pts.className = 'pts ' + (left < 0 ? 'bad' : left === 0 ? 'zero' : 'ok');
+}
+function renderAgentNames() {
+  if (!wTeam) return;
+  const names = ROSTER[wTeam], slots = slotsFor(wTeam);
+  for (let ix = 0; ix < 2; ix++)
+    el('agName' + ix).textContent = 'P' + slots[ix] + ' · ' + names[ix];
+}
+function showStep(n) {
+  wStep = n;
+  el('wTag').textContent = 'COACH SETUP · STEP ' + n + ' / 3 · ' + STEP_TAGS[n];
+  for (let i = 1; i <= 3; i++)
+    el('wStep' + i).style.display = (i === n) ? '' : 'none';
+  el('wBack').style.visibility = n === 1 ? 'hidden' : 'visible';
+  el('wNext').style.display = n === 3 ? 'none' : '';
+  el('wStart').style.display = n === 3 ? '' : 'none';
+  el('wErr').textContent = '';
+}
+function openWizard(prefill) {
+  if (prefill) {
+    wTeam = prefill.team;
+    for (const c of el('tGrid').children)
+      c.classList.toggle('sel', c.dataset.team === wTeam);
+    const slots = slotsFor(prefill.team);
+    for (let ix = 0; ix < 2; ix++) {
+      const st = prefill.slots[String(slots[ix])] || defaultStats();
+      for (const s of STATS) el('ag' + ix + '_' + s).value = st[s];
+    }
+    writePolicy('w_', prefill);
+  }
+  renderAgentNames();
+  refreshStatHints(0); refreshStatHints(1);
+  showStep(1);
+  el('wizard').classList.add('show');
+}
+function wizardPayload() {
+  const slots = {}, sl = slotsFor(wTeam);
+  slots[String(sl[0])] = readStats(0);
+  slots[String(sl[1])] = readStats(1);
+  const {policy, notes} = readPolicy('w_');
+  return {team: wTeam, slots, policy, notes};
+}
+el('wBack').addEventListener('click', () => { if (wStep > 1) showStep(wStep - 1); });
+el('wNext').addEventListener('click', () => {
+  if (wStep === 1) {
+    if (!wTeam) { el('wErr').textContent = 'pick a team first'; return; }
+    renderAgentNames(); refreshStatHints(0); refreshStatHints(1);
+    showStep(2);
+  } else if (wStep === 2) {
+    for (let ix = 0; ix < 2; ix++) {
+      const e = statErr(readStats(ix));
+      if (e) {
+        el('wErr').textContent = ROSTER[wTeam][ix] + ': ' + e;
+        return;
+      }
+    }
+    showStep(3);
+  }
+});
+el('wStart').addEventListener('click', async () => {
+  const {err} = readPolicy('w_');
+  if (err) { el('wErr').textContent = err; return; }
+  el('wStart').disabled = true;
+  const payload = wizardPayload();
+  const e = await postCoach(payload);
+  el('wStart').disabled = false;
+  if (e) { el('wErr').textContent = e; return; }
+  state = normalize(payload);
+  coachLoaded = true;
+  el('wizard').classList.remove('show');
+  applyState();
+});
+
+// ---- POST /coach (shared by wizard and panel save) ------------------------
+// returns '' on success, error text otherwise
+async function postCoach(payload) {
+  try {
+    const r = await fetch('/coach', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    let j = null;
+    try { j = await r.json(); } catch (_) {}
+    if (r.ok && j && j.ok === true) return '';
+    if (j && typeof j.error === 'string') return j.error;
+    return 'coach save failed (HTTP ' + r.status + ')';
+  } catch (_) {
+    return 'server unreachable — waiting for next match';
+  }
+}
+
+// ---- MY TEAM panel --------------------------------------------------------
+function applyState() {
+  el('noTeam').style.display = 'none';
+  el('teamBody').style.display = '';
+  const tid = el('teamId');
+  tid.textContent = '';
+  tid.append(diamond(state.team), mk('span', null, 'TEAM ' + state.team));
+  const ag = el('agents');
+  ag.textContent = '';
+  const slots = slotsFor(state.team);
+  for (let ix = 0; ix < 2; ix++) {
+    const st = state.slots[String(slots[ix])];
+    const line = mk('div', 'agline');
+    line.append(mk('span', 'nm', 'P' + slots[ix] + ' ' + ROSTER[state.team][ix]));
+    const sp = mk('span', 'st');
+    for (const s of STATS) {
+      sp.append(STAT_TAG[s] + ' ');
+      const b = mk('b', null, String(st[s]));
+      sp.append(b, s === 'athleticism' ? '' : ' · ');
+    }
+    line.append(sp);
+    ag.append(line);
+  }
+  writePolicy('p_', state);
+  // sponsor console keys off the coached team
+  const want = '/client/sponsor?team=' + state.team + '&token=s' + state.team;
+  const sp = el('sponsor');
+  if (sp.getAttribute('src') !== want) sp.setAttribute('src', want);
+}
+el('saveBtn').addEventListener('click', async () => {
+  const {policy, notes, err} = readPolicy('p_');
+  if (err) { el('pErr').textContent = err; return; }
+  el('pErr').textContent = '';
+  el('saveBtn').disabled = true;
+  const payload = {team: state.team, slots: state.slots, policy, notes};
+  const e = await postCoach(payload);
+  el('saveBtn').disabled = false;
+  if (e) { el('pErr').textContent = e; return; }
+  state.policy = policy; state.notes = notes;
+  const note = el('saveNote');
+  note.textContent = 'saved — applies from the next match';
+  setTimeout(() => { note.textContent = 'applies from the next match'; }, 4000);
+});
+el('editBtn').addEventListener('click', () => openWizard(state));
+
+// ---- resilience: the relauncher kills the server between matches ----------
+let serverUp = true;   // page just came from the server
+function reloadFrame(id) {
+  const f = el(id);
+  const src = f.getAttribute('src');
+  if (!src || src === 'about:blank') return;
+  try { f.contentWindow.location.reload(); }
+  catch (_) { f.setAttribute('src', src); }
+}
+async function pollHealth() {
+  let ok = false;
+  try {
+    const r = await fetch('/healthz', {cache: 'no-store'});
+    ok = r.ok;
+  } catch (_) {}
+  if (ok && !serverUp) {          // down -> up: next match is live
+    reloadFrame('sponsor');
+    reloadFrame('desk');          // spectator self-reconnects (reconnect=3)
+    if (!coachLoaded) init();
+  }
+  serverUp = ok;
+  const d = el('dot');
+  d.className = 'dot ' + (ok ? 'live' : '');
+  d.title = ok ? 'live' : 'waiting for next match';
+}
+setInterval(pollHealth, 4000);
+
+// ---- boot -----------------------------------------------------------------
+buildTeamGrid();
+buildStatEditors();
+buildPolicyFields(el('wFields'), 'w_');
+buildPolicyFields(el('pFields'), 'p_');
+async function init() {
+  let data = null, answered = false;
+  try {
+    const r = await fetch('/coach', {cache: 'no-store'});
+    answered = true;
+    if (r.ok) {
+      let j = null;
+      try { j = await r.json(); } catch (_) {}
+      if (j && j.team) data = j;
+    }                              // 404 / {} / bad JSON -> no coach yet
+  } catch (_) {}                   // server down: retry on next up-transition
+  if (!answered) return;
+  coachLoaded = true;
+  if (data) { state = normalize(data); applyState(); }
+  else openWizard(null);
+}
+init();
+pollHealth();
+</script>
+</body>
+</html>
