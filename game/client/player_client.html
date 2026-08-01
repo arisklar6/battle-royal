@@ -5,7 +5,9 @@
 <title>Zero Sum - Agent Cam</title>
 <style>
   :root { --bg:#0B0C10; --panel:#1F2833; --teal:#66FCF1; --gold:#C5A059;
-          --crim:#FF0055; --toxic:#39FF14; --hurt:#FFA500; --text:#C5C6C7; }
+          --crim:#FF0055; --toxic:#39FF14; --hurt:#FFA500; --text:#C5C6C7;
+          /* HP semaphore (VISUAL_REDESIGN §3.1): no green — green is poison */
+          --hpok:#A5E3EE; --hphurt:#FFB454; --hpcrit:#FF4A36; }
   body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
          margin: 0; padding: 10px; display: flex; gap: 12px; }
   #left { flex: 0 0 auto; }
@@ -15,10 +17,10 @@
   #right { flex: 0 0 300px; display: flex; flex-direction: column; min-height: 96vh; }
   #hud { color: var(--teal); font-size: 13px; letter-spacing: 1px; }
   #hpbarWrap { background: #0d1117; height: 14px; border: 1px solid #2b3a4a; margin: 4px 0; }
-  #hpbar { height: 100%; width: 100%; background: var(--toxic); transition: width .2s; }
+  #hpbar { height: 100%; width: 100%; background: var(--hpok); transition: width .2s; }
   .tag { display: inline-block; padding: 1px 5px; margin: 1px 2px; font-size: 10px;
          border-radius: 2px; color: #0B0C10; font-weight: bold; }
-  .tag.poison { background: var(--toxic); } .tag.netted { background: #c0c8d0; }
+  .tag.poison { background: var(--hpcrit); color: #fff; } .tag.netted { background: #c0c8d0; }
   .tag.channeling { background: var(--teal); } .tag.camo_revealed { background: var(--crim); color:#fff; }
   #stats, #inv, #zoneinfo, #ares { font-size: 11px; }
   #inv b { color: var(--gold); }
@@ -26,7 +28,7 @@
   #note { color: #56606a; font-size: 10px; }
   #chatlog { font-size: 11px; flex: 1 1 auto; min-height: 90px; overflow-y: auto;
              white-space: pre-wrap; }
-  .crit { color: var(--crim); } .warn { color: var(--hurt); } .ok { color: var(--toxic); }
+  .crit { color: var(--crim); } .warn { color: var(--hurt); } .ok { color: var(--hpok); }
   #banner { position: absolute; left: 0; right: 0; top: 40%; text-align: center;
             font-size: 28px;
             color: var(--gold); text-shadow: 0 0 12px #000; letter-spacing: 4px;
@@ -74,7 +76,7 @@ const el = id => document.getElementById(id);
 let cfg = null;
 // Team accents (DESIGN §21.3) — index = slot>>1
 const TEAM = ['#FF7F8C','#45DCFF','#FFBF00','#7A3CDC','#DC143C','#EBF5FF','#FF6E1E','#E15AEB'];
-const BAND = { healthy: '#39FF14', hurt: '#FFA500', critical: '#FF0055' };
+const BAND = { healthy: '#A5E3EE', hurt: '#FFB454', critical: '#FF4A36' };
 const WEAPON_GLYPH = { sword:'S', spear:'P', bow:'B', knives:'K', blowgun:'G', net:'N',
                        first_aid:'+', rations:'R', backpack:'Δ', camo:'C', arrows:'a', darts:'d' };
 const ITEM_GLYPH = { sword:'⚔', spear:'†', bow:'D', arrows:'➹', knives:'✕', blowgun:'~',
@@ -104,6 +106,11 @@ const hatch = document.createElement('canvas'); hatch.width = hatch.height = 6;
   h.strokeStyle = 'rgba(102,252,241,0.14)'; h.lineWidth = 1;
   h.beginPath(); h.moveTo(0, 6); h.lineTo(6, 0); h.stroke(); }
 let hatchPat = null;
+// arena-wide event state (public by design — drawn over fog)
+let fx = [];        // transient markers: {kind, x, y, born, ttl}
+let bearings = [];  // vision-rim ticks: {dir, color, born, ttl}
+let hazards = [];   // scheduled hazards: {kind, rect|center+radius, from, until}
+const deadSeen = new Set();
 
 const ws = new WebSocket(websocketAddress('/watch'));
 ws.onopen = () => { el('hud').textContent = 'CONNECTED — AWAITING FEED'; };
@@ -137,7 +144,7 @@ ws.onmessage = (ev) => {
 
   // ---- side panels ----
   const secs = Math.floor(m.tick / 24);
-  el('hud').textContent = `WATCHING P${cfg.slot} ${String(m.phase).replace('ph','').toUpperCase()}  T ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}  HP ${you.hp}  K ${you.kills}`;
+  el('hud').textContent = `WATCHING P${cfg.slot} ${String(m.phase).replace('ph','').toUpperCase()}  T ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}  HP ${you.hp}  K ${you.kills}  ALIVE ${16 - deadSeen.size}`;
   const band = you.hp > 66 ? 'healthy' : you.hp >= 33 ? 'hurt' : 'critical';
   const bar = el('hpbar'); bar.style.width = you.hp + '%'; bar.style.background = BAND[band];
   el('tags').innerHTML = you.effects.map(e =>
@@ -159,11 +166,35 @@ ws.onmessage = (ev) => {
   for (const c of m.chat) {
     el('chatlog').textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : c.channel === 'team' ? '·team' : ''}] ${c.text}\n` + el('chatlog').textContent;
   }
+  if (el('chatlog').textContent.length > 20000)
+    el('chatlog').textContent = el('chatlog').textContent.slice(0, 20000);
   for (const e of m.events) {
     if (e.type === 'ignition') showBanner('IGNITION', '#C5A059');
     else if (e.type === 'finale') showBanner('CIVIL WAR', '#FF0055');
-    else if (e.type === 'zone_warning') showBanner('RING SHRINKS', '#FFA500');
+    else if (e.type === 'zone_warning') showBanner('RING SHRINKS TO ' + e.r_end, '#FFA500');
+    else if (e.type === 'death_fireworks') {
+      if (e.slot >= 0) deadSeen.add(e.slot);
+      if (e.pos) fx.push({kind: 'death', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 48});
+    }
+    else if (e.type === 'boom')
+      bearings.push({dir: e.direction, color: '#FF4A36', born: m.tick, ttl: 48});
+    else if (e.type === 'mine_explosion' && e.pos)
+      fx.push({kind: 'mine', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 24});
+    else if (e.type === 'event_warning') {
+      // payload keeps its inner "kind" (flood|firestorm) beside "type"
+      hazards.push({kind: e.kind, rect: e.rect, center: e.center, radius: e.radius,
+                    from: e.from_tick, until: e.from_tick + e.duration});
+      showBanner((e.kind === 'flood' ? 'FLOOD' : 'FIRESTORM') + ' INCOMING', '#FF4FA3');
+    }
+    else if (e.type === 'gift_incoming' && e.pos)
+      fx.push({kind: 'gift', x: e.pos[0], y: e.pos[1], born: m.tick,
+               ttl: Math.max(1, e.lands_tick - m.tick)});
+    else if (e.type === 'gift_landed' && e.pos)
+      fx.push({kind: 'gift', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 72});
   }
+  fx = fx.filter(f => m.tick - f.born < f.ttl);
+  bearings = bearings.filter(b => m.tick - b.born < b.ttl);
+  hazards = hazards.filter(h => m.tick < h.until);
 
   // ---- tactical map ----
   ctx.fillStyle = '#0B0C10'; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -182,8 +213,9 @@ ws.onmessage = (ev) => {
       if (col) { ctx.fillStyle = col; ctx.fillRect(x*S, y*S, S, S); }
       ctx.strokeStyle = 'rgba(31,40,51,0.6)'; ctx.strokeRect(x*S+.5, y*S+.5, S-1, S-1);
     } else {
-      // black matte fog; ghost terrain at low alpha
-      if (col) { ctx.globalAlpha = 0.13; ctx.fillStyle = col; ctx.fillRect(x*S, y*S, S, S); ctx.globalAlpha = 1; }
+      // fog hides only dynamic signal — the static map is public in
+      // player_config, so remembered terrain stays readable (schematic)
+      if (col) { ctx.globalAlpha = 0.4; ctx.fillStyle = col; ctx.fillRect(x*S, y*S, S, S); ctx.globalAlpha = 1; }
       if (inRadius) { ctx.fillStyle = hatchPat; ctx.fillRect(x*S, y*S, S, S); } // LOS shadow crosshatch
     }
   }
@@ -198,6 +230,31 @@ ws.onmessage = (ev) => {
   }
   ctx.lineWidth = 1;
   ctx.font = '9px Consolas'; ctx.textBaseline = 'top';
+  // hazards (arena-wide): dashed magenta while scheduled, red wash once live
+  for (const h of hazards) {
+    const active = m.tick >= h.from;
+    ctx.strokeStyle = '#FF4FA3'; ctx.lineWidth = active ? 2 : 1;
+    if (!active) ctx.setLineDash([5, 4]);
+    ctx.fillStyle = active ? 'rgba(255,74,54,0.20)' : 'rgba(255,79,163,0.08)';
+    let lx = 2, ly = 2;
+    if (h.kind === 'flood' && h.rect) {
+      const [x0, y0, x1, y1] = h.rect;
+      ctx.fillRect(x0*S, y0*S, (x1-x0+1)*S, (y1-y0+1)*S);
+      ctx.strokeRect(x0*S+.5, y0*S+.5, (x1-x0+1)*S-1, (y1-y0+1)*S-1);
+      lx = x0*S; ly = y0*S - 10;
+    } else if (h.center) {
+      const hx = h.center[0]*S + S/2, hy = h.center[1]*S + S/2;
+      ctx.beginPath(); ctx.arc(hx, hy, (h.radius + 0.5)*S, 0, Math.PI*2);
+      ctx.fill(); ctx.stroke();
+      lx = hx - 20; ly = hy - (h.radius + 1)*S - 10;
+    }
+    ctx.setLineDash([]); ctx.lineWidth = 1;
+    if (!active) {
+      ctx.fillStyle = '#FF4FA3';
+      ctx.fillText(h.kind.toUpperCase() + ' T-' + Math.ceil((h.from - m.tick)/24) + 's',
+                   Math.max(2, lx), Math.max(2, ly));
+    }
+  }
   // bushes: charge integers
   for (const b of m.visible.bushes) {
     ctx.fillStyle = '#2e8c3c'; ctx.fillRect(b.pos[0]*S+2, b.pos[1]*S+2, S-4, S-4);
@@ -241,7 +298,7 @@ ws.onmessage = (ev) => {
     }
     let pip = 0;
     const pips = [];
-    if (a.poisoned) pips.push('#39FF14');
+    if (a.poisoned) pips.push('#FF4A36');
     if (a.netted) pips.push('#c0c8d0');
     if (a.channeling) pips.push('#66FCF1');
     for (const c of pips) { ctx.fillStyle = c; ctx.fillRect(cx - 6 + pip*5, cy - 11, 4, 3); pip++; }
@@ -264,6 +321,44 @@ ws.onmessage = (ev) => {
     ctx.fillStyle = '#0d1117'; ctx.fillRect(cx-8, cy+9, 16, 2); ctx.fillRect(cx-8, cy+12, 16, 2);
     ctx.fillStyle = '#66FCF1'; ctx.fillRect(cx-8, cy+9, 16*mv, 2);
     ctx.fillStyle = '#C5A059'; ctx.fillRect(cx-8, cy+12, 16*atk, 2);
+  }
+  // arena-wide event markers, drawn over fog (public by design)
+  for (const f of fx) {
+    const age = (m.tick - f.born) / f.ttl;
+    const cx = f.x*S + S/2, cy = f.y*S + S/2;
+    if (f.kind === 'death') {
+      ctx.globalAlpha = 1 - age;
+      ctx.strokeStyle = '#E9E4D8'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 4 + age*18, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = '#FF4A36'; ctx.fillRect(cx-2, cy-2, 4, 4);
+    } else if (f.kind === 'mine') {
+      ctx.globalAlpha = 1 - age;
+      ctx.strokeStyle = '#FF4A36'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 3 + age*10, 0, Math.PI*2); ctx.stroke();
+    } else {                       // gift: amber ping at the drop tile
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#C5A059'; ctx.lineWidth = 1;
+      const p = ((m.tick - f.born) % 48) / 48;
+      ctx.beginPath(); ctx.arc(cx, cy, 3 + p*14, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1; ctx.lineWidth = 1;
+  }
+  // boom bearing ticks on the vision rim (direction-only, per protocol)
+  {
+    const cx = px*S + S/2, cy = py*S + S/2;
+    const ANG = {N: -Math.PI/2, NE: -Math.PI/4, E: 0, SE: Math.PI/4,
+                 S: Math.PI/2, SW: 3*Math.PI/4, W: Math.PI, NW: -3*Math.PI/4};
+    for (const b of bearings) {
+      const a = ANG[b.dir];
+      if (a === undefined) continue;
+      ctx.globalAlpha = 1 - (m.tick - b.born) / b.ttl;
+      ctx.strokeStyle = b.color; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a)*(vr*S - 6), cy + Math.sin(a)*(vr*S - 6));
+      ctx.lineTo(cx + Math.cos(a)*(vr*S + 6), cy + Math.sin(a)*(vr*S + 6));
+      ctx.stroke();
+      ctx.globalAlpha = 1; ctx.lineWidth = 1;
+    }
   }
 };
 </script>

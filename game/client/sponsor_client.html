@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -34,9 +34,9 @@
   #countdown { font-size: 14px; min-width: 170px; text-align: right; }
   #countdown.locked { color: #FF0055; font-weight: bold; }
   #countdown.closed { color: #66FCF1; }
-  #countdown.open { color: #39FF14; }
+  #countdown.open { color: #A5E3EE; }
   #status { font-size: 11px; opacity: 0.7; }
-  #status.on { color: #39FF14; opacity: 1; }
+  #status.on { color: #A5E3EE; opacity: 1; }
   #status.off { color: #FF0055; opacity: 1; }
   main { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
   .panel { background: #1F2833; padding: 10px; }
@@ -73,7 +73,7 @@
   #toast.show { visibility: visible; }
   #log { list-style: none; margin: 0; padding: 0; font-size: 11px; }
   #log li { padding: 2px 0; border-bottom: 1px solid rgba(11,12,16,0.5); }
-  #log li.ok { color: #39FF14; }
+  #log li.ok { color: #A5E3EE; }
   #log li.bad { color: #FF0055; }
 </style>
 </head>
@@ -104,7 +104,7 @@
 'use strict';
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// Client-page WS contract (DESIGN §11): honor ?address= when present, else
+// Client-page WS contract (DESIGN Â§11): honor ?address= when present, else
 // same-origin derivation with the /client/sponsor -> /sponsor path rewrite.
 const pageUrl = new URL(window.location.href);
 function websocketAddress(path) {

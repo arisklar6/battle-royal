@@ -99,7 +99,7 @@ function fmtT(tick) {
   return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 }
 const ws = new WebSocket(websocketAddress('/analyst'));
-ws.onopen = () => { el('status').textContent = 'LIVE'; el('status').style.color = '#39FF14'; };
+ws.onopen = () => { el('status').textContent = 'LIVE'; el('status').style.color = '#A5E3EE'; };
 ws.onclose = () => { el('status').textContent = 'FEED CLOSED'; el('status').style.color = '#FF0055'; };
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
@@ -118,7 +118,8 @@ ws.onmessage = (ev) => {
   // scoreboard: sort by projected score desc, then placement
   const rows = [...m.agents].sort((a, b) => b.projected_score - a.projected_score || a.placement - b.placement);
   el('board').tBodies[0].innerHTML = rows.map(a => {
-    const band = a.hp > 66 ? '#39FF14' : a.hp >= 33 ? '#FFA500' : '#FF0055';
+    // HP semaphore (VISUAL_REDESIGN §3.1): phosphor/amber/klaxon, no green
+    const band = a.hp > 66 ? '#A5E3EE' : a.hp >= 33 ? '#FFB454' : '#FF4A36';
     return `<tr class="${a.alive ? '' : 'dead'}">
       <td><span class="team-chip" style="background:${teamColor(a.team)}"></span>${esc(a.team)}</td>
       <td>P${a.slot} ${esc(a.name || '')}</td>
