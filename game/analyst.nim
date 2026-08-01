@@ -62,6 +62,7 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     var e = %*{
       "slot": i, "team": TeamNames[team(AgentId(i))],
       "name": s.cfg.playerNames[i],
+      "pos": [a.pos.x, a.pos.y],
       "alive": a.alive, "hp": (if a.alive: a.hpCenti div 100 else: 0),
       "kills": a.kills, "damage_dealt": a.damageDealtCenti div 100,
       "placement": places[i],
@@ -109,6 +110,14 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
                         "team": TeamNames[team(AgentId(i))],
                         "killer": (if a.lastDamager != i: a.lastDamager else: -1),
                         "placement": places[i]})
+  # live chat: the diplomacy layer is public by design (spec: permanently
+  # public transcript) — surface the last 30 lines to the desk
+  var chatArr = newJArray()
+  let clo = max(0, s.talkLog.len - 30)
+  for j in clo ..< s.talkLog.len:
+    let t = s.talkLog[j]
+    chatArr.add(%*{"tick": t.tick, "from": t.slot, "channel": $t.channel,
+                    "to": t.to, "text": t.text})
   # next-shrink context so the desk can show the ring clock
   var nextR = s.zoneRadius()
   var shrinkT = 0
@@ -127,4 +136,5 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     "zone": {"radius": s.zoneRadius(), "next_radius": nextR,
              "shrink_tick": shrinkT, "damage_per_s": s.zoneDamagePerS()},
     "agents": agents, "teams": teams,
-    "ticker": ticker, "interceptions": steals, "settlements": settlements})
+    "ticker": ticker, "interceptions": steals, "settlements": settlements,
+    "chat": chatArr})

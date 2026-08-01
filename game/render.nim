@@ -53,6 +53,9 @@ const
   SpChannelA = 850         # phosphor channel halo (heal/eat window)
   SpChannelB = 851
   SpRevealMark = 852       # red "camo blown" mark
+  SpTraceLayer = 3         # full-arena phosphor persistence overlay
+  SpSettleLine = 860       # full-width settlement rule (death sweep)
+  SpLampRow = 861          # 16-lamp alive row
   SpPodCrateBase = 900     # 900 + ord(ItemId): contents-keyed crates
   SpPodLabelBase = 1000    # 1000 + pod index: persistent cargo labels
 
@@ -89,6 +92,8 @@ const
   ObHpBandBase = 45100      # + slot: hp semaphore over each agent
   ObCorpseBase = 46000      # + slot: persistent corpse (lives to match end)
   ObKillLineBase = 50020    # + 0..2: kill-feed lines, newest first
+  ObTraceLayer = 3          # phosphor persistence overlay (z above bg)
+  ObLampRow = 50030         # alive lamps in the TL HUD
 
   LayerHudTL = 1
   LayerHudBL = 4
@@ -97,21 +102,27 @@ const
   BodyW = 8
   BodyH = 12
 
-  ## Esports palette (DESIGN §21.3): team accents A-H
-  ## coral pink / electric cyan / amber gold / royal violet / crimson /
-  ## ice white / burnt orange (default) / magenta (default)
+  ## AFTERGLOW team wheel (VISUAL_REDESIGN §3.1): S/L-locked fills, only
+  ## polychrome in the arena. F ice-white and E crimson retired (invisible /
+  ## danger-red collision). Always paired with the slot glyph, never hue-alone.
+  ## rose / cyan / gold / violet / wine / steel / copper / orchid
   TeamColors: array[8, (uint8, uint8, uint8)] = [
-    (255'u8, 127'u8, 140'u8), (69'u8, 220'u8, 255'u8), (255'u8, 191'u8, 0'u8),
-    (122'u8, 60'u8, 220'u8), (220'u8, 20'u8, 60'u8), (235'u8, 245'u8, 255'u8),
-    (255'u8, 110'u8, 30'u8), (225'u8, 90'u8, 235'u8)]
+    (255'u8, 143'u8, 168'u8), (73'u8, 199'u8, 232'u8), (232'u8, 197'u8, 88'u8),
+    (155'u8, 123'u8, 255'u8), (232'u8, 93'u8, 117'u8), (159'u8, 184'u8, 216'u8),
+    (232'u8, 151'u8, 93'u8), (217'u8, 123'u8, 232'u8)]
 
-  # palette tokens
-  BgDark = (11'u8, 12'u8, 16'u8)          # #0B0C10
-  Masonry = (31'u8, 40'u8, 51'u8)         # #1F2833
-  PlasmaTeal = (102'u8, 252'u8, 241'u8)   # #66FCF1
-  PlasmaCrit = (255'u8, 0'u8, 85'u8)      # #FF0055
-  GoldTone = (197'u8, 160'u8, 89'u8)      # #C5A059
-  ToxicFlood = (57'u8, 255'u8, 20'u8)     # #39FF14
+  ## AFTERGLOW palette tokens (docs/VISUAL_REDESIGN.md §3.1).
+  ## Semantic contracts: phosphor = live signal, amber = matter & economy,
+  ## magenta = commanded geometry, klaxon = harm now. No green anywhere.
+  BgDark = (12'u8, 17'u8, 22'u8)          # Faraday #0C1116 substrate
+  EtchDim = (28'u8, 36'u8, 43'u8)         # Etch ramp low #1C242B
+  Masonry = (54'u8, 68'u8, 79'u8)         # Etch #36444F structural ink
+  Phosphor = (165'u8, 227'u8, 238'u8)     # #A5E3EE
+  PhosphorPeak = (234'u8, 247'u8, 250'u8) # #EAF7FA
+  RingMagenta = (255'u8, 79'u8, 163'u8)   # Directive Magenta #FF4FA3
+  Klaxon = (255'u8, 74'u8, 54'u8)         # Klaxon Red #FF4A36
+  GoldTone = (255'u8, 180'u8, 84'u8)      # Amber #FFB454
+  Bone = (233'u8, 228'u8, 216'u8)         # settlement ink #E9E4D8
 
   Skin = (232'u8, 190'u8, 150'u8)
   Hair = (60'u8, 42'u8, 30'u8)
@@ -158,6 +169,11 @@ type
     channelOn: array[16, bool]
     revealOn: array[16, bool]
     podLabelText: seq[string] # per pod index, for sprite-rebuild detection
+    trace: seq[uint32]        # packed RGBA per world px: live afterglow
+    scars: seq[uint32]        # packed RGBA per world px: burn-in, permanent
+    traceActive: bool
+    traceDrawn: bool
+    lastLampMask: int
 
 # ---------------------------------------------------------------- helpers
 
@@ -186,7 +202,7 @@ proc grassAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
       let seam = x == 0 or y == 0
-      px.put(w, ox + x, oy + y, (if seam: Masonry else: base))
+      px.put(w, ox + x, oy + y, (if seam: EtchDim else: base))
   if h mod 5 == 0:                        # faint plate wear
     px.put(w, ox + 2 + (h mod 3), oy + 2 + (h div 3) mod 3, shade(base, 10))
 
@@ -210,7 +226,7 @@ proc rockAt(px: var seq[uint8], w, ox, oy: int) =
   px.put(w, ox + 2, oy + 1, shade(base, 26))
 
 proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
-  let gold = (208'u8, 172'u8, 60'u8)
+  let gold = (235'u8, 166'u8, 76'u8)      # amber family (matter)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
       let ring = x in [0, TileSize - 1] or y in [0, TileSize - 1]
@@ -377,7 +393,7 @@ proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
 proc plasmaPixels(phase: int, crit: bool): seq[uint8] =
   ## Swirling plasma wall: teal (stages 1-4) or crimson (endgame).
   result = newSeq[uint8](TileSize * TileSize * 4)
-  let hotC = (if crit: PlasmaCrit else: PlasmaTeal)
+  let hotC = (if crit: Klaxon else: RingMagenta)
   let coldC = shade(hotC, -110)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
@@ -396,7 +412,7 @@ proc floodPixels(phase: int): seq[uint8] =
     for x in 0 ..< TileSize:
       let crest = (x + y * 2 + phase * 3) mod 6 == 0
       result.put(TileSize, x, y,
-        (if crest: (200'u8, 255'u8, 180'u8) else: ToxicFlood),
+        (if crest: (255'u8, 160'u8, 205'u8) else: RingMagenta),
         (if crest: 220'u8 else: 150'u8))
 
 proc stormPixels(phase: int): seq[uint8] =
@@ -465,12 +481,13 @@ proc glassBodyPixels(): seq[uint8] =
                    (if edge: 90'u8 else: 34'u8))
 
 proc netMeshPixels(): seq[uint8] =
+  ## Etch-bright restraint mesh — structure pinning a signal down.
   result = newSeq[uint8](TileSize * TileSize * 4)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
       if (x + y) mod 2 == 0 and (x == 0 or y == 0 or x == TileSize - 1 or
                                   y == TileSize - 1 or x == y):
-        result.put(TileSize, x, y, (57'u8, 255'u8, 160'u8), 200)
+        result.put(TileSize, x, y, (150'u8, 170'u8, 185'u8), 210)
 
 proc poisonHaloPixels(phase: int): seq[uint8] =
   result = newSeq[uint8](10 * 10 * 4)
@@ -480,7 +497,7 @@ proc poisonHaloPixels(phase: int): seq[uint8] =
       let dy = y * 2 + 1 - 10
       let d2 = dx * dx + dy * dy
       if d2 > 36 and d2 <= 81 and (x + y + phase) mod 2 == 0:
-        result.put(10, x, y, ToxicFlood, 120)
+        result.put(10, x, y, Klaxon, 130)
 
 proc voidBeamPixels(): seq[uint8] =
   ## Vertical dark energy beam (death marker).
@@ -511,8 +528,7 @@ proc glitchPixels(): seq[uint8] =
       let n = tileHash(x * 3 + 1, y * 5 + 2)
       if n mod 3 == 0:
         result.put(BodyW, x, y,
-          (if n mod 2 == 0: (255'u8, 0'u8, 200'u8) else: (255'u8, 255'u8, 255'u8)),
-          220)
+          (if n mod 2 == 0: Klaxon else: PhosphorPeak), 220)
 
 proc mouthLightPixels(phase: int): seq[uint8] =
   ## Volumetric golden light pooling in the Fortress mouths.
@@ -528,7 +544,7 @@ proc trailPixels(id: ItemId): seq[uint8] =
   let c =
     case id
     of iArrows: (255'u8, 255'u8, 255'u8)
-    of iDarts: ToxicFlood
+    of iDarts: Klaxon
     else: (200'u8, 200'u8, 215'u8)
   for x in 0 ..< TileSize:
     result.put(TileSize, x, TileSize div 2, c, 110)
@@ -655,7 +671,7 @@ proc textPixels(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
   var px = newSeq[uint8](w * h * 4)
   for y in 0 ..< h:
     for x in 0 ..< w:
-      px.put(w, x, y, (12'u8, 14'u8, 10'u8), 220)
+      px.put(w, x, y, BgDark, 220)
   for i, ch in text:
     let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
     let bits = Glyphs.getOrDefault(up, 0)
@@ -664,6 +680,98 @@ proc textPixels(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
         if ((bits shr ((4 - gy) * 3 + (2 - gx))) and 1) == 1:
           px.put(w, 1 + i * 4 + gx, 1 + gy, (r, g, b))
   (w, h, px)
+
+# ------------------------------------------------- phosphor persistence
+# (VISUAL_REDESIGN §3.5): every agent drags a decaying team-tinted trace;
+# a death freezes into a permanent burn-in scar with the slot glyph etched
+# at the death tile. One decay buffer, one overlay sprite at 2 Hz.
+
+proc settleLinePixels(): seq[uint8] =
+  ## Full-arena-width settlement rule, swept at a dead agent's row.
+  result = newSeq[uint8](WorldPx * 3 * 4)
+  for x in 0 ..< WorldPx:
+    result.put(WorldPx, x, 0, Bone, 70)
+    result.put(WorldPx, x, 1, Bone, 230)
+    result.put(WorldPx, x, 2, Bone, 70)
+
+proc lampRowPixels(mask: int): seq[uint8] =
+  ## 16 lamps, one per slot: lit phosphor = alive, cold etch = settled.
+  result = newSeq[uint8](81 * 6 * 4)
+  for i in 0 ..< 16:
+    let ox = 1 + i * 5
+    let lit = ((mask shr i) and 1) == 1
+    for y in 1 .. 4:
+      for x in 0 ..< 4:
+        if lit:
+          result.put(81, ox + x, y, (if y == 1: PhosphorPeak else: Phosphor))
+        else:
+          result.put(81, ox + x, y,
+            (if y == 1 or y == 4 or x == 0 or x == 3: Masonry else: EtchDim))
+
+proc ordSuffix(n: int): string =
+  if n mod 100 in 11 .. 13: "TH"
+  elif n mod 10 == 1: "ST"
+  elif n mod 10 == 2: "ND"
+  elif n mod 10 == 3: "RD"
+  else: "TH"
+
+proc ensureTrace(r: var Renderer) =
+  if r.trace.len == 0:
+    r.trace = newSeq[uint32](WorldPx * WorldPx)
+    r.scars = newSeq[uint32](WorldPx * WorldPx)
+
+proc stampTrace(r: var Renderer, tileX, tileY: int,
+                c: (uint8, uint8, uint8), a: uint8) =
+  let ox = tileX * TileSize + 1
+  let oy = tileY * TileSize + 1
+  for y in 0 ..< TileSize - 2:
+    for x in 0 ..< TileSize - 2:
+      let i = (oy + y) * WorldPx + ox + x
+      if i >= 0 and i < r.trace.len:
+        if uint32(a) > (r.trace[i] and 0xFF):
+          r.trace[i] = (uint32(c[0]) shl 24) or (uint32(c[1]) shl 16) or
+                       (uint32(c[2]) shl 8) or uint32(a)
+  r.traceActive = true
+
+proc etchScar(r: var Renderer, slot: int, pos: Pos) =
+  ## Burn-in: team-tinted floor scar plus the slot glyph, for the rest
+  ## of the match. Rendered under live entities (overlay sits at z=3).
+  let tc = TeamColors[slot div 2]
+  let ox = pos.x * TileSize
+  let oy = pos.y * TileSize
+  for y in 0 ..< TileSize:
+    for x in 0 ..< TileSize:
+      let i = (oy + y) * WorldPx + ox + x
+      if i >= 0 and i < r.scars.len and (r.scars[i] and 0xFF) < 45:
+        r.scars[i] = (uint32(tc[0]) shl 24) or (uint32(tc[1]) shl 16) or
+                     (uint32(tc[2]) shl 8) or 45'u32
+  let label = "P" & $slot
+  var gx = ox + TileSize + 1
+  for ch in label:
+    let bits = Glyphs.getOrDefault(ch, 0)
+    for yy in 0 ..< 5:
+      for xx in 0 ..< 3:
+        if ((bits shr ((4 - yy) * 3 + (2 - xx))) and 1) == 1:
+          let i = (oy + yy) * WorldPx + gx + xx
+          if i >= 0 and i < r.scars.len:
+            r.scars[i] = (uint32(Bone[0]) shl 24) or
+                         (uint32(Bone[1]) shl 16) or
+                         (uint32(Bone[2]) shl 8) or 85'u32
+    gx += 4
+  r.traceActive = true
+
+proc traceSpritePixels(r: Renderer): seq[uint8] =
+  result = newSeq[uint8](WorldPx * WorldPx * 4)
+  for i in 0 ..< r.trace.len:
+    let t = r.trace[i]
+    let sc = r.scars[i]
+    let v = (if (sc and 0xFF) > (t and 0xFF): sc else: t)
+    if (v and 0xFF) > 0:
+      let o = i * 4
+      result[o] = uint8((v shr 24) and 0xFF)
+      result[o+1] = uint8((v shr 16) and 0xFF)
+      result[o+2] = uint8((v shr 8) and 0xFF)
+      result[o+3] = uint8(v and 0xFF)
 
 # ---------------------------------------------------------------- packets
 
@@ -687,9 +795,11 @@ proc spriteDefs(s: Sim): seq[uint8] =
       corpsePixels(slot div 2, slot mod 2), "corpse" & $slot)
   for id in [iSword, iSpear, iBow, iKnives, iBlowgun, iNet]:
     result.addSprite(SpWeaponBase + ord(id), 5, 5, weaponGlyph(id), "held_" & $id)
-  result.addSprite(SpFwBlack, 18, 18, burstPixels(18, 25, 25, 30), "fw_black")
-  result.addSprite(SpFwGold, 18, 18, burstPixels(18, 250, 210, 80), "fw_gold")
-  result.addSprite(SpMineFlash, 12, 12, burstPixels(12, 255, 120, 40), "mine")
+  # death burst in bone: the old (25,25,30)-on-Faraday burst measured
+  # under 1.5:1 contrast — the game's pivotal event was invisible
+  result.addSprite(SpFwBlack, 18, 18, burstPixels(18, 233, 228, 216), "fw_black")
+  result.addSprite(SpFwGold, 18, 18, burstPixels(18, 255, 210, 110), "fw_gold")
+  result.addSprite(SpMineFlash, 12, 12, burstPixels(12, 255, 74, 54), "mine")
   result.addSprite(SpZoneFireA, TileSize, TileSize, plasmaPixels(0, false), "plasmaA")
   result.addSprite(SpZoneFireB, TileSize, TileSize, plasmaPixels(1, false), "plasmaB")
   result.addSprite(SpPlasmaCritA, TileSize, TileSize, plasmaPixels(0, true), "plasmaCritA")
@@ -731,6 +841,7 @@ proc spriteDefs(s: Sim): seq[uint8] =
   for band in 0 .. 2:
     result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
   result.addSprite(SpRingGhost, TileSize, TileSize, ringGhostPixels(), "ring_ghost")
+  result.addSprite(SpSettleLine, WorldPx, 3, settleLinePixels(), "settle")
 
 proc bodySprite(r: Renderer, s: Sim, slot: int): int =
   let moving = s.tick - r.lastMoveTick[slot] < 12
@@ -773,10 +884,12 @@ proc spawnEffect(r: var Renderer, packet: var seq[uint8], s: Sim,
   r.effects.add(Effect(objId: objId, dieTick: s.tick + ttl))
 
 proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
+  r.ensureTrace()
   # facing/anim bookkeeping
   for slot in 0 .. 15:
     let a = s.agents[slot]
     if a.alive:
+      r.stampTrace(a.pos.x, a.pos.y, TeamColors[slot div 2], 130)
       if not (a.pos == r.lastPos[slot]):
         let dx = a.pos.x - r.lastPos[slot].x
         let dy = a.pos.y - r.lastPos[slot].y
@@ -850,6 +963,8 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if r.revealOn[slot]:
         result.addDeleteObject(ObRevealBase + slot)
         r.revealOn[slot] = false
+      # burn-in: freeze this agent's mark into the board forever
+      r.etchScar(slot, a.pos)
       # persistent corpse (Tier 1: board accumulates story) + void beam
       result.addObject(ObCorpseBase + slot,
         a.pos.x * TileSize + TileSize div 2 - 6,
@@ -992,12 +1107,21 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if e.slot >= 0:
         # kill feed (Tier 1): credit = last damager, same rule as scoring
         let k = s.agents[e.slot].lastDamager
+        let place = s.computePlacements()[e.slot]
         let line = (if k >= 0 and k != e.slot: "P" & $k & " > P" & $e.slot
-                    else: "P" & $e.slot & " DOWN")
+                    else: "P" & $e.slot & " DOWN") &
+                   " - " & $place & ordSuffix(place)
         r.killFeed.insert(line, 0)
         if r.killFeed.len > 3:
           r.killFeed.setLen(3)
         r.killDirty = true
+        # settlement line (VISUAL_REDESIGN §5.3): a ledger rule strikes
+        # the full frame at the dead agent's row
+        let lineObj = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
+        inc r.nextEffect
+        result.addObject(lineObj, 0, e.pos.y * TileSize + 2, 22, LayerMap,
+                         SpSettleLine)
+        r.effects.add(Effect(objId: lineObj, dieTick: s.tick + 10))
     of evIgnition: r.spawnEffect(result, s, SpFwGold, cx, cy, 18, 48)
     of evMatchEnd:
       if e.slot >= 0:
@@ -1056,6 +1180,27 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for stale in ghostIdx ..< r.nextRingDrawn:
     result.addDeleteObject(ObNextRingBase + stale)
   r.nextRingDrawn = ghostIdx
+  # phosphor persistence: decay + re-upload the overlay at 2 Hz
+  if r.traceActive and s.tick mod 12 == 0:
+    for i in 0 ..< r.trace.len:
+      let a = r.trace[i] and 0xFF
+      if a > 0:
+        let na = (a * 4) div 5
+        r.trace[i] = (r.trace[i] and 0xFFFFFF00'u32) or
+                     (if na < 6: 0'u32 else: na)
+    result.addSprite(SpTraceLayer, WorldPx, WorldPx, r.traceSpritePixels(),
+                     "trace")
+    result.addObject(ObTraceLayer, 0, 0, 3, LayerMap, SpTraceLayer)
+    r.traceDrawn = true
+  # 16-lamp alive row: subtraction made visible as light
+  var lampMask = 0
+  for slot in 0 .. 15:
+    if s.agents[slot].alive:
+      lampMask = lampMask or (1 shl slot)
+  if lampMask != r.lastLampMask:
+    r.lastLampMask = lampMask
+    result.addSprite(SpLampRow, 81, 6, lampRowPixels(lampMask), "lamps")
+    result.addObject(ObLampRow, 2, 38, 0, LayerHudTL, SpLampRow)
   # exterior wash tracks the shrinking ring: re-bake the background whenever
   # the integer safe radius changes (a handful of uploads per match)
   let bgR = s.effectiveSafeRadius()
@@ -1098,14 +1243,15 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.lastHud1 = hud1
     let spId = SpHudBase + (r.hudFlip mod 2)
     inc r.hudFlip
-    let (w, h, px) = textPixels(hud1, 255, 235, 150)
+    let (w, h, px) = textPixels(hud1, PhosphorPeak[0], PhosphorPeak[1],
+                                PhosphorPeak[2])
     result.addSprite(spId, w, h, px, "hud1")
     result.addObject(ObHudLine1, 2, 2, 0, LayerHudTL, spId)
   if hud2 != r.lastHud2:
     r.lastHud2 = hud2
     let spId = SpHudBase + 2 + (r.hudFlip mod 2)
     inc r.hudFlip
-    let (w, h, px) = textPixels(hud2, 180, 220, 255)
+    let (w, h, px) = textPixels(hud2, GoldTone[0], GoldTone[1], GoldTone[2])
     result.addSprite(spId, w, h, px, "hud2")
     result.addObject(ObHudLine2, 2, 2, 0, LayerHudBL, spId)
   # kill feed under the status line (Tier 1)
@@ -1136,7 +1282,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       r.bannerUntil = s.tick + 96
       let spId = SpBanner + (r.bannerFlip mod 2)
       inc r.bannerFlip
-      let (w, h, px) = textPixels(txt, 255, 210, 80)
+      let (w, h, px) = textPixels(txt, GoldTone[0], GoldTone[1], GoldTone[2])
       result.addSprite(spId, w, h, px, "banner")
       result.addObject(ObBanner, 4, 4, 0, LayerBanner, spId)
   if r.bannerText.len > 0 and s.tick >= r.bannerUntil:
@@ -1149,7 +1295,7 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   result.addLayer(LayerMap, 0x00, 0x01)
   result.addViewport(LayerMap, WorldPx, WorldPx)
   result.addLayer(LayerHudTL, 0x01, 0x02)
-  result.addViewport(LayerHudTL, 208, 36)
+  result.addViewport(LayerHudTL, 208, 46)
   result.addLayer(LayerHudBL, 0x04, 0x02)
   result.addViewport(LayerHudBL, 280, 12)
   result.addLayer(LayerBanner, 0x05, 0x02)
@@ -1193,6 +1339,11 @@ proc resetForLoop*(r: var Renderer) =
   r.killLinesDrawn = 0
   r.lastBgRadius = 0
   r.podLabelText = @[]
+  r.trace = @[]
+  r.scars = @[]
+  r.traceActive = false
+  r.traceDrawn = false
+  r.lastLampMask = 0
   r.podsDrawn = 0
   r.itemsDrawn = 0
   r.projsDrawn = 0

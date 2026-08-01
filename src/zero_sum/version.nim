@@ -1,5 +1,5 @@
 const
-  ZeroSumVersion* = "0.1.2"
+  ZeroSumVersion* = "0.1.3"
   ZeroSumProtocol* = "zero_sum.player.v1"
   ZeroSumSponsorProtocol* = "zero_sum.sponsor.v1"
   ZeroSumReplayMagic* = "ZERO_SUM"

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -7,7 +7,7 @@
   * { box-sizing: border-box; }
   body {
     font-family: Consolas, monospace;
-    background: #0B0C10;
+    background: #0C1116;
     color: #C5C6C7;
     margin: 0;
     padding: 12px;
@@ -16,7 +16,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    background: #1F2833;
+    background: #16202B;
     padding: 10px 14px;
     margin-bottom: 12px;
     flex-wrap: wrap;
@@ -24,28 +24,28 @@
   #teamchip {
     width: 18px; height: 18px;
     background: #3a4552;
-    border: 1px solid #0B0C10;
+    border: 1px solid #0C1116;
     flex: 0 0 auto;
   }
   #teamname { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
   #alive { font-size: 12px; color: #C5C6C7; opacity: 0.8; }
   .spacer { flex: 1; }
-  #budget { font-size: 20px; color: #C5A059; font-weight: bold; }
+  #budget { font-size: 20px; color: #FFB454; font-weight: bold; }
   #countdown { font-size: 14px; min-width: 170px; text-align: right; }
-  #countdown.locked { color: #FF0055; font-weight: bold; }
-  #countdown.closed { color: #66FCF1; }
+  #countdown.locked { color: #FF4A36; font-weight: bold; }
+  #countdown.closed { color: #A5E3EE; }
   #countdown.open { color: #A5E3EE; }
   #status { font-size: 11px; opacity: 0.7; }
   #status.on { color: #A5E3EE; opacity: 1; }
-  #status.off { color: #FF0055; opacity: 1; }
+  #status.off { color: #FF4A36; opacity: 1; }
   main { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-  .panel { background: #1F2833; padding: 10px; }
+  .panel { background: #16202B; padding: 10px; }
   #map { display: block; background: #12141b; cursor: crosshair; }
-  #sel { font-size: 12px; margin-top: 8px; color: #66FCF1; min-height: 15px; }
+  #sel { font-size: 12px; margin-top: 8px; color: #A5E3EE; min-height: 15px; }
   #right { flex: 1; min-width: 300px; max-width: 460px; }
   h2 {
     font-size: 12px; letter-spacing: 2px; color: #C5C6C7;
-    border-bottom: 1px solid #0B0C10; padding-bottom: 4px;
+    border-bottom: 1px solid #0C1116; padding-bottom: 4px;
     margin: 0 0 8px 0;
   }
   h2 + h2, #log { margin-top: 6px; }
@@ -53,39 +53,39 @@
   #shop button {
     font-family: Consolas, monospace;
     font-size: 12px;
-    background: #0B0C10;
+    background: #0C1116;
     color: #C5C6C7;
-    border: 1px solid #66FCF1;
+    border: 1px solid #A5E3EE;
     padding: 6px 10px;
     cursor: pointer;
   }
-  #shop button .price { color: #C5A059; }
-  #shop button:hover:not(:disabled) { background: #66FCF1; color: #0B0C10; }
-  #shop button:hover:not(:disabled) .price { color: #0B0C10; }
+  #shop button .price { color: #FFB454; }
+  #shop button:hover:not(:disabled) { background: #A5E3EE; color: #0C1116; }
+  #shop button:hover:not(:disabled) .price { color: #0C1116; }
   #shop button:disabled {
     border-color: #3a4552; color: #8a95a3; cursor: not-allowed;
   }
   #shop button:disabled .price { color: #8a95a3; }
   #confirm {
     display: none; margin-bottom: 10px; padding: 8px 10px;
-    border: 1px solid #C5A059; font-size: 12px; color: #C5A059;
+    border: 1px solid #FFB454; font-size: 12px; color: #FFB454;
   }
   #confirm.show { display: block; }
   #confirm button {
     font-family: Consolas, monospace; font-size: 12px; cursor: pointer;
-    background: #0B0C10; padding: 4px 10px; margin-left: 8px;
+    background: #0C1116; padding: 4px 10px; margin-left: 8px;
   }
-  #confirmYes { color: #C5A059; border: 1px solid #C5A059; }
-  #confirmYes:hover { background: #C5A059; color: #0B0C10; }
+  #confirmYes { color: #FFB454; border: 1px solid #FFB454; }
+  #confirmYes:hover { background: #FFB454; color: #0C1116; }
   #confirmNo { color: #C5C6C7; border: 1px solid #3a4552; }
   #coords { font-size: 12px; margin-top: 6px; color: #8a95a3; }
   #coords input {
-    width: 52px; background: #0B0C10; color: #C5C6C7;
+    width: 52px; background: #0C1116; color: #C5C6C7;
     border: 1px solid #3a4552; font-family: Consolas, monospace;
     font-size: 12px; padding: 3px 5px;
   }
   #coords input:focus, #confirm button:focus, #shop button:focus {
-    outline: 2px solid #66FCF1; outline-offset: 1px;
+    outline: 2px solid #A5E3EE; outline-offset: 1px;
   }
   #legend {
     font-size: 11px; margin-top: 6px; color: #8a95a3;
@@ -96,14 +96,14 @@
     vertical-align: -1px;
   }
   #toast {
-    min-height: 16px; font-size: 12px; color: #FF0055;
+    min-height: 16px; font-size: 12px; color: #FF4A36;
     margin-bottom: 10px; visibility: hidden;
   }
   #toast.show { visibility: visible; }
   #log { list-style: none; margin: 0; padding: 0; font-size: 11px; }
   #log li { padding: 2px 0; border-bottom: 1px solid rgba(11,12,16,0.5); }
   #log li.ok { color: #A5E3EE; }
-  #log li.bad { color: #FF0055; }
+  #log li.bad { color: #FF4A36; }
 </style>
 </head>
 <body>
@@ -129,11 +129,11 @@
       <span><i style="background:#3a4552"></i>wall</span>
       <span><i style="background:#4a5867"></i>fortress</span>
       <span><i style="background:#5a4a3a"></i>rock</span>
-      <span><i style="background:#C5A059"></i>pedestal</span>
+      <span><i style="background:#FFB454"></i>pedestal</span>
       <span><i style="background:#1e5c28"></i>bush</span>
-      <span><i style="background:#C5A059; transform:rotate(45deg)"></i>airdrop</span>
+      <span><i style="background:#FFB454; transform:rotate(45deg)"></i>airdrop</span>
       <span><i style="background:#FF4FA3; height:2px; vertical-align:2px"></i>ring (dashed = next)</span>
-      <span><i style="border:1px solid #66FCF1; background:none"></i>your agents</span>
+      <span><i style="border:1px solid #A5E3EE; background:none"></i>your agents</span>
     </div>
   </section>
   <section class="panel" id="right">
@@ -169,10 +169,10 @@ function websocketAddress(path) {
   return target;
 }
 
-const TEAM_ACCENTS = {A:'#FF7F8C', B:'#45DCFF', C:'#FFBF00', D:'#7A3CDC',
-                      E:'#DC143C', F:'#EBF5FF', G:'#FF6E1E', H:'#E15AEB'};
+const TEAM_ACCENTS = {A:'#FF8FA8', B:'#49C7E8', C:'#E8C558', D:'#9B7BFF',
+                      E:'#E85D75', F:'#9FB8D8', G:'#E8975D', H:'#D97BE8'};
 const TILE_COLORS = {'#':'#3a4552', 'F':'#4a5867', 'R':'#5a4a3a',
-                     'P':'#C5A059', 'B':'#1e5c28'};
+                     'P':'#FFB454', 'B':'#1e5c28'};
 const TPS = 24;           // ticks per second
 const TILE = 12;          // px per tile
 
@@ -324,7 +324,7 @@ ws.onmessage = (ev) => {
   try { m = JSON.parse(ev.data); } catch (e) { return; }
   if (m.type === 'sponsor_welcome') {
     team = m.team;
-    const accent = TEAM_ACCENTS[team] || '#66FCF1';
+    const accent = TEAM_ACCENTS[team] || '#A5E3EE';
     document.getElementById('teamchip').style.background = accent;
     const tn = document.getElementById('teamname');
     tn.textContent = 'TEAM ' + team;
@@ -402,7 +402,7 @@ function draw() {
     }
   }
   // subtle grid
-  ctx.strokeStyle = '#1F2833';
+  ctx.strokeStyle = '#16202B';
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = 0; i <= arenaSize; i++) {
@@ -415,7 +415,7 @@ function draw() {
   ctx.font = '9px Consolas, monospace';
   for (const mk of markers) {
     const cx = mk.x * TILE + TILE / 2, cy = mk.y * TILE + TILE / 2;
-    ctx.fillStyle = '#C5A059';
+    ctx.fillStyle = '#FFB454';
     ctx.beginPath();
     ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy);
     ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy);
@@ -425,7 +425,7 @@ function draw() {
     const above = mk.y > 1;
     ctx.fillText(mk.item, cx, above ? cy - 8 : cy + 15);
     if (typeof mk.landsTick === 'number' && et < mk.landsTick) {
-      ctx.fillStyle = '#66FCF1';
+      ctx.fillStyle = '#A5E3EE';
       ctx.fillText(`lands in ${secs(mk.landsTick - et)}s`,
                    cx, above ? cy - 18 : cy + 25);
     }
@@ -453,18 +453,18 @@ function draw() {
   ctx.textAlign = 'center';
   for (const p of pods) {
     const cx = p.pos[0] * TILE + TILE / 2, cy = p.pos[1] * TILE + TILE / 2;
-    ctx.strokeStyle = '#C5A059';
-    ctx.fillStyle = p.landed ? '#C5A059' : 'rgba(197,160,89,0.25)';
+    ctx.strokeStyle = '#FFB454';
+    ctx.fillStyle = p.landed ? '#FFB454' : 'rgba(197,160,89,0.25)';
     ctx.beginPath();
     ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy);
     ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy);
     ctx.closePath();
     ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#C5A059';
+    ctx.fillStyle = '#FFB454';
     ctx.fillText(itemLabel(p.item), cx, p.pos[1] > 1 ? cy - 8 : cy + 15);
   }
   // your agents: accent dot, hp-band ring, slot tag
-  const accent = TEAM_ACCENTS[team] || '#66FCF1';
+  const accent = TEAM_ACCENTS[team] || '#A5E3EE';
   for (const a of mates) {
     const cx = a.pos[0] * TILE + TILE / 2, cy = a.pos[1] * TILE + TILE / 2;
     ctx.fillStyle = accent;
@@ -485,15 +485,15 @@ function draw() {
   if (selected) {
     const [sx, sy] = selected;
     const cx = sx * TILE + TILE / 2, cy = sy * TILE + TILE / 2;
-    ctx.strokeStyle = 'rgba(102,252,241,0.35)';
+    ctx.strokeStyle = 'rgba(165,227,238,0.35)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
     ctx.moveTo(0, cy); ctx.lineTo(w, cy);
     ctx.stroke();
-    ctx.strokeStyle = '#66FCF1';
+    ctx.strokeStyle = '#A5E3EE';
     ctx.strokeRect(sx * TILE + 0.5, sy * TILE + 0.5, TILE - 1, TILE - 1);
-    ctx.fillStyle = '#66FCF1';
+    ctx.fillStyle = '#A5E3EE';
     ctx.font = '10px Consolas, monospace';
     ctx.textAlign = sx > arenaSize - 8 ? 'right' : 'left';
     const tx = sx > arenaSize - 8 ? cx - 8 : cx + 8;

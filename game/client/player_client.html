@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <title>Zero Sum - Agent Cam</title>
 <style>
-  :root { --bg:#0B0C10; --panel:#1F2833; --teal:#66FCF1; --gold:#C5A059;
-          --crim:#FF0055; --toxic:#39FF14; --hurt:#FFA500; --text:#C5C6C7;
+  :root { --bg:#0C1116; --panel:#16202B; --teal:#A5E3EE; --gold:#FFB454;
+          --crim:#FF4A36; --toxic:#39FF14; --hurt:#FFB454; --text:#C5C6C7;
           /* HP semaphore (VISUAL_REDESIGN §3.1): no green — green is poison */
           --hpok:#A5E3EE; --hphurt:#FFB454; --hpcrit:#FF4A36; }
   body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
@@ -19,7 +19,7 @@
   #hpbarWrap { background: #0d1117; height: 14px; border: 1px solid #2b3a4a; margin: 4px 0; }
   #hpbar { height: 100%; width: 100%; background: var(--hpok); transition: width .2s; }
   .tag { display: inline-block; padding: 1px 5px; margin: 1px 2px; font-size: 10px;
-         border-radius: 2px; color: #0B0C10; font-weight: bold; }
+         border-radius: 2px; color: #0C1116; font-weight: bold; }
   .tag.poison { background: var(--hpcrit); color: #fff; } .tag.netted { background: #c0c8d0; }
   .tag.channeling { background: var(--teal); } .tag.camo_revealed { background: var(--crim); color:#fff; }
   #stats, #inv, #zoneinfo, #ares { font-size: 11px; }
@@ -78,7 +78,7 @@ const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const el = id => document.getElementById(id);
 let cfg = null;
 // Team accents (DESIGN §21.3) — index = slot>>1
-const TEAM = ['#FF7F8C','#45DCFF','#FFBF00','#7A3CDC','#DC143C','#EBF5FF','#FF6E1E','#E15AEB'];
+const TEAM = ['#FF8FA8','#49C7E8','#E8C558','#9B7BFF','#E85D75','#9FB8D8','#E8975D','#D97BE8'];
 const BAND = { healthy: '#A5E3EE', hurt: '#FFB454', critical: '#FF4A36' };
 const WEAPON_GLYPH = { sword:'S', spear:'P', bow:'B', knives:'K', blowgun:'G', net:'N',
                        first_aid:'+', rations:'R', backpack:'Δ', camo:'C', arrows:'a', darts:'d' };
@@ -106,7 +106,7 @@ function losClear(ax, ay, bx, by) {
 // crosshatch pattern for LOS shadow
 const hatch = document.createElement('canvas'); hatch.width = hatch.height = 6;
 { const h = hatch.getContext('2d');
-  h.strokeStyle = 'rgba(102,252,241,0.14)'; h.lineWidth = 1;
+  h.strokeStyle = 'rgba(165,227,238,0.14)'; h.lineWidth = 1;
   h.beginPath(); h.moveTo(0, 6); h.lineTo(6, 0); h.stroke(); }
 let hatchPat = null;
 const RM = window.matchMedia &&
@@ -122,7 +122,7 @@ ws.onopen = () => { el('hud').textContent = 'CONNECTED — AWAITING FEED'; };
 ws.onclose = () => { el('hud').textContent = 'DISCONNECTED'; };
 let bannerUntil = 0;
 function showBanner(txt, color) {
-  const b = el('banner'); b.textContent = txt; b.style.color = color || '#C5A059';
+  const b = el('banner'); b.textContent = txt; b.style.color = color || '#FFB454';
   b.style.display = 'block'; bannerUntil = Date.now() + 4000;
   setTimeout(() => { if (Date.now() >= bannerUntil) b.style.display = 'none'; }, 4100);
 }
@@ -139,7 +139,7 @@ ws.onmessage = (ev) => {
   if (m.type === 'final') {
     el('hud').textContent = `FINAL  PLACE ${m.placement}  SCORE ${m.score}  WINNER P${m.winner_slot}`;
     showBanner(m.reason === 'winner' ? 'VICTORY' : 'ELIMINATED',
-               m.reason === 'winner' ? '#C5A059' : '#FF0055');
+               m.reason === 'winner' ? '#FFB454' : '#FF4A36');
     return;
   }
   if (m.type !== 'observation' || !cfg) return;
@@ -174,9 +174,9 @@ ws.onmessage = (ev) => {
   if (el('chatlog').textContent.length > 20000)
     el('chatlog').textContent = el('chatlog').textContent.slice(0, 20000);
   for (const e of m.events) {
-    if (e.type === 'ignition') showBanner('IGNITION', '#C5A059');
-    else if (e.type === 'finale') showBanner('CIVIL WAR', '#FF0055');
-    else if (e.type === 'zone_warning') showBanner('RING SHRINKS TO ' + e.r_end, '#FFA500');
+    if (e.type === 'ignition') showBanner('IGNITION', '#FFB454');
+    else if (e.type === 'finale') showBanner('CIVIL WAR', '#FF4A36');
+    else if (e.type === 'zone_warning') showBanner('RING SHRINKS TO ' + e.r_end, '#FFB454');
     else if (e.type === 'death_fireworks') {
       if (e.slot >= 0) deadSeen.add(e.slot);
       if (e.pos) fx.push({kind: 'death', x: e.pos[0], y: e.pos[1], born: m.tick, ttl: 48});
@@ -202,7 +202,7 @@ ws.onmessage = (ev) => {
   hazards = hazards.filter(h => m.tick < h.until);
 
   // ---- tactical map ----
-  ctx.fillStyle = '#0B0C10'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#0C1116'; ctx.fillRect(0, 0, cv.width, cv.height);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const dx = x - px, dy = y - py;
     const inRadius = dx*dx + dy*dy <= vr*vr;
@@ -211,12 +211,12 @@ ws.onmessage = (ev) => {
     // terrain (public in player_config): full color when seen, ghost elsewhere
     let col = null;
     if (t === '#') col = '#3a4552'; else if (t === 'F') col = '#4a5867';
-    else if (t === 'R') col = '#5a4a3a'; else if (t === 'P') col = '#C5A059';
+    else if (t === 'R') col = '#5a4a3a'; else if (t === 'P') col = '#FFB454';
     else if (t === 'B') col = '#1e5c28';
     if (seen) {
       ctx.fillStyle = '#12141b'; ctx.fillRect(x*S, y*S, S, S);
       if (col) { ctx.fillStyle = col; ctx.fillRect(x*S, y*S, S, S); }
-      ctx.strokeStyle = 'rgba(31,40,51,0.6)'; ctx.strokeRect(x*S+.5, y*S+.5, S-1, S-1);
+      ctx.strokeStyle = 'rgba(54,68,79,0.6)'; ctx.strokeRect(x*S+.5, y*S+.5, S-1, S-1);
     } else {
       // fog hides only dynamic signal — the static map is public in
       // player_config, so remembered terrain stays readable (schematic)
@@ -224,12 +224,12 @@ ws.onmessage = (ev) => {
       if (inRadius) { ctx.fillStyle = hatchPat; ctx.fillRect(x*S, y*S, S, S); } // LOS shadow crosshatch
     }
   }
-  // zone ring: teal plasma, crimson once crit
+  // zone ring: directive magenta; klaxon once lethal-stage
   ctx.lineWidth = 2;
-  ctx.strokeStyle = zdps >= 8 ? '#FF0055' : '#66FCF1';
+  ctx.strokeStyle = zdps >= 8 ? '#FF4A36' : '#FF4FA3';
   ctx.beginPath(); ctx.arc(m.zone.center[0]*S + S/2, m.zone.center[1]*S + S/2, m.zone.radius*S, 0, 7); ctx.stroke();
   if (m.zone.next_radius < m.zone.radius) {
-    ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(255,0,85,0.5)';
+    ctx.setLineDash([4, 5]); ctx.strokeStyle = 'rgba(255,79,163,0.5)';
     ctx.beginPath(); ctx.arc(m.zone.center[0]*S + S/2, m.zone.center[1]*S + S/2, m.zone.next_radius*S, 0, 7); ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -267,16 +267,16 @@ ws.onmessage = (ev) => {
   }
   // ground items: symbol + count
   for (const it of m.visible.items) {
-    ctx.fillStyle = '#C5A059';
+    ctx.fillStyle = '#FFB454';
     ctx.fillText((ITEM_GLYPH[it.id] || '?') + (it.n > 1 ? it.n : ''), it.pos[0]*S+2, it.pos[1]*S+3);
   }
   // pods: gold diamond inbound / gold crate landed, item label
   for (const p of m.visible.pods) {
     const cx = p.pos[0]*S + S/2, cy = p.pos[1]*S + S/2;
-    ctx.strokeStyle = '#C5A059'; ctx.fillStyle = p.landed ? '#C5A059' : 'rgba(197,160,89,0.25)';
+    ctx.strokeStyle = '#FFB454'; ctx.fillStyle = p.landed ? '#FFB454' : 'rgba(255,180,84,0.25)';
     ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx+6, cy); ctx.lineTo(cx, cy+6); ctx.lineTo(cx-6, cy);
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#C5A059'; ctx.fillText(p.item, cx - 3*p.item.length, cy - 14);
+    ctx.fillStyle = '#FFB454'; ctx.fillText(p.item, cx - 3*p.item.length, cy - 14);
   }
   // projectiles: tracer + direction tail
   const DIRV = {N:[0,-1],NE:[1,-1],E:[1,0],SE:[1,1],S:[0,1],SW:[-1,1],W:[-1,0],NW:[-1,-1]};
@@ -299,22 +299,22 @@ ws.onmessage = (ev) => {
     ctx.lineWidth = 2; ctx.strokeStyle = BAND[a.hp_band] || '#fff';
     ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, 7); ctx.stroke(); ctx.lineWidth = 1;
     if (a.hand && a.hand !== 'none') {
-      ctx.fillStyle = '#0B0C10'; ctx.fillText(WEAPON_GLYPH[a.hand] || '?', cx-2.5, cy-4);
+      ctx.fillStyle = '#0C1116'; ctx.fillText(WEAPON_GLYPH[a.hand] || '?', cx-2.5, cy-4);
     }
     let pip = 0;
     const pips = [];
     if (a.poisoned) pips.push('#FF4A36');
     if (a.netted) pips.push('#c0c8d0');
-    if (a.channeling) pips.push('#66FCF1');
+    if (a.channeling) pips.push('#A5E3EE');
     for (const c of pips) { ctx.fillStyle = c; ctx.fillRect(cx - 6 + pip*5, cy - 11, 4, 3); pip++; }
     ctx.fillStyle = '#C5C6C7'; ctx.fillText('P' + a.slot, cx - 5, cy + 8);
   }
   // self token: cyan, cooldown gauges, stacked status tags drawn as pips
   {
     const cx = px*S + S/2, cy = py*S + S/2;
-    ctx.strokeStyle = 'rgba(102,252,241,0.35)';
+    ctx.strokeStyle = 'rgba(165,227,238,0.35)';
     ctx.beginPath(); ctx.arc(cx, cy, vr*S, 0, 7); ctx.stroke();   // vision edge
-    ctx.fillStyle = '#66FCF1';
+    ctx.fillStyle = '#A5E3EE';
     ctx.beginPath(); ctx.arc(cx, cy, 5.5, 0, 7); ctx.fill();
     ctx.strokeStyle = '#EBF5FF'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke(); ctx.lineWidth = 1;
@@ -324,8 +324,8 @@ ws.onmessage = (ev) => {
     const atkTotal = (you.hand && cfg.itemDefs[you.hand.id]) ? cfg.itemDefs[you.hand.id].cooldown || 12 : 12;
     const atk = 1 - Math.min(1, you.attack_ready_in / atkTotal);
     ctx.fillStyle = '#0d1117'; ctx.fillRect(cx-8, cy+9, 16, 2); ctx.fillRect(cx-8, cy+12, 16, 2);
-    ctx.fillStyle = '#66FCF1'; ctx.fillRect(cx-8, cy+9, 16*mv, 2);
-    ctx.fillStyle = '#C5A059'; ctx.fillRect(cx-8, cy+12, 16*atk, 2);
+    ctx.fillStyle = '#A5E3EE'; ctx.fillRect(cx-8, cy+9, 16*mv, 2);
+    ctx.fillStyle = '#FFB454'; ctx.fillRect(cx-8, cy+12, 16*atk, 2);
   }
   // arena-wide event markers, drawn over fog (public by design)
   for (const f of fx) {
@@ -342,7 +342,7 @@ ws.onmessage = (ev) => {
       ctx.beginPath(); ctx.arc(cx, cy, RM ? 6 : 3 + age*10, 0, Math.PI*2); ctx.stroke();
     } else {                       // gift: amber ping at the drop tile
       ctx.globalAlpha = 0.9;
-      ctx.strokeStyle = '#C5A059'; ctx.lineWidth = 1;
+      ctx.strokeStyle = '#FFB454'; ctx.lineWidth = 1;
       const p = RM ? 0.4 : ((m.tick - f.born) % 48) / 48;
       ctx.beginPath(); ctx.arc(cx, cy, 3 + p*14, 0, Math.PI*2); ctx.stroke();
     }

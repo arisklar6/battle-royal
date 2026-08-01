@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <title>Zero Sum - Analyst Desk</title>
 <style>
-  :root { --bg:#0B0C10; --panel:#1F2833; --teal:#66FCF1; --gold:#C5A059;
-          --crim:#FF0055; --toxic:#39FF14; --hurt:#FFA500; --text:#C5C6C7; }
+  /* AFTERGLOW tokens (docs/VISUAL_REDESIGN.md §3.1) */
+  :root { --bg:#0C1116; --panel:#141D26; --teal:#A5E3EE; --gold:#FFB454;
+          --crim:#FF4A36; --toxic:#39FF14; --hurt:#FFB454; --text:#C2CDD5; }
   body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
          margin: 0; padding: 12px; }
   h2 { color: var(--teal); font-size: 13px; letter-spacing: 3px; margin: 0 0 6px 0;
@@ -32,17 +33,22 @@
   #matrix td, #matrix th { text-align: center; }
   #matrixNote { font-size: 10px; color: #8a95a3; margin-top: 4px; }
   #finale { position: fixed; inset: 0; display: none; align-items: center;
-            justify-content: center; background: rgba(255,0,85,0.12);
+            justify-content: center; background: rgba(255,74,54,0.12);
             pointer-events: none; z-index: 10; }
   #finale div { font-size: 64px; color: var(--crim); letter-spacing: 12px;
-                text-shadow: 0 0 30px rgba(255,0,85,0.8); font-weight: bold; }
+                text-shadow: 0 0 30px rgba(255,74,54,0.8); font-weight: bold; }
   #winner { position: fixed; inset: 0; display: none; align-items: flex-end;
             justify-content: center; padding-bottom: 7vh; box-sizing: border-box;
             pointer-events: none; z-index: 11; }
   #winner div { font-size: 48px; color: var(--gold); letter-spacing: 8px;
-                text-shadow: 0 0 24px rgba(197,160,89,0.9); }
+                text-shadow: 0 0 24px rgba(255,180,84,0.9); }
   .hpbar { height: 4px; background: #0d1117; }
   .hpbar i { display: block; height: 100%; }
+  .wide { grid-column: 1 / -1; }
+  #comms { height: 150px; overflow-y: auto; font-size: 11px; }
+  #comms .row { padding: 1px 0; border-bottom: 1px solid #14181f; }
+  #comms .ch-team { color: var(--teal); }
+  #comms .ch-dm { color: var(--gold); }
 </style>
 </head>
 <body>
@@ -71,6 +77,10 @@
     </tr></thead><tbody></tbody></table>
     <div id="matrixNote"></div>
   </div>
+  <div class="panel wide">
+    <h2>COMMS &mdash; PUBLIC RECORD</h2>
+    <div id="comms"></div>
+  </div>
 </div>
 <div id="finale"><div>CIVIL WAR</div></div>
 <div id="winner"><div></div></div>
@@ -85,8 +95,9 @@ function websocketAddress(path) {
   target.hash = '';
   return target;
 }
-const TEAM = {A:'#FF7F8C', B:'#45DCFF', C:'#FFBF00', D:'#7A3CDC',
-              E:'#DC143C', F:'#EBF5FF', G:'#FF6E1E', H:'#E15AEB'};
+// AFTERGLOW team wheel (VISUAL_REDESIGN §3.1)
+const TEAM = {A:'#FF8FA8', B:'#49C7E8', C:'#E8C558', D:'#9B7BFF',
+              E:'#E85D75', F:'#9FB8D8', G:'#E8975D', H:'#D97BE8'};
 // server-supplied strings (names, sponsor item ids) must never reach
 // innerHTML raw — a live sponsor socket can put arbitrary text in item_id
 const esc = s => String(s).replace(/[&<>"']/g, c =>
@@ -100,7 +111,7 @@ function fmtT(tick) {
 }
 const ws = new WebSocket(websocketAddress('/analyst'));
 ws.onopen = () => { el('status').textContent = 'LIVE'; el('status').style.color = '#A5E3EE'; };
-ws.onclose = () => { el('status').textContent = 'FEED CLOSED'; el('status').style.color = '#FF0055'; };
+ws.onclose = () => { el('status').textContent = 'FEED CLOSED'; el('status').style.color = '#FF4A36'; };
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
   if (m.type !== 'analyst') return;
@@ -158,6 +169,18 @@ ws.onmessage = (ev) => {
       ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${esc(ic.item.toUpperCase())} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
       : `[${fmtT(ic.tick)}] ${esc(ic.item.toUpperCase())} secured by P${looter}`;
     tick.prepend(d);
+  }
+  // live chat: agent-authored text — esc() is mandatory (XSS)
+  const comms = el('comms');
+  for (const c of (m.chat || [])) {
+    const key = 'c' + c.tick + '_' + c.from + '_' + (c.to ?? -1);
+    if (tickerKeys.has(key)) continue;
+    tickerKeys.add(key);
+    const d = document.createElement('div');
+    d.className = 'row' + (c.channel === 'team' ? ' ch-team' : c.channel === 'dm' ? ' ch-dm' : '');
+    const tag = c.channel === 'dm' ? '→P' + c.to : c.channel === 'team' ? '·team' : '';
+    d.innerHTML = `[${fmtT(c.tick)}] <b>P${c.from}${tag}</b>: ${esc(c.text)}`;
+    comms.prepend(d);
   }
   const ordinal = n => n + (n % 100 > 10 && n % 100 < 14 ? 'TH' : ({1:'ST',2:'ND',3:'RD'}[n % 10] || 'TH'));
   for (const st of (m.settlements || [])) {
