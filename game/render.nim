@@ -540,10 +540,12 @@ const Glyphs = {
   'C': 0b011_100_100_100_011, 'D': 0b110_101_101_101_110,
   'E': 0b111_100_110_100_111, 'F': 0b111_100_110_100_100,
   'G': 0b011_100_101_101_011, 'H': 0b101_101_111_101_101,
-  'I': 0b111_010_010_010_111, 'K': 0b101_110_100_110_101,
+  'I': 0b111_010_010_010_111, 'J': 0b001_001_001_101_010,
+  'K': 0b101_110_100_110_101,
   'L': 0b100_100_100_100_111, 'M': 0b101_111_111_101_101,
   'N': 0b101_111_111_111_101, 'O': 0b010_101_101_101_010,
-  'P': 0b110_101_110_100_100, 'R': 0b110_101_110_110_101,
+  'P': 0b110_101_110_100_100, 'Q': 0b111_101_101_111_001,
+  'R': 0b110_101_110_110_101,
   'S': 0b011_100_010_001_110, 'T': 0b111_010_010_010_010,
   'U': 0b101_101_101_101_111, 'V': 0b101_101_101_101_010,
   'W': 0b101_101_111_111_101, 'X': 0b101_101_010_101_101,
@@ -639,7 +641,9 @@ proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
 
 proc spawnEffect(r: var Renderer, packet: var seq[uint8], s: Sim,
                  spriteId, cx, cy, size, ttl: int) =
-  let objId = ObEffectBase + (r.nextEffect mod 50_000)
+  # ids must stay below ObBushBase (20000) — effects rotating past that
+  # range would clobber pooled world objects mid-broadcast
+  let objId = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
   inc r.nextEffect
   packet.addObject(objId, cx - size div 2, cy - size div 2, 20, LayerMap, spriteId)
   r.effects.add(Effect(objId: objId, dieTick: s.tick + ttl))
@@ -924,7 +928,7 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   result.addLayer(LayerHudTL, 0x01, 0x02)
   result.addViewport(LayerHudTL, 160, 12)
   result.addLayer(LayerHudBL, 0x04, 0x02)
-  result.addViewport(LayerHudBL, 244, 12)
+  result.addViewport(LayerHudBL, 280, 12)
   result.addLayer(LayerBanner, 0x05, 0x02)
   result.addViewport(LayerBanner, 120, 16)
   result.add(spriteDefs(s))

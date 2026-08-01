@@ -27,7 +27,8 @@
   #chatlog { font-size: 11px; flex: 1 1 auto; min-height: 90px; overflow-y: auto;
              white-space: pre-wrap; }
   .crit { color: var(--crim); } .warn { color: var(--hurt); } .ok { color: var(--toxic); }
-  #banner { position: absolute; left: 240px; top: 260px; font-size: 28px;
+  #banner { position: absolute; left: 0; right: 0; top: 40%; text-align: center;
+            font-size: 28px;
             color: var(--gold); text-shadow: 0 0 12px #000; letter-spacing: 4px;
             pointer-events: none; display: none; }
 </style>
@@ -77,7 +78,7 @@ const BAND = { healthy: '#39FF14', hurt: '#FFA500', critical: '#FF0055' };
 const WEAPON_GLYPH = { sword:'S', spear:'P', bow:'B', knives:'K', blowgun:'G', net:'N',
                        first_aid:'+', rations:'R', backpack:'Δ', camo:'C', arrows:'a', darts:'d' };
 const ITEM_GLYPH = { sword:'⚔', spear:'†', bow:'D', arrows:'➹', knives:'✕', blowgun:'~',
-                     darts:'·', net:'#', first_aid:'✚', rations:'▲', backpack:'◘', camo:'▒' };
+                     darts:'·', net:'#', first_aid:'✚', rations:'▲', backpack:'◘', camouflage:'▒' };
 const S = 14;             // px per tile
 // LOS mirror of obs.nim losClear: Bresenham, blocked by '#'/'R'/'F'
 let blockMap = null;
@@ -159,9 +160,9 @@ ws.onmessage = (ev) => {
     el('chatlog').textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : c.channel === 'team' ? '·team' : ''}] ${c.text}\n` + el('chatlog').textContent;
   }
   for (const e of m.events) {
-    if (e.kind === 'ignition') showBanner('IGNITION', '#C5A059');
-    else if (e.kind === 'finale') showBanner('CIVIL WAR', '#FF0055');
-    else if (e.kind === 'zone_warning') showBanner('RING SHRINKS', '#FFA500');
+    if (e.type === 'ignition') showBanner('IGNITION', '#C5A059');
+    else if (e.type === 'finale') showBanner('CIVIL WAR', '#FF0055');
+    else if (e.type === 'zone_warning') showBanner('RING SHRINKS', '#FFA500');
   }
 
   // ---- tactical map ----
