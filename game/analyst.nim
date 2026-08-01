@@ -7,7 +7,7 @@
 ## is the looter.
 
 import std/[algorithm, json]
-import zero_sum/[types, sim]
+import zero_sum/[types, arena, sim]
 
 type
   Interception* = object
@@ -118,6 +118,11 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     let t = s.talkLog[j]
     chatArr.add(%*{"tick": t.tick, "from": t.slot, "channel": $t.channel,
                     "to": t.to, "text": t.text})
+  # arena static map: same tile legend as obs.nim player_config static_map
+  # (. ground, # wall, R rock, F fortress_wall, P pedestal, B berry_bush)
+  var arenaRows = newJArray()
+  for row in staticMapRows(s.arena):
+    arenaRows.add(%row)
   # next-shrink context so the desk can show the ring clock
   var nextR = s.zoneRadius()
   var shrinkT = 0
@@ -135,6 +140,7 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     "winner_slot": s.winnerSlot,
     "zone": {"radius": s.zoneRadius(), "next_radius": nextR,
              "shrink_tick": shrinkT, "damage_per_s": s.zoneDamagePerS()},
+    "arena": arenaRows,
     "agents": agents, "teams": teams,
     "ticker": ticker, "interceptions": steals, "settlements": settlements,
     "chat": chatArr})

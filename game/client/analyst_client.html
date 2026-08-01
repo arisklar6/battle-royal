@@ -7,7 +7,7 @@
   /* AFTERGLOW tokens (docs/VISUAL_REDESIGN.md §3.1) */
   :root { --bg:#0C1116; --panel:#141D26; --teal:#A5E3EE; --gold:#FFB454;
           --crim:#FF4A36; --toxic:#39FF14; --hurt:#FFB454; --text:#C2CDD5; }
-  body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
+  body { font-family: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace; background: var(--bg); color: var(--text);
          margin: 0; padding: 12px; }
   h2 { color: var(--teal); font-size: 13px; letter-spacing: 3px; margin: 0 0 6px 0;
        border-bottom: 1px solid #2b3a4a; padding-bottom: 3px; }
@@ -49,6 +49,7 @@
   #comms .row { padding: 1px 0; border-bottom: 1px solid #14181f; }
   #comms .ch-team { color: var(--teal); }
   #comms .ch-dm { color: var(--gold); }
+  #mini { image-rendering: pixelated; display: block; }
 </style>
 </head>
 <body>
@@ -77,6 +78,7 @@
     </tr></thead><tbody></tbody></table>
     <div id="matrixNote"></div>
   </div>
+  <div class="panel"><h2>MAP</h2><canvas id="mini" width="192" height="192"></canvas></div>
   <div class="panel wide">
     <h2>COMMS &mdash; PUBLIC RECORD</h2>
     <div id="comms"></div>
@@ -105,6 +107,48 @@ const esc = s => String(s).replace(/[&<>"']/g, c =>
 const teamColor = t => TEAM[t] || '#56606a';
 const el = id => document.getElementById(id);
 let finaleShown = false, tickerKeys = new Set();
+// MINIMAP: static arena cached from the first payload that carries it
+let arenaMap = null;
+const TILE_COLOR = {'#':'#36444F', 'F':'#4E5E6B', 'R':'#5a4a3a', 'P':'#FFB454', 'B':'#1e5c28'};
+function drawMini(m) {
+  const cv = el('mini');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#0C1116';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  if (arenaMap) {
+    for (let y = 0; y < arenaMap.length; y++) {
+      const row = arenaMap[y];
+      for (let x = 0; x < row.length; x++) {
+        const c = TILE_COLOR[row[x]];
+        if (c) { ctx.fillStyle = c; ctx.fillRect(x * 4, y * 4, 4, 4); }
+      }
+    }
+  }
+  // ring (Directive Magenta) + dashed next radius when a shrink is pending
+  ctx.strokeStyle = '#FF4FA3';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(96, 96, m.zone.radius * 4, 0, Math.PI * 2);
+  ctx.stroke();
+  if (m.zone.next_radius !== undefined && m.zone.next_radius < m.zone.radius) {
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(96, 96, m.zone.next_radius * 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // agents: alive = 4px team square, dead = 2px dim dot
+  for (const a of m.agents) {
+    if (a.alive) {
+      ctx.fillStyle = teamColor(a.team);
+      ctx.fillRect(a.pos[0] * 4, a.pos[1] * 4, 4, 4);
+    } else {
+      ctx.fillStyle = '#8a95a3';
+      ctx.fillRect(a.pos[0] * 4 + 1, a.pos[1] * 4 + 1, 2, 2);
+    }
+  }
+}
 function fmtT(tick) {
   const s = Math.floor(tick / 24);
   return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
@@ -125,6 +169,10 @@ ws.onmessage = (ev) => {
       : ' → ' + z.next_radius + ' <span class="crim">NOW</span>';
   }
   el('zonebox').innerHTML = ringTxt;
+
+  // MINIMAP
+  if (!arenaMap && m.arena) arenaMap = m.arena;
+  drawMini(m);
 
   // scoreboard: sort by projected score desc, then placement
   const rows = [...m.agents].sort((a, b) => b.projected_score - a.projected_score || a.placement - b.placement);

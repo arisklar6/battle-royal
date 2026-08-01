@@ -56,6 +56,12 @@ const
   SpTraceLayer = 3         # full-arena phosphor persistence overlay
   SpSettleLine = 860       # full-width settlement rule (death sweep)
   SpLampRow = 861          # 16-lamp alive row
+  SpReticle = 870          # amber drop-targeting reticle
+  SpCratePartBase = 871    # 871..873: crate rastering in (print sequence)
+  SpPingA = 874            # landed-crate contested ping
+  SpPingB = 875
+  SpHitFlash = 876         # 1-frame peak-white hit silhouette
+  SpDmgBase = 880          # 880..895: rotating damage numerals
   SpPodCrateBase = 900     # 900 + ord(ItemId): contents-keyed crates
   SpPodLabelBase = 1000    # 1000 + pod index: persistent cargo labels
 
@@ -88,6 +94,7 @@ const
   ObPodLabelBase = 44400
   ObChannelBase = 44500     # channel halo per slot
   ObRevealBase = 44600      # camo-reveal mark per slot
+  ObPodPingBase = 44700     # contested-crate ping per pod index
   ObSlotLabelBase = 45000   # + slot: identity tag under each agent
   ObHpBandBase = 45100      # + slot: hp semaphore over each agent
   ObCorpseBase = 46000      # + slot: persistent corpse (lives to match end)
@@ -174,6 +181,8 @@ type
     traceActive: bool
     traceDrawn: bool
     lastLampMask: int
+    lastHp: array[16, int]    # centi-HP watermark for hit flashes
+    dmgFlip: int
 
 # ---------------------------------------------------------------- helpers
 
@@ -234,9 +243,12 @@ proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
   px.put(w, ox + 2, oy + 2, shade(gold, 30))
   px.put(w, ox + 3, oy + 3, shade(gold, 30))
 
-proc backgroundPixels(a: Arena, safeR: int): seq[uint8] =
-  ## safeR: tiles outside this center radius get a dark red "off-air" wash
-  ## so the killing field is legible (pass >= ArenaSize for no wash).
+proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
+  ## safeR: tiles outside this center radius are reclaimed territory.
+  ## derez escalates with the ring stage (VISUAL_REDESIGN §3.7 — the
+  ## machine deallocating the world): 0 = red "off-air" wash,
+  ## 1 = art decays to Etch wireframe, 2 = raw substrate + dropped-pixel
+  ## dither. Pass safeR >= ArenaSize for an untouched board.
   result = newSeq[uint8](WorldPx * WorldPx * 4)
   let c = ArenaSize div 2
   for ty in 0 ..< ArenaSize:
@@ -259,12 +271,33 @@ proc backgroundPixels(a: Arena, safeR: int): seq[uint8] =
       let dx = tx - c
       let dy = ty - c
       if dx * dx + dy * dy > safeR * safeR:
-        for y in 0 ..< TileSize:
-          for x in 0 ..< TileSize:
-            let i = ((oy + y) * WorldPx + ox + x) * 4
-            result[i] = uint8(int(result[i]) * 3 div 5 + 26)
-            result[i+1] = uint8(int(result[i+1]) * 3 div 5 + 4)
-            result[i+2] = uint8(int(result[i+2]) * 3 div 5 + 8)
+        if derez == 0:
+          for y in 0 ..< TileSize:
+            for x in 0 ..< TileSize:
+              let i = ((oy + y) * WorldPx + ox + x) * 4
+              result[i] = uint8(int(result[i]) * 3 div 5 + 26)
+              result[i+1] = uint8(int(result[i+1]) * 3 div 5 + 4)
+              result[i+2] = uint8(int(result[i+2]) * 3 div 5 + 8)
+        else:
+          let structural = a.tiles[ty][tx] in
+            {tkWall, tkFortressWall, tkRock, tkPedestal}
+          for y in 0 ..< TileSize:
+            for x in 0 ..< TileSize:
+              var col = BgDark
+              if derez == 1:
+                if x == 0 or y == 0:
+                  col = EtchDim
+                if structural and (x == 0 or y == 0 or x == TileSize - 1 or
+                                   y == TileSize - 1):
+                  col = Masonry
+              else:
+                if tileHash(tx * 3 + x, ty * 3 + y) mod 13 == 0:
+                  col = EtchDim
+              let i = ((oy + y) * WorldPx + ox + x) * 4
+              result[i] = col[0]
+              result[i+1] = col[1]
+              result[i+2] = col[2]
+              result[i+3] = 255
 
 # ---------------------------------------------------------------- humanoids
 
@@ -640,6 +673,54 @@ proc upperLabel(s: string): string =
     elif ch >= 'a' and ch <= 'z': result.add(chr(ord(ch) - 32))
     else: result.add(ch)
 
+proc reticlePixels(): seq[uint8] =
+  ## Amber drop-targeting reticle: corner brackets + center mark — the
+  ## sponsor console's grammar stamped into the arena itself.
+  result = newSeq[uint8](TileSize * TileSize * 4)
+  let m = TileSize - 1
+  for i in 0 .. 1:
+    result.put(TileSize, i, 0, GoldTone)
+    result.put(TileSize, 0, i, GoldTone)
+    result.put(TileSize, m - i, 0, GoldTone)
+    result.put(TileSize, m, i, GoldTone)
+    result.put(TileSize, i, m, GoldTone)
+    result.put(TileSize, 0, m - i, GoldTone)
+    result.put(TileSize, m - i, m, GoldTone)
+    result.put(TileSize, m, m - i, GoldTone)
+  result.put(TileSize, TileSize div 2, TileSize div 2, GoldTone, 230)
+
+proc cratePartPixels(rows: int): seq[uint8] =
+  ## Crate rastering in top-to-bottom under the beam — a print, not a
+  ## landing. The print head is an amber line at the current row.
+  result = newSeq[uint8](TileSize * TileSize * 4)
+  let wood = (150'u8, 105'u8, 55'u8)
+  for y in 0 ..< min(rows, TileSize):
+    for x in 0 ..< TileSize:
+      let edge = x == 0 or y == 0 or x == TileSize - 1
+      result.put(TileSize, x, y, (if edge: shade(wood, -40) else: wood))
+  if rows < TileSize:
+    for x in 0 ..< TileSize:
+      result.put(TileSize, x, min(rows, TileSize - 1), GoldTone, 230)
+
+proc pingPixels(big: bool): seq[uint8] =
+  ## Expanding contested-crate ping (two-phase pulse).
+  result = newSeq[uint8](12 * 12 * 4)
+  let rr = (if big: 10 else: 6)
+  for y in 0 ..< 12:
+    for x in 0 ..< 12:
+      let dx = x * 2 + 1 - 12
+      let dy = y * 2 + 1 - 12
+      let d2 = dx * dx + dy * dy
+      if d2 > (rr - 2) * (rr - 2) and d2 <= rr * rr:
+        result.put(12, x, y, GoldTone, (if big: 90'u8 else: 150'u8))
+
+proc hitFlashPixels(): seq[uint8] =
+  ## 1-frame peak-white body silhouette on any damage taken.
+  result = newSeq[uint8](BodyW * BodyH * 4)
+  for y in 0 ..< BodyH:
+    for x in 1 .. 6:
+      result.put(BodyW, x, y, PhosphorPeak, 150)
+
 # --- 3x5 pixel font ---
 const Glyphs = {
   '0': 0b111_101_101_101_111, '1': 0b010_110_010_010_111,
@@ -782,9 +863,17 @@ proc effectiveSafeRadius(s: Sim): int =
   ## Exterior wash applies only once the zone deals damage.
   if s.zoneDamagePerS() > 0: s.zoneRadius() else: ArenaSize
 
+proc derezLevel(s: Sim): int =
+  ## De-rez escalates with ring severity (§3.7).
+  let d = s.zoneDamagePerS()
+  if d <= 2: 0
+  elif d <= 8: 1
+  else: 2
+
 proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpBackground, WorldPx, WorldPx,
-                   backgroundPixels(s.arena, s.effectiveSafeRadius()), "arena")
+                   backgroundPixels(s.arena, s.effectiveSafeRadius(),
+                                    s.derezLevel()), "arena")
   for slot in 0 .. 15:
     for facing in 0 .. 3:
       for frame in 0 .. 1:
@@ -842,6 +931,13 @@ proc spriteDefs(s: Sim): seq[uint8] =
     result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
   result.addSprite(SpRingGhost, TileSize, TileSize, ringGhostPixels(), "ring_ghost")
   result.addSprite(SpSettleLine, WorldPx, 3, settleLinePixels(), "settle")
+  result.addSprite(SpReticle, TileSize, TileSize, reticlePixels(), "reticle")
+  for ph in 0 .. 2:
+    result.addSprite(SpCratePartBase + ph, TileSize, TileSize,
+                     cratePartPixels(2 + ph * 2), "crate_p" & $ph)
+  result.addSprite(SpPingA, 12, 12, pingPixels(false), "pingA")
+  result.addSprite(SpPingB, 12, 12, pingPixels(true), "pingB")
+  result.addSprite(SpHitFlash, BodyW, BodyH, hitFlashPixels(), "hit")
 
 proc bodySprite(r: Renderer, s: Sim, slot: int): int =
   let moving = s.tick - r.lastMoveTick[slot] < 12
@@ -890,6 +986,26 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     let a = s.agents[slot]
     if a.alive:
       r.stampTrace(a.pos.x, a.pos.y, TeamColors[slot div 2], 130)
+      # hit response (Tier 2): 1-frame peak-white flash + damage numeral
+      if r.lastHp[slot] > a.hpCenti:
+        r.spawnEffect(result, s, SpHitFlash,
+          a.pos.x * TileSize + 3, a.pos.y * TileSize, 8, 2)
+        let dmg = (r.lastHp[slot] - a.hpCenti + 50) div 100
+        # numerals for combat/hazard hits only — steady zone burn would
+        # carpet the endgame in floating digits (HP bars carry that)
+        if dmg >= 1 and s.insideZone(a.pos):
+          let spId = SpDmgBase + (r.dmgFlip mod 16)
+          inc r.dmgFlip
+          let (w, h, px) = textPixels("-" & $dmg, Klaxon[0], Klaxon[1],
+                                      Klaxon[2])
+          result.addSprite(spId, w, h, px, "dmg")
+          let dObj = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
+          inc r.nextEffect
+          result.addObject(dObj, a.pos.x * TileSize - 4,
+                           a.pos.y * TileSize - (BodyH - TileSize) - 13, 23,
+                           LayerMap, spId)
+          r.effects.add(Effect(objId: dObj, dieTick: s.tick + 16))
+      r.lastHp[slot] = a.hpCenti
       if not (a.pos == r.lastPos[slot]):
         let dx = a.pos.x - r.lastPos[slot].x
         let dy = a.pos.y - r.lastPos[slot].y
@@ -1054,17 +1170,28 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     if podIdx >= PodPool: break
     let (_, gift) = giftLookup(pod.itemId)
     if pod.landed:
-      # crate keyed to primary contents — the contest stays identified
+      # crate keyed to primary contents — the contest stays identified —
+      # plus a slow amber ping until looted (a fight magnet by design)
       let keyItem = (if gift.contents.len > 0: gift.contents[0][0] else: iNone)
       result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize,
                        pod.landing.y * TileSize, 12, LayerMap,
                        SpPodCrateBase + ord(keyItem))
+      result.addObject(ObPodPingBase + podIdx, pod.landing.x * TileSize - 3,
+                       pod.landing.y * TileSize - 3, 11, LayerMap,
+                       (if (s.tick div 12) mod 2 == 0: SpPingA else: SpPingB))
     else:
-      let total = max(1, pod.landsTick - pod.spawnTick)
-      let left = max(0, pod.landsTick - s.tick)
-      let height = 4 + (left * 30) div total
-      result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize - 2,
-                       pod.landing.y * TileSize - height, 19, LayerMap, SpPodChute)
+      # print sequence (§ sponsor_drop): reticle stamps the landing tile;
+      # in the final 12 ticks the crate rasters in under the beam — the
+      # machine prints deliveries, it does not parachute them
+      result.addDeleteObject(ObPodPingBase + podIdx)
+      let leftT = max(0, pod.landsTick - s.tick)
+      if leftT <= 12:
+        result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize,
+                         pod.landing.y * TileSize, 12, LayerMap,
+                         SpCratePartBase + min(2, (12 - leftT) div 4))
+      else:
+        result.addObject(ObPodBase + podIdx, pod.landing.x * TileSize,
+                         pod.landing.y * TileSize, 12, LayerMap, SpReticle)
       if beamIdx < 8:
         # beam objects persist; refresh on new beam or 1x/s
         if beamIdx >= r.podBeamsDrawn or s.tick mod 24 == 0:
@@ -1090,6 +1217,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for stale in podIdx ..< r.podsDrawn:
     result.addDeleteObject(ObPodBase + stale)
     result.addDeleteObject(ObPodLabelBase + stale)
+    result.addDeleteObject(ObPodPingBase + stale)
     if stale < r.podLabelText.len:
       r.podLabelText[stale] = ""
   r.podsDrawn = podIdx
@@ -1201,13 +1329,14 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.lastLampMask = lampMask
     result.addSprite(SpLampRow, 81, 6, lampRowPixels(lampMask), "lamps")
     result.addObject(ObLampRow, 2, 38, 0, LayerHudTL, SpLampRow)
-  # exterior wash tracks the shrinking ring: re-bake the background whenever
-  # the integer safe radius changes (a handful of uploads per match)
+  # exterior treatment tracks the shrinking ring: re-bake the background
+  # whenever the integer safe radius OR the de-rez stage changes
   let bgR = s.effectiveSafeRadius()
-  if bgR != r.lastBgRadius:
-    r.lastBgRadius = bgR
+  let bgKey = bgR * 4 + s.derezLevel()
+  if bgKey != r.lastBgRadius:
+    r.lastBgRadius = bgKey
     result.addSprite(SpBackground, WorldPx, WorldPx,
-                     backgroundPixels(s.arena, bgR), "arena")
+                     backgroundPixels(s.arena, bgR, s.derezLevel()), "arena")
     result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
   # Fortress mouth gold light (§21.3): warm pulse in each wall gap
   let mouthNow = (s.tick div 12) mod 2
@@ -1344,6 +1473,9 @@ proc resetForLoop*(r: var Renderer) =
   r.traceActive = false
   r.traceDrawn = false
   r.lastLampMask = 0
+  for i in 0 .. 15:
+    r.lastHp[i] = 0
+  r.dmgFlip = 0
   r.podsDrawn = 0
   r.itemsDrawn = 0
   r.projsDrawn = 0

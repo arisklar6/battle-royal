@@ -8,13 +8,29 @@
           --crim:#FF4A36; --toxic:#39FF14; --hurt:#FFB454; --text:#C5C6C7;
           /* HP semaphore (VISUAL_REDESIGN §3.1): no green — green is poison */
           --hpok:#A5E3EE; --hphurt:#FFB454; --hpcrit:#FF4A36; }
-  body { font-family: 'Consolas', monospace; background: var(--bg); color: var(--text);
-         margin: 0; padding: 10px; display: flex; gap: 12px; }
-  #left { flex: 0 0 auto; }
-  canvas { border: 1px solid var(--panel); image-rendering: pixelated; display: block; }
+  body { font-family: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
+         background: var(--bg); color: var(--text);
+         margin: 0; padding: 10px; display: flex; flex-direction: column; gap: 10px;
+         overflow-x: hidden; }
+  #main { display: flex; gap: 12px; min-height: 0; }
+  #left { flex: 0 0 auto; min-width: 0; }
+  canvas { border: 1px solid var(--panel); image-rendering: pixelated; display: block;
+           width: min(90vh, calc(100vw - 360px)); height: auto; aspect-ratio: 1 / 1; }
   .panel { background: var(--panel); border: 1px solid #2b3a4a; border-radius: 3px;
            padding: 6px 8px; margin-bottom: 8px; }
-  #right { flex: 0 0 300px; display: flex; flex-direction: column; min-height: 96vh; }
+  .phead { color: #8a95a3; font-size: 10px; letter-spacing: .12em;
+           text-transform: uppercase; margin-bottom: 4px; }
+  #topbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+            margin-bottom: 0; }
+  #ident { color: var(--teal); font-size: 13px; letter-spacing: .12em;
+           text-transform: uppercase; white-space: nowrap; }
+  #lamps { margin-left: auto; white-space: nowrap; }
+  .lamp { display: inline-block; width: 10px; height: 10px; box-sizing: border-box;
+          margin-left: 4px; background: #A5E3EE;
+          box-shadow: 0 0 4px rgba(165,227,238,0.45); }
+  .lamp.dead { background: #1C242B; border: 1px solid #36444F; box-shadow: none; }
+  .lamp.me { outline: 1px solid #EAF7FA; outline-offset: 1px; }
+  #right { flex: 0 0 320px; display: flex; flex-direction: column; min-height: 0; }
   #hud { color: var(--teal); font-size: 13px; letter-spacing: 1px; }
   #hpbarWrap { background: #0d1117; height: 14px; border: 1px solid #2b3a4a; margin: 4px 0; }
   #hpbar { height: 100%; width: 100%; background: var(--hpok); transition: width .2s; }
@@ -24,7 +40,10 @@
   .tag.channeling { background: var(--teal); } .tag.camo_revealed { background: var(--crim); color:#fff; }
   #stats, #inv, #zoneinfo, #ares { font-size: 11px; }
   #inv b { color: var(--gold); }
-  #hdr { color: var(--teal); font-size: 13px; letter-spacing: 2px; }
+  #hdr { color: var(--teal); font-size: 13px; letter-spacing: .12em;
+         text-transform: uppercase; }
+  .chatrow.team { color: #A5E3EE; }
+  .chatrow.dm { color: #FFB454; }
   #note { color: #8a95a3; font-size: 10px; }
   @media (prefers-reduced-motion: reduce) {
     #hpbar { transition: none; }
@@ -39,6 +58,11 @@
 </style>
 </head>
 <body>
+<div id="topbar" class="panel">
+  <div id="ident">AWAITING CONFIG</div>
+  <div id="lamps"></div>
+</div>
+<div id="main">
 <div id="left" style="position:relative">
   <canvas id="cv" width="672" height="672"></canvas>
   <div id="banner"></div>
@@ -55,8 +79,10 @@
   <div class="panel" id="zoneinfo"></div>
   <div class="panel" id="ares"></div>
   <div class="panel" style="flex:1 1 auto; display:flex; flex-direction:column">
+    <div class="phead">Transcript</div>
     <div id="chatlog"></div>
   </div>
+</div>
 </div>
 <script>
 // WS contract (DESIGN §11): ?address= override, else same-origin rewrite.
@@ -120,11 +146,29 @@ const deadSeen = new Set();
 const ws = new WebSocket(websocketAddress('/watch'));
 ws.onopen = () => { el('hud').textContent = 'CONNECTED — AWAITING FEED'; };
 ws.onclose = () => { el('hud').textContent = 'DISCONNECTED'; };
-let bannerUntil = 0;
+// banner FIFO: each entry holds 2.5s, then the next shows (no overwrites)
+const bannerQueue = [];
+let bannerActive = false;
 function showBanner(txt, color) {
-  const b = el('banner'); b.textContent = txt; b.style.color = color || '#FFB454';
-  b.style.display = 'block'; bannerUntil = Date.now() + 4000;
-  setTimeout(() => { if (Date.now() >= bannerUntil) b.style.display = 'none'; }, 4100);
+  bannerQueue.push({ txt: txt, color: color || '#FFB454' });
+  if (!bannerActive) nextBanner();
+}
+function nextBanner() {
+  const b = el('banner');
+  const item = bannerQueue.shift();
+  if (!item) { bannerActive = false; b.style.display = 'none'; return; }
+  bannerActive = true;
+  b.textContent = item.txt; b.style.color = item.color; b.style.display = 'block';
+  setTimeout(nextBanner, 2500);
+}
+// 16-lamp row: lit phosphor for living slots, cold slate for settled ones
+function renderLamps() {
+  let h = '';
+  for (let s = 0; s < 16; s++) {
+    h += '<div class="lamp' + (deadSeen.has(s) ? ' dead' : '') +
+         (cfg && s === cfg.slot ? ' me' : '') + '"></div>';
+  }
+  el('lamps').innerHTML = h;
 }
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
@@ -134,6 +178,9 @@ ws.onmessage = (ev) => {
     for (const d of cfg.items) cfg.itemDefs[d.id] = d;
     blockMap = cfg.arena.static_map.map(row => [...row].map(ch => ch === '#' || ch === 'R' || ch === 'F'));
     hatchPat = ctx.createPattern(hatch, 'repeat');
+    el('ident').textContent =
+      'P' + cfg.slot + ' ' + String(cfg.name || '').toUpperCase() + ' · TEAM ' + cfg.team;
+    renderLamps();
     return;
   }
   if (m.type === 'final') {
@@ -168,11 +215,18 @@ ws.onmessage = (ev) => {
     (m.zone.shrink_tick > m.tick ? `  SHRINK IN ${Math.ceil((m.zone.shrink_tick - m.tick)/24)}s` : '');
   el('ares').textContent = `LAST: ${you.action_result || '—'}` +
     (you.damage_taken.length ? '   HIT: ' + you.damage_taken.map(d => `${d.source} ${d.amount}`).join(', ') : '');
-  for (const c of m.chat) {
-    el('chatlog').textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : c.channel === 'team' ? '·team' : ''}] ${c.text}\n` + el('chatlog').textContent;
+  {
+    const log = el('chatlog');
+    for (const c of m.chat) {
+      // agent-authored text: textContent only, never innerHTML
+      const row = document.createElement('div');
+      row.className = 'chatrow' +
+        (c.channel === 'team' ? ' team' : c.channel === 'dm' ? ' dm' : '');
+      row.textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : c.channel === 'team' ? '·team' : ''}] ${c.text}`;
+      log.insertBefore(row, log.firstChild);   // newest-first
+    }
+    while (log.children.length > 120) log.removeChild(log.lastChild);
   }
-  if (el('chatlog').textContent.length > 20000)
-    el('chatlog').textContent = el('chatlog').textContent.slice(0, 20000);
   for (const e of m.events) {
     if (e.type === 'ignition') showBanner('IGNITION', '#FFB454');
     else if (e.type === 'finale') showBanner('CIVIL WAR', '#FF4A36');
@@ -200,6 +254,7 @@ ws.onmessage = (ev) => {
   fx = fx.filter(f => m.tick - f.born < f.ttl);
   bearings = bearings.filter(b => m.tick - b.born < b.ttl);
   hazards = hazards.filter(h => m.tick < h.until);
+  renderLamps();
 
   // ---- tactical map ----
   ctx.fillStyle = '#0C1116'; ctx.fillRect(0, 0, cv.width, cv.height);
