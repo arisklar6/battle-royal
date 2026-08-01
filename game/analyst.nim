@@ -6,7 +6,7 @@
 ## (sim resolvePickup), so the agent standing on the landing tile that tick
 ## is the looter.
 
-import std/json
+import std/[algorithm, json]
 import zero_sum/[types, sim]
 
 type
@@ -95,6 +95,28 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     steals.add(%*{"tick": ic.tick, "item": ic.itemId,
                    "recipient_slot": ic.recipientSlot,
                    "looter_slot": ic.looterSlot, "stolen": ic.stolen})
+  # settlements: the match's death ledger, oldest first. Killer = last
+  # damager (same credit rule as scoring); -1 = arena (zone/hazard/mine).
+  var dead: seq[int] = @[]
+  for i in 0 .. 15:
+    if not s.agents[i].alive:
+      dead.add(i)
+  dead.sort(proc (x, y: int): int = s.agents[x].deathTick - s.agents[y].deathTick)
+  var settlements = newJArray()
+  for i in dead:
+    let a = s.agents[i]
+    settlements.add(%*{"tick": a.deathTick, "victim": i,
+                        "team": TeamNames[team(AgentId(i))],
+                        "killer": (if a.lastDamager != i: a.lastDamager else: -1),
+                        "placement": places[i]})
+  # next-shrink context so the desk can show the ring clock
+  var nextR = s.zoneRadius()
+  var shrinkT = 0
+  for st in s.cfg.zone:
+    if s.tick < st.doneT:
+      nextR = st.rEnd
+      shrinkT = st.shrinkT
+      break
   $(%*{
     "type": "analyst", "tick": s.tick, "phase": $s.phase,
     "alive": alive,
@@ -102,6 +124,7 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     "alloc_deadline_tick": s.allocDeadlineTick(),
     "finale": s.finaleEmitted,
     "winner_slot": s.winnerSlot,
-    "zone": {"radius": s.zoneRadius(), "damage_per_s": s.zoneDamagePerS()},
+    "zone": {"radius": s.zoneRadius(), "next_radius": nextR,
+             "shrink_tick": shrinkT, "damage_per_s": s.zoneDamagePerS()},
     "agents": agents, "teams": teams,
-    "ticker": ticker, "interceptions": steals})
+    "ticker": ticker, "interceptions": steals, "settlements": settlements})

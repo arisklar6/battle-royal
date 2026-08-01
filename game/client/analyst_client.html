@@ -27,6 +27,8 @@
   #ticker { height: 260px; overflow-y: auto; font-size: 11px; }
   #ticker .row { padding: 2px 0; border-bottom: 1px solid #14181f; }
   #ticker .steal { color: var(--crim); font-weight: bold; }
+  #ticker .settle { color: #E9E4D8; }
+  #ticker .settle .victim { text-decoration: line-through; }
   #matrix td, #matrix th { text-align: center; }
   #matrixNote { font-size: 10px; color: #56606a; margin-top: 4px; }
   #finale { position: fixed; inset: 0; display: none; align-items: center;
@@ -105,7 +107,13 @@ ws.onmessage = (ev) => {
   el('clock').textContent = fmtT(m.tick);
   el('alive').textContent = m.alive + ' ALIVE';
   const z = m.zone;
-  el('zonebox').innerHTML = 'RING <span class="' + (z.damage_per_s >= 8 ? 'crim' : 'tealc') + '">r=' + z.radius + '</span> ' + z.damage_per_s + ' DMG/s';
+  let ringTxt = 'RING <span class="' + (z.damage_per_s >= 8 ? 'crim' : 'tealc') + '">r=' + z.radius + '</span> ' + z.damage_per_s + ' DMG/s';
+  if (z.next_radius !== undefined && z.next_radius < z.radius) {
+    ringTxt += z.shrink_tick > m.tick
+      ? ' → ' + z.next_radius + ' in ' + Math.ceil((z.shrink_tick - m.tick) / 24) + 's'
+      : ' → ' + z.next_radius + ' <span class="crim">NOW</span>';
+  }
+  el('zonebox').innerHTML = ringTxt;
 
   // scoreboard: sort by projected score desc, then placement
   const rows = [...m.agents].sort((a, b) => b.projected_score - a.projected_score || a.placement - b.placement);
@@ -148,6 +156,16 @@ ws.onmessage = (ev) => {
       : ic.stolen
       ? `[${fmtT(ic.tick)}] <span class="steal">⚠ ${esc(ic.item.toUpperCase())} STOLEN BY AGENT P${ic.looter_slot}</span> (meant for P${ic.recipient_slot})`
       : `[${fmtT(ic.tick)}] ${esc(ic.item.toUpperCase())} secured by P${looter}`;
+    tick.prepend(d);
+  }
+  const ordinal = n => n + (n % 100 > 10 && n % 100 < 14 ? 'TH' : ({1:'ST',2:'ND',3:'RD'}[n % 10] || 'TH'));
+  for (const st of (m.settlements || [])) {
+    const key = 'set' + st.victim;
+    if (tickerKeys.has(key)) continue;
+    tickerKeys.add(key);
+    const d = document.createElement('div'); d.className = 'row settle';
+    const by = st.killer >= 0 ? ' BY P' + st.killer : ' · ARENA';
+    d.innerHTML = `[${fmtT(st.tick)}] <span style="color:${teamColor(st.team)}">${esc(st.team)}</span> <span class="victim">P${st.victim}</span> SETTLED · ${ordinal(st.placement)}${by}`;
     tick.prepend(d);
   }
 

@@ -46,6 +46,10 @@ const
   SpBodyBase = 400
   SpCorpseBase = 560
   SpWeaponBase = 600       # 600 + ord(ItemId): held-weapon glyphs
+  SpSlotLabelBase = 800    # 800 + slot: "P<n>" identity tags
+  SpHpBandBase = 830       # 830 + band: hp semaphore bar (0 healthy/1 hurt/2 crit)
+  SpRingGhost = 834        # dashed next-radius preview tile
+  SpKillBase = 840         # 840..845: kill-feed lines (3 lines x 2 buffers)
 
   # object ids
   ObBackground = 1
@@ -56,6 +60,8 @@ const
   BushPool = 24
   ObZoneRingBase = 30000
   ZoneRingPool = 400
+  ObNextRingBase = 31000
+  NextRingPool = 200
   ObPodBase = 40000
   PodPool = 64
   ObItemBase = 41000
@@ -72,6 +78,9 @@ const
   ObMouthBase = 44200       # 8 gold mouth tiles
   ObPodBeamBase = 44300
   ObPodLabelBase = 44400
+  ObSlotLabelBase = 45000   # + slot: identity tag under each agent
+  ObHpBandBase = 45100      # + slot: hp semaphore over each agent
+  ObKillLineBase = 50020    # + 0..2: kill-feed lines, newest first
 
   LayerHudTL = 1
   LayerHudBL = 4
@@ -132,6 +141,12 @@ type
     mouthPhase: int
     podBeamsDrawn: int
     labelFlip: int
+    killFeed: seq[string]     # newest first, max 3
+    killDirty: bool
+    killFlip: int
+    killLinesDrawn: int
+    nextRingDrawn: int
+    lastBgRadius: int         # last safe radius baked into the background
 
 # ---------------------------------------------------------------- helpers
 
@@ -192,8 +207,11 @@ proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
   px.put(w, ox + 2, oy + 2, shade(gold, 30))
   px.put(w, ox + 3, oy + 3, shade(gold, 30))
 
-proc backgroundPixels(a: Arena): seq[uint8] =
+proc backgroundPixels(a: Arena, safeR: int): seq[uint8] =
+  ## safeR: tiles outside this center radius get a dark red "off-air" wash
+  ## so the killing field is legible (pass >= ArenaSize for no wash).
   result = newSeq[uint8](WorldPx * WorldPx * 4)
+  let c = ArenaSize div 2
   for ty in 0 ..< ArenaSize:
     for tx in 0 ..< ArenaSize:
       let ox = tx * TileSize
@@ -211,6 +229,15 @@ proc backgroundPixels(a: Arena): seq[uint8] =
       of tkPedestal:
         grassAt(result, WorldPx, ox, oy, tx, ty)
         pedestalAt(result, WorldPx, ox, oy)
+      let dx = tx - c
+      let dy = ty - c
+      if dx * dx + dy * dy > safeR * safeR:
+        for y in 0 ..< TileSize:
+          for x in 0 ..< TileSize:
+            let i = ((oy + y) * WorldPx + ox + x) * 4
+            result[i] = uint8(int(result[i]) * 3 div 5 + 26)
+            result[i+1] = uint8(int(result[i+1]) * 3 div 5 + 4)
+            result[i+2] = uint8(int(result[i+2]) * 3 div 5 + 8)
 
 # ---------------------------------------------------------------- humanoids
 
@@ -529,6 +556,32 @@ proc projPixels(id: ItemId): seq[uint8] =
     for x in 0 .. 3:
       result.put(4, x, y, c)
 
+proc hpBandPixels(band: int): seq[uint8] =
+  ## 10x3 semaphore bar over each agent: color AND fill length encode the
+  ## wire's hp_band (healthy/hurt/critical) — no green anywhere.
+  result = newSeq[uint8](10 * 3 * 4)
+  for y in 0 ..< 3:
+    for x in 0 ..< 10:
+      result.put(10, x, y, (10'u8, 13'u8, 17'u8), 210)
+  let (fill, c) =
+    case band
+    of 0: (10, (165'u8, 227'u8, 238'u8))   # healthy: phosphor
+    of 1: (6, (255'u8, 180'u8, 84'u8))     # hurt: amber
+    else: (3, (255'u8, 74'u8, 54'u8))      # critical: klaxon
+  for y in 0 ..< 3:
+    for x in 0 ..< fill:
+      result.put(10, x, y, c)
+
+proc ringGhostPixels(): seq[uint8] =
+  ## Faint bone outline tile; every-other tile placement dashes the circle.
+  result = newSeq[uint8](TileSize * TileSize * 4)
+  let bone = (233'u8, 228'u8, 216'u8)
+  for i in 0 ..< TileSize:
+    result.put(TileSize, i, 0, bone, 130)
+    result.put(TileSize, i, TileSize - 1, bone, 130)
+    result.put(TileSize, 0, i, bone, 130)
+    result.put(TileSize, TileSize - 1, i, bone, 130)
+
 # --- 3x5 pixel font ---
 const Glyphs = {
   '0': 0b111_101_101_101_111, '1': 0b010_110_010_010_111,
@@ -572,8 +625,16 @@ proc textPixels(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
 
 # ---------------------------------------------------------------- packets
 
+proc mmss(secs: int): string =
+  $(secs div 60) & ":" & (if secs mod 60 < 10: "0" else: "") & $(secs mod 60)
+
+proc effectiveSafeRadius(s: Sim): int =
+  ## Exterior wash applies only once the zone deals damage.
+  if s.zoneDamagePerS() > 0: s.zoneRadius() else: ArenaSize
+
 proc spriteDefs(s: Sim): seq[uint8] =
-  result.addSprite(SpBackground, WorldPx, WorldPx, backgroundPixels(s.arena), "arena")
+  result.addSprite(SpBackground, WorldPx, WorldPx,
+                   backgroundPixels(s.arena, s.effectiveSafeRadius()), "arena")
   for slot in 0 .. 15:
     for facing in 0 .. 3:
       for frame in 0 .. 1:
@@ -616,6 +677,12 @@ proc spriteDefs(s: Sim): seq[uint8] =
                        itemPixels(id), "item_" & $id)
   for id in [iArrows, iDarts, iKnives, iNet]:
     result.addSprite(SpProjBase + ord(id), 4, 4, projPixels(id), "proj_" & $id)
+  for slot in 0 .. 15:
+    let (w, h, px) = textPixels("P" & $slot, 205, 214, 220)
+    result.addSprite(SpSlotLabelBase + slot, w, h, px, "tag" & $slot)
+  for band in 0 .. 2:
+    result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
+  result.addSprite(SpRingGhost, TileSize, TileSize, ringGhostPixels(), "ring_ghost")
 
 proc bodySprite(r: Renderer, s: Sim, slot: int): int =
   let moving = s.tick - r.lastMoveTick[slot] < 12
@@ -638,6 +705,15 @@ proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
               elif r.facing[slot] == 3: -4 else: TileSize - 2)
     packet.addObject(ObWeaponBase + slot, p.x * TileSize - 1 + dx,
                      p.y * TileSize - 3, 11, LayerMap, SpWeaponBase + ord(hand))
+  # identity tag + hp semaphore (Tier 1): fights must be readable on air
+  packet.addObject(ObSlotLabelBase + slot, p.x * TileSize - 3,
+                   p.y * TileSize + TileSize + 1, 12, LayerMap,
+                   SpSlotLabelBase + slot)
+  let band = (if s.agents[slot].hpCenti > 6600: 0
+              elif s.agents[slot].hpCenti >= 3300: 1 else: 2)
+  packet.addObject(ObHpBandBase + slot, p.x * TileSize - 2,
+                   p.y * TileSize - (BodyH - TileSize) - 4, 12, LayerMap,
+                   SpHpBandBase + band)
 
 proc spawnEffect(r: var Renderer, packet: var seq[uint8], s: Sim,
                  spriteId, cx, cy, size, ttl: int) =
@@ -690,6 +766,8 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         r.meshOn[slot] = false
     elif not r.deadDrawn[slot]:
       result.addDeleteObject(ObAgentBase + slot)
+      result.addDeleteObject(ObSlotLabelBase + slot)
+      result.addDeleteObject(ObHpBandBase + slot)
       if r.weaponDrawn[slot]:
         result.addDeleteObject(ObWeaponBase + slot)
       if r.haloOn[slot]:
@@ -823,7 +901,17 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     let cy = e.pos.y * TileSize + TileSize div 2
     case e.kind
     of evMineExplosion: r.spawnEffect(result, s, SpMineFlash, cx, cy, 12, 12)
-    of evDeathFireworks: r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36)
+    of evDeathFireworks:
+      r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36)
+      if e.slot >= 0:
+        # kill feed (Tier 1): credit = last damager, same rule as scoring
+        let k = s.agents[e.slot].lastDamager
+        let line = (if k >= 0 and k != e.slot: "P" & $k & " > P" & $e.slot
+                    else: "P" & $e.slot & " DOWN")
+        r.killFeed.insert(line, 0)
+        if r.killFeed.len > 3:
+          r.killFeed.setLen(3)
+        r.killDirty = true
     of evIgnition: r.spawnEffect(result, s, SpFwGold, cx, cy, 18, 48)
     of evMatchEnd:
       if e.slot >= 0:
@@ -861,6 +949,35 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for stale in ringIdx ..< r.ringDrawn:
     result.addDeleteObject(ObZoneRingBase + stale)
   r.ringDrawn = ringIdx
+  # dashed next-radius preview once a stage's warn window opens (Tier 1)
+  var ghostIdx = 0
+  for st in s.cfg.zone:
+    if s.tick < st.doneT:
+      if s.tick >= st.warnT and st.rEnd < zr:
+        let c = ArenaSize div 2
+        for ty in 0 ..< ArenaSize:
+          for tx in 0 ..< ArenaSize:
+            if ghostIdx >= NextRingPool: break
+            if (tx + ty) mod 2 == 0:
+              let dx = tx - c
+              let dy = ty - c
+              let d2 = dx * dx + dy * dy
+              if d2 > st.rEnd * st.rEnd and d2 <= (st.rEnd + 1) * (st.rEnd + 1):
+                result.addObject(ObNextRingBase + ghostIdx, tx * TileSize,
+                  ty * TileSize, 15, LayerMap, SpRingGhost)
+                inc ghostIdx
+      break
+  for stale in ghostIdx ..< r.nextRingDrawn:
+    result.addDeleteObject(ObNextRingBase + stale)
+  r.nextRingDrawn = ghostIdx
+  # exterior wash tracks the shrinking ring: re-bake the background whenever
+  # the integer safe radius changes (a handful of uploads per match)
+  let bgR = s.effectiveSafeRadius()
+  if bgR != r.lastBgRadius:
+    r.lastBgRadius = bgR
+    result.addSprite(SpBackground, WorldPx, WorldPx,
+                     backgroundPixels(s.arena, bgR), "arena")
+    result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
   # Fortress mouth gold light (§21.3): warm pulse in each wall gap
   let mouthNow = (s.tick div 12) mod 2
   if not r.mouthsDrawn or mouthNow != r.mouthPhase:
@@ -877,9 +994,17 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     if not a.alive: inc deadCount
   let zrHud = s.zoneRadius()
   let secs = s.tick div 24
-  let hud1 = "ALIVE " & $(16 - deadCount) & "  RING " & $zrHud &
-             "  T " & $(secs div 60) & ":" & (if secs mod 60 < 10: "0" else: "") &
-             $(secs mod 60)
+  # ring clock (Tier 1): the schedule is public — broadcast the countdown
+  var ringTxt = "RING " & $zrHud
+  for st in s.cfg.zone:
+    if s.tick < st.doneT:
+      if st.rEnd < zrHud:
+        if s.tick >= st.shrinkT:
+          ringTxt.add(">" & $st.rEnd & " NOW")
+        else:
+          ringTxt.add(">" & $st.rEnd & " IN " & mmss((st.shrinkT - s.tick) div 24))
+      break
+  let hud1 = "ALIVE " & $(16 - deadCount) & "  " & ringTxt & "  T " & mmss(secs)
   var hud2 = "COIN"
   for t in 0 .. 7:
     hud2.add(" " & TeamNames[t] & $s.teamBudget[t])
@@ -897,6 +1022,18 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     let (w, h, px) = textPixels(hud2, 180, 220, 255)
     result.addSprite(spId, w, h, px, "hud2")
     result.addObject(ObHudLine2, 2, 2, 0, LayerHudBL, spId)
+  # kill feed under the status line (Tier 1)
+  if r.killDirty:
+    r.killDirty = false
+    for i in 0 ..< r.killFeed.len:
+      let spId = SpKillBase + i * 2 + (r.killFlip mod 2)
+      let (w, h, px) = textPixels(r.killFeed[i], 233, 228, 216)
+      result.addSprite(spId, w, h, px, "kill" & $i)
+      result.addObject(ObKillLineBase + i, 2, 13 + i * 7, 0, LayerHudTL, spId)
+    inc r.killFlip
+    for stale in r.killFeed.len ..< r.killLinesDrawn:
+      result.addDeleteObject(ObKillLineBase + stale)
+    r.killLinesDrawn = r.killFeed.len
   # banners
   for e in s.events:
     let txt =
@@ -926,7 +1063,7 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   result.addLayer(LayerMap, 0x00, 0x01)
   result.addViewport(LayerMap, WorldPx, WorldPx)
   result.addLayer(LayerHudTL, 0x01, 0x02)
-  result.addViewport(LayerHudTL, 160, 12)
+  result.addViewport(LayerHudTL, 208, 36)
   result.addLayer(LayerHudBL, 0x04, 0x02)
   result.addViewport(LayerHudBL, 280, 12)
   result.addLayer(LayerBanner, 0x05, 0x02)
@@ -956,6 +1093,11 @@ proc resetForLoop*(r: var Renderer) =
   r.mouthsDrawn = false
   r.podBeamsDrawn = 0
   r.ringDrawn = 0
+  r.nextRingDrawn = 0
+  r.killFeed = @[]
+  r.killDirty = false
+  r.killLinesDrawn = 0
+  r.lastBgRadius = 0
   r.podsDrawn = 0
   r.itemsDrawn = 0
   r.projsDrawn = 0
