@@ -1,0 +1,72 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  # Sim test suite + golden determinism corpus on both OSes. The golden
+  # hashes are committed constants, so a pass on BOTH runners proves
+  # cross-platform bit-exactness — the assumption the replay and
+  # certification story rests on. t_replay_probe needs a live server and
+  # is excluded.
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: "2.2.4"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: run sim tests
+        shell: bash
+        run: |
+          set -e
+          for t in tests/t_*.nim; do
+            case "$t" in *t_replay_probe.nim) continue;; esac
+            echo "=== $t"
+            nim c -r --hints:off "$t"
+          done
+
+  # Double-run determinism on one runner: the same seed twice must
+  # produce byte-identical hash files.
+  determinism:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: "2.2.4"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: headless twice per seed, compare hashes
+        shell: bash
+        run: |
+          set -e
+          nim c --hints:off -o:headless game/headless.nim
+          for seed in 7 42 1234; do
+            ./headless "$seed" 2000 && mv results/hashes.txt "run1_$seed.txt"
+            ./headless "$seed" 2000 && mv results/hashes.txt "run2_$seed.txt"
+            diff "run1_$seed.txt" "run2_$seed.txt"
+            echo "seed $seed deterministic"
+          done
+
+  # Compile-check every top-level program (clients of the sim API).
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: "2.2.4"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: nim check all programs
+        shell: bash
+        run: |
+          set -e
+          for f in game/server.nim game/headless.nim game/analyst.nim \
+                   game/render.nim game/poster.nim player/baseline.nim; do
+            echo "=== $f"
+            nim check --hints:off "$f"
+          done

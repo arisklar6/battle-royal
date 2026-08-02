@@ -64,6 +64,24 @@ proc buildTranscriptText*(s: Sim): string =
   flushEventsUpTo(int.high)
   result = lines.join("\n") & "\n"
 
+proc fairnessJson*(s: Sim): string =
+  ## Per-slot applied-input counts vs lifetime (review §1.2 minimum):
+  ## a lagging or dead-link bot silently no-ops, and its misses used to
+  ## be indistinguishable from deliberate "none". Derived from the
+  ## recorded input log — zero tick-loop cost.
+  var counts: array[16, int]
+  for ai in s.inputLog:
+    if ai.slot in 0 .. 15:
+      inc counts[ai.slot]
+  var arr = newJArray()
+  for i in 0 .. 15:
+    let aliveTicks = (if s.agents[i].deathTick >= 0: s.agents[i].deathTick
+                      else: s.tick)
+    arr.add(%*{"slot": i, "inputs_applied": counts[i],
+                "ticks_alive": aliveTicks})
+  $(%*{"note": "low inputs_applied vs ticks_alive flags lagging/idle seats",
+       "slots": arr})
+
 proc eventHistoryJson*(s: Sim): string =
   ## Full arena event stream (VISUAL_REDESIGN §5.7): the raw feed for
   ## timeline/scrubber/highlight tooling. Data payloads are re-parsed so

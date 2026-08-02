@@ -7,7 +7,9 @@
 ## loaded replay (same file in both certifier flows); full per-uri loading is
 ## Phase D polish.
 
-import std/[json, locks, monotimes, os, strutils, sysrand, tables, times]
+import std/[json, locks, monotimes, os, strutils, sysrand, tables, times, uri]
+when defined(posix):
+  import std/posix
 import mummy
 import bitworld/[replays, runtime, spriteprotocol]
 import zero_sum/[prng, types, arena, sim, obs]
@@ -58,6 +60,25 @@ type
 
 var appState: AppState
 
+# graceful shutdown (review §1.9): hosted evictions send SIGTERM; without a
+# handler every artifact of a 9000-tick match is lost
+var stopRequested = false
+
+proc onStopSignal() {.noconv.} =
+  stopRequested = true
+
+when defined(posix):
+  proc onTermSignal(sig: cint) {.noconv.} =
+    stopRequested = true
+
+proc installStopHandlers() =
+  setControlCHook(onStopSignal)
+  when defined(posix):
+    signal(SIGTERM, onTermSignal)
+
+const MaxViewers = 64
+const MaxQueuedInputsPerSlot = 4
+
 proc mintSeedFromOs(): uint64 =
   ## Entropy at the boundary only (DESIGN §17.1). urandom via std/sysrand.
   ## Masked to 63 bits so the seed always fits a JSON int64 cleanly (63 bits
@@ -69,13 +90,33 @@ proc mintSeedFromOs(): uint64 =
   result = result and 0x7FFF_FFFF_FFFF_FFFF'u64
 
 proc queryParam(uri, key: string): string =
+  ## maxsplit=1: values may legally contain '=' (base64 token padding);
+  ## naive split('=') silently failed auth for any such token.
   let parts = uri.split('?')
   if parts.len < 2:
     return ""
   for pair in parts[1].split('&'):
-    let kv = pair.split('=')
+    let kv = pair.split('=', maxsplit = 1)
     if kv.len == 2 and kv[0] == key:
-      return kv[1]
+      return decodeUrl(kv[1])
+
+# ops-endpoint gate (review §1.4): /coach and /control are local-play and
+# replay-ops surfaces. Default CLOSED: enabled only with ZERO_SUM_LOCAL=1
+# (the launcher sets it) or a matching ?token= against ZERO_SUM_OPS_TOKEN.
+# Env is read per-call: handler threads must stay GC-safe.
+proc opsAllowed(uri: string): bool =
+  if getEnv("ZERO_SUM_LOCAL") == "1":
+    return true
+  let tok = getEnv("ZERO_SUM_OPS_TOKEN")
+  tok.len > 0 and queryParam(uri, "token") == tok
+
+proc redactUri(u: string): string =
+  ## Presigned upload URIs are write credentials — never log them whole.
+  try:
+    let p = parseUri(u)
+    p.scheme & "://" & p.hostname & "/..."
+  except CatchableError:
+    "<uri>"
 
 proc isWsHandshake(request: Request): bool =
   ## Plain HTTP GETs on WS routes must get 2xx, not a 500 from a failed
@@ -96,6 +137,10 @@ proc httpHandler(request: Request) =
     request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
     return
   if path == "/coach":
+    if not opsAllowed(request.uri):
+      headers["Content-Type"] = "text/plain"
+      request.respond(403, headers, "ops endpoint disabled")
+      return
     # Coach-mode plan exchange (local play): the cockpit saves the human
     # coach's pre-match plan; the relauncher hands it to the two coached
     # bots. Content is whitelist-rebuilt — nothing client-sent is stored
@@ -174,6 +219,10 @@ proc httpHandler(request: Request) =
   if request.httpMethod == "GET" and path == "/control":
     # Replay transport control (VISUAL_REDESIGN §5.8): pause/play/speed/seek.
     # Live matches never read these; only runReplay's loop consumes them.
+    if not opsAllowed(request.uri):
+      headers["Content-Type"] = "text/plain"
+      request.respond(403, headers, "ops endpoint disabled")
+      return
     let cmd = queryParam(request.uri, "cmd")
     var ok = true
     {.gcsafe.}:
@@ -200,6 +249,14 @@ proc httpHandler(request: Request) =
                     """{"ok":""" & $ok & "}")
     return
   if request.httpMethod == "GET" and path in ["/global", "/replay", "/admin"]:
+    var full = false
+    {.gcsafe.}:
+      withLock appState.lock:
+        full = appState.viewers.len >= MaxViewers
+    if full:
+      headers["Content-Type"] = "text/plain"
+      request.respond(503, headers, "viewer capacity reached")
+      return
     let websocket = request.upgradeToWebSocket()
     {.gcsafe.}:
       withLock appState.lock:
@@ -325,11 +382,20 @@ proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
     {.gcsafe.}:
       withLock appState.lock:
         if websocket in appState.sponsors:
-          appState.sponsorQueue.add(SponsorReq(
-            ws: websocket, teamIdx: appState.sponsors[websocket],
-            payload: message.data))
+          if appState.sponsorQueue.len < 256:
+            appState.sponsorQueue.add(SponsorReq(
+              ws: websocket, teamIdx: appState.sponsors[websocket],
+              payload: message.data))
         elif websocket in appState.players:
-          appState.playerQueue.add((appState.players[websocket], message.data))
+          # ingress cap (review §1.6): a flooding bot cannot grow the queue
+          # unboundedly between ticks; first inputs win, excess is dropped
+          let slot = appState.players[websocket]
+          var queued = 0
+          for (qs, _) in appState.playerQueue:
+            if qs == slot:
+              inc queued
+          if queued < MaxQueuedInputsPerSlot:
+            appState.playerQueue.add((slot, message.data))
   of ErrorEvent, CloseEvent:
     {.gcsafe.}:
       withLock appState.lock:
@@ -370,13 +436,26 @@ proc runFrameLimiter(previous: var MonoTime, speed: float) =
 
 proc broadcast(r: var Renderer, s: Sim, update: seq[uint8]) =
   var viewers: seq[(WebSocket, ViewerState)] = @[]
+  var toClose: seq[WebSocket] = @[]
   {.gcsafe.}:
     withLock appState.lock:
-      for ws in appState.closed:
-        appState.viewers.del(ws)
+      # drain replaced/errored sockets from EVERY table and actually close
+      # them (review §1.7: they used to stay open until process exit)
+      toClose = appState.closed
       appState.closed.setLen(0)
+      for ws in toClose:
+        appState.viewers.del(ws)
+        appState.players.del(ws)
+        appState.analysts.del(ws)
+        appState.watchers.del(ws)
+        appState.sponsors.del(ws)
       for ws, st in appState.viewers.pairs:
         viewers.add((ws, st))
+  for ws in toClose:
+    try:
+      ws.close()
+    except CatchableError:
+      discard
   for (ws, st) in viewers:
     let packet = if st.initialized: update else: r.initPacket(s) & update
     try:
@@ -411,15 +490,25 @@ var
   httpServer: Server
   serverThread: Thread[ServerThreadArgs]
 
-proc startServer(rc: RuntimeConfig) =
+proc initAppState() =
+  ## Split from startServer so auth material can be populated BEFORE the
+  ## HTTP server starts listening — /healthz used to go green with an
+  ## empty playerTokens, and a fast bot connecting in that window was
+  ## rejected with a valid token.
   initLock(appState.lock)
   appState.viewers = initTable[WebSocket, ViewerState]()
   appState.analysts = initTable[WebSocket, bool]()
   appState.watchers = initTable[WebSocket, int]()
   appState.ctlSpeed = 1.0
   appState.ctlSeek = -1
+
+proc startServer(rc: RuntimeConfig) =
+  # tightened ingress limits (review §1.6): the biggest legal client
+  # payload is a chat message (~200 bytes); 4 KB is already generous
   httpServer = newServer(httpHandler, websocketHandler,
-                         workerThreads = 4, tcpNoDelay = true)
+                         workerThreads = 4, tcpNoDelay = true,
+                         maxMessageLen = 4 * 1024,
+                         maxBodyLen = 64 * 1024)
   createThread(serverThread, serverThreadProc, ServerThreadArgs(
     server: addr httpServer, address: rc.host, port: rc.port))
   httpServer.waitUntilReady()
@@ -458,10 +547,39 @@ proc serviceWatchers(s: Sim) =
         withLock appState.lock:
           appState.watchers.del(ws)
 
+proc writeMatchArtifacts(rc: RuntimeConfig, cfg: SimConfig,
+                         original: JsonNode, s: Sim) =
+  ## One artifact path for every exit: normal end, stop signal, and the
+  ## tick-loop crash guard all land here (review §1.9/§1.10).
+  let effective = effectiveConfigJson(cfg, original)
+  let work = getTempDir() / "zero-sum-bundle"
+  let zipBytes = buildReplayZip(work, effective, s)
+  let results = resultsJson(s)
+  if rc.resultsUri.len > 0:
+    writeResults(rc, results)
+    echo "results -> ", redactUri(rc.resultsUri)
+  createDir("results")
+  writeFile("results" / "results.json", results)
+  if rc.replayUri.len > 0:
+    writeReplay(rc, zipBytes)
+    echo "replay bundle -> ", redactUri(rc.replayUri)
+  else:
+    writeFile("results" / "replay.zip", zipBytes)
+    echo "replay bundle -> results/replay.zip"
+  # local convenience copies next to results (DESIGN §13/§14)
+  writeFile("results" / "chat_transcript.txt", buildTranscriptText(s))
+  writeFile("results" / "chat_transcript.json", buildTranscriptJson(s))
+  writeFile("results" / "sponsor_log.json", sponsorLogJson(s))
+  # full event stream for timeline/highlight tooling (§5.7)
+  writeFile("results" / "events.json", eventHistoryJson(s))
+  # per-slot input fairness metrics (review §1.2)
+  writeFile("results" / "fairness.json", fairnessJson(s))
+
 proc runLive(rc: RuntimeConfig) =
   let original =
-    if rc.config.len > 0: parseJson(rc.config)
-    else: %*{"max_ticks": 720, "freeze_ticks": 48, "seed": 42,
+    try:
+      if rc.config.len > 0: parseJson(rc.config)
+      else: %*{"max_ticks": 720, "freeze_ticks": 48, "seed": 42,
              "demo_script": true,
              "zone": {"schedule": [[96, 144, 336, 24, 12, 2],
                                     [432, 480, 624, 12, 0, 30]]},
@@ -476,11 +594,21 @@ proc runLive(rc: RuntimeConfig) =
                              "item_id": "sword"},
                             {"tick": 200, "team": "B", "recipient_slot": 2,
                              "item_id": "first_aid"}]}}
-  let cfg = parseSimConfig(original, mintSeedFromOs)
+    except JsonParsingError as e:
+      echo "CONFIG ERROR: config is not valid JSON: ", e.msg
+      quit(1)
+  let cfg =
+    try:
+      parseSimConfig(original, mintSeedFromOs)
+    except ValueError as e:
+      echo "CONFIG ERROR: ", e.msg
+      quit(1)
   var s = initSim(cfg)
   var r: Renderer
   var tracker: AnalystTracker
-  startServer(rc)
+  installStopHandlers()
+  # auth material lands before the listener comes up (startup-race fix)
+  initAppState()
   {.gcsafe.}:
     withLock appState.lock:
       appState.sponsorLive = cfg.sponsor.live
@@ -491,6 +619,7 @@ proc runLive(rc: RuntimeConfig) =
       if original.hasKey("tokens"):
         for tok in original["tokens"]:
           appState.playerTokens.add(tok.getStr())
+  startServer(rc)
   let demoMode = original{"demo_script"}.getBool(false)
 
   # Player-connect grace (Paint Arena idiom, hosted k8s pods cold-start
@@ -530,6 +659,11 @@ proc runLive(rc: RuntimeConfig) =
   var echoedTalks = 0
   var echoedGifts = 0
   while s.phase != phEnded:
+    if stopRequested:
+      # SIGTERM/SIGINT: end the match early but exit through the normal
+      # artifact path — a 9000-tick match survives an eviction
+      echo "stop signal received - closing the match at tick ", s.tick
+      break
     # live sponsor ingress: welcomes first, then queued requests
     var reqs: seq[SponsorReq] = @[]
     var freshSponsors: seq[(WebSocket, int)] = @[]
@@ -655,7 +789,14 @@ proc runLive(rc: RuntimeConfig) =
       s.applyInputJson(AgentId(slot), j)
     if demoMode:
       s.driveScript()
-    s.step()
+    try:
+      s.step()
+    except CatchableError as e:
+      # crash guard (review §1.10): losing a match is survivable, losing
+      # its artifacts is not
+      echo "SIM FATAL tick=", s.tick, ": ", e.name, ": ", e.msg
+      writeMatchArtifacts(rc, cfg, original, s)
+      quit(1)
     # per-tick observations to connected, living players; final on death
     for i in 0 .. 15:
       if not conns[i][0]:
@@ -728,12 +869,21 @@ proc runLive(rc: RuntimeConfig) =
            " balance=", g.balanceAfter
       inc echoedGifts
     while echoedTalks < s.talkLog.len:
-      echo "CHAT ", talkLine(s, s.talkLog[echoedTalks])
+      # DMs are public POST-match by design; streaming them to the live
+      # log mid-match is a real-time intel channel (review §2.3) — gate it
+      if s.talkLog[echoedTalks].channel != tcDm or
+         getEnv("ZERO_SUM_DEBUG_CHAT") == "1":
+        echo "CHAT ", talkLine(s, s.talkLog[echoedTalks])
       inc echoedTalks
     tracker.track(s)
     if s.tick mod 6 == 0 or s.phase == phEnded:
       broadcastAnalyst(s, tracker)
-    r.broadcast(s, r.updatePacket(s))
+    try:
+      r.broadcast(s, r.updatePacket(s))
+    except CatchableError as e:
+      echo "RENDER FATAL tick=", s.tick, ": ", e.name, ": ", e.msg
+      writeMatchArtifacts(rc, cfg, original, s)
+      quit(1)
     runFrameLimiter(last)
 
   # match over: final message to every connected player, then a short hold
@@ -753,28 +903,7 @@ proc runLive(rc: RuntimeConfig) =
     r.broadcast(s, @[])
     runFrameLimiter(last)
 
-  let effective = effectiveConfigJson(cfg, original)
-  let work = getTempDir() / "zero-sum-bundle"
-  let zipBytes = buildReplayZip(work, effective, s)
-  let results = resultsJson(s)
-  if rc.resultsUri.len > 0:
-    writeResults(rc, results)
-    echo "results -> ", rc.resultsUri
-  createDir("results")
-  writeFile("results" / "results.json", results)
-  if rc.replayUri.len > 0:
-    writeReplay(rc, zipBytes)
-    echo "replay bundle -> ", rc.replayUri
-  else:
-    writeFile("results" / "replay.zip", zipBytes)
-    echo "replay bundle -> results/replay.zip"
-  # local convenience copies next to results (DESIGN §13/§14)
-  createDir("results")
-  writeFile("results" / "chat_transcript.txt", buildTranscriptText(s))
-  writeFile("results" / "chat_transcript.json", buildTranscriptJson(s))
-  writeFile("results" / "sponsor_log.json", sponsorLogJson(s))
-  # full event stream for timeline/highlight tooling (§5.7)
-  writeFile("results" / "events.json", eventHistoryJson(s))
+  writeMatchArtifacts(rc, cfg, original, s)
   echo "match over: winner=", s.winnerSlot, " ticks=", s.tick
   quit(0)
 
@@ -784,6 +913,8 @@ proc runReplay(rc: RuntimeConfig) =
   echo "replay loaded: game=", loaded.data.gameName,
        " inputs=", loaded.data.clientInputs.len,
        " hashes=", loaded.data.hashes.len
+  installStopHandlers()
+  initAppState()
   startServer(rc)
 
   # inputs grouped by tick once
@@ -822,6 +953,9 @@ proc runReplay(rc: RuntimeConfig) =
         for ws in appState.watchers.keys:
           appState.watcherJoined.add(ws)
     while s.phase != phEnded:
+      if stopRequested:
+        echo "stop signal received - replay server exiting"
+        quit(0)
       # transport control (§5.8): pause / speed / seek. Backward seek
       # restarts the episode (deterministic re-sim is the seek mechanism);
       # forward seek fast-forwards without broadcasting.

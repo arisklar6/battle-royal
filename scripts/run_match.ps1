@@ -32,6 +32,7 @@ while ($true) {
   $match++
   Write-Host ""
   Write-Host "=== MATCH $match ==="
+  $env:ZERO_SUM_LOCAL = "1"    # enables /coach + /control for the cockpit
   $proc = Start-Process -FilePath $server -WorkingDirectory $root `
     -ArgumentList "--port:$Port", "--config-path:$config" -PassThru
   Start-Sleep -Seconds 2

@@ -176,14 +176,35 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   else:
     result.seed = mintSeed()
     result.seedWasMinted = true
+  # Structural validation raises ValueError with a plain message — callers
+  # turn that into a clean non-zero exit, never a stack trace. The platform
+  # schema catches most of this for hosted play; local and future
+  # commissioner-override configs bypass the schema entirely.
+  if result.maxTicks < 100 or result.maxTicks > 20000:
+    raise newException(ValueError, "config: max_ticks must be 100..20000")
+  if result.freezeTicks < 1 or result.freezeTicks >= result.maxTicks:
+    raise newException(ValueError, "config: freeze_ticks out of range")
   if node.hasKey("zone") and node["zone"].hasKey("schedule"):
     for row in node["zone"]["schedule"]:
+      if row.kind != JArray or row.len < 6:
+        raise newException(ValueError,
+          "config: zone.schedule rows must be 6-int arrays " &
+          "[warn, shrink, done, r_start, r_end, damage_per_s]")
       result.zone.add(ZoneStage(
         warnT: row[0].getInt(), shrinkT: row[1].getInt(), doneT: row[2].getInt(),
         rStart: row[3].getInt(), rEnd: row[4].getInt(), dmgPerS: row[5].getInt()))
   else:
     for st in DefaultZone:
       result.zone.add(st)
+  for st in result.zone:
+    if st.warnT < 0 or st.shrinkT < st.warnT or st.doneT <= st.shrinkT:
+      # doneT == shrinkT would divide by zero in zoneRadius
+      raise newException(ValueError,
+        "config: zone stage needs 0 <= warn <= shrink < done (got " &
+        $st.warnT & "/" & $st.shrinkT & "/" & $st.doneT & ")")
+    if st.rEnd < 0 or st.rEnd > st.rStart:
+      raise newException(ValueError,
+        "config: zone stage needs 0 <= r_end <= r_start")
   result.sponsor.budgetPerTeam = 300
   result.sponsor.shopOpensTick = 1680
   if node.hasKey("sponsor"):
@@ -227,15 +248,27 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
     for e in node["events"]:
       var ev = ScriptedEvent(fromTick: e{"from_tick"}.getInt(),
                              duration: e{"duration"}.getInt())
+      if ev.duration <= 0:
+        raise newException(ValueError, "config: event duration must be > 0")
       if e{"kind"}.getStr() == "flood":
         ev.kind = ecFlood
+        if e{"rect"} == nil or e["rect"].kind != JArray or e["rect"].len < 4:
+          raise newException(ValueError,
+            "config: flood event needs rect [x0, y0, x1, y1]")
         for i in 0 .. 3:
           ev.rect[i] = e["rect"][i].getInt()
       else:
         ev.kind = ecFirestorm
+        if e{"center"} == nil or e["center"].kind != JArray or
+           e["center"].len < 2:
+          raise newException(ValueError,
+            "config: firestorm event needs center [x, y]")
         ev.center = Pos(x: e["center"][0].getInt(), y: e["center"][1].getInt())
         ev.radius = e{"radius"}.getInt()
       result.events.add(ev)
+  if result.sponsor.budgetPerTeam < 0 or result.sponsor.shopOpensTick < 0:
+    raise newException(ValueError,
+      "config: sponsor budget/shop_opens_tick must be >= 0")
 
 proc effectiveConfigJson*(cfg: SimConfig, original: JsonNode): string =
   ## Complete effective config for the replay header: minted seed written in,
@@ -280,6 +313,11 @@ proc zoneDamagePerS*(s: Sim): int =
 
 proc insideZone*(s: Sim, p: Pos): bool =
   let r = s.zoneRadius()
+  if r <= 0:
+    # Full closure: NO safe tile after the last stage completes (spec §3).
+    # Without this, the center tile satisfies 0 <= 0 and standing on
+    # (24,24) is a provably dominant endgame — the ring never resolves.
+    return false
   let dx = p.x - ArenaSize div 2
   let dy = p.y - ArenaSize div 2
   dx * dx + dy * dy <= r * r
