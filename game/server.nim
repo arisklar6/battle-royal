@@ -158,6 +158,12 @@ proc httpHandler(request: Request) =
           if notes.len > 4000:
             notes.setLen(4000)
           clean["notes"] = %notes
+          # the coach's raw prompt: stored verbatim (capped) so the cockpit
+          # can re-show and re-interpret it next session
+          var prompt = j{"prompt"}.getStr("")
+          if prompt.len > 4000:
+            prompt.setLen(4000)
+          clean["prompt"] = %prompt
           writeFile(CoachPolicyPath, $clean)
           ok = true
       except CatchableError:

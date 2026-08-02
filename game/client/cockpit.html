@@ -36,7 +36,6 @@
   input, select, textarea, button {
     background: var(--bg); border: 1px solid var(--etch); color: var(--text);
     font: inherit; padding: 3px 6px; border-radius: 2px; }
-  input[type=range] { accent-color: var(--teal); border: none; padding: 0; }
   textarea { width: 100%; min-height: 56px; resize: vertical; }
   :focus-visible { outline: 1px solid var(--teal); outline-offset: 1px; }
   button { cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
@@ -98,14 +97,23 @@
   .pts.ok { color: var(--teal); }
   .pts.zero { color: var(--dim); }
   .pts.bad { color: var(--crim); }
-  .frow { display: grid; grid-template-columns: 118px 1fr; gap: 8px;
-          align-items: center; margin: 7px 0; }
-  .frow > label { font-size: 10px; letter-spacing: 2px; color: var(--dim);
-                  text-transform: uppercase; }
-  .frow .hint { grid-column: 2; font-size: 10px; color: var(--dim); }
-  .frow .rgwrap { display: flex; gap: 8px; align-items: center; }
-  .frow .rgwrap input { flex: 1; }
-  .frow .rgval { color: var(--bone); min-width: 2ch; text-align: right; }
+  /* game plan prompt + UNDERSTOOD-AS read-back */
+  .planlabel { font-size: 10px; letter-spacing: 2px; color: var(--dim);
+               text-transform: uppercase; margin: 6px 0 4px; }
+  textarea.plan { min-height: 110px; }
+  .chipcap { margin: 8px 0 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .chip { font-size: 10px; letter-spacing: 1px; color: var(--dim);
+          border: 1px solid var(--rule); border-radius: 2px;
+          padding: 2px 7px; white-space: nowrap; }
+  /* team comms */
+  #commsHead { color: var(--teal); font-size: 11px; letter-spacing: 3px;
+               border-top: 1px solid var(--rule); padding-top: 6px;
+               margin-top: 8px; }
+  #commsLog { height: 180px; overflow-y: auto; margin-top: 4px;
+              font-size: 11px; }
+  #commsLog .crow { padding: 1px 0; color: var(--dim);
+                    overflow-wrap: anywhere; }
   .wsteps { min-height: 220px; }
 </style>
 </head>
@@ -120,10 +128,10 @@
       <div id="teamId"></div>
       <div id="agents"></div>
       <details id="polBox">
-        <summary>Policy</summary>
+        <summary>Game plan</summary>
         <div id="pFields"></div>
         <div class="btnrow">
-          <button id="saveBtn" class="primary" type="button">Save policy</button>
+          <button id="saveBtn" class="primary" type="button">Save plan</button>
           <span class="caption" id="saveNote">applies from the next match</span>
         </div>
         <div id="pErr" class="err"></div>
@@ -131,6 +139,8 @@
       <div class="btnrow">
         <button id="editBtn" type="button">Edit setup</button>
       </div>
+      <div id="commsHead">TEAM COMMS <span class="caption">&mdash; public record</span></div>
+      <div id="commsLog"></div>
     </div>
     <div id="noTeam" class="caption">no coach file yet</div>
   </div>
@@ -177,14 +187,8 @@ const ROSTER = {A:['Adino','Tryphena'],   B:['Carpus','Tazkia'],
 const STATS = ['speed','strength','intelligence','athleticism'];
 const STAT_TAG = {speed:'SPD', strength:'STR', intelligence:'INT',
                   athleticism:'ATH'};
-const VALID_ITEMS = ['sword','spear','bow','knives','blowgun','net',
-                     'first_aid','rations','backpack','camouflage',
-                     'arrows','darts'];
-const OPENINGS = {
-  center:   'rush mid-map: early loot, early contact',
-  fortress: 'push the Fortress: best loot in the game, highest risk',
-  outer:    'hug the rim: avoid contact, let the field thin out',
-  forage:   'sweep bushes and crates: gear fully before fighting'};
+const OPEN_CHIP = {center: 'rush mid-map', fortress: 'fortress rush',
+                   outer: 'hug the rim', forage: 'forage first'};
 const el = id => document.getElementById(id);
 // all user/server-sourced text goes through textContent / .value — never innerHTML
 function mk(tag, cls, text) {
@@ -199,9 +203,10 @@ function diamond(team) {
   return d;
 }
 const num = (v, dflt) => { const n = parseInt(v, 10); return isNaN(n) ? dflt : n; };
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // ---- coach state (mirrors the /coach file shape) --------------------------
-let state = null;        // {team, slots:{"n":{speed,..}}, policy:{..}, notes}
+let state = null;        // {team, slots:{"n":{speed,..}}, policy:{..}, prompt, notes}
 let coachLoaded = false; // GET /coach answered at least once
 function defaultPolicy() {
   return {opening:'center', aggression:5, heal_at:60, flee_at:35,
@@ -211,123 +216,129 @@ function defaultStats() { return {speed:6, strength:6, intelligence:4, athletici
 function slotsFor(team) { const i = TEAMS.indexOf(team); return [2*i, 2*i+1]; }
 function normalize(j) {
   const team = TEAMS.includes(j.team) ? j.team : 'A';
-  const out = {team, slots:{}, policy:defaultPolicy(), notes:''};
+  const out = {team, slots:{}, policy:defaultPolicy(), prompt:'', notes:''};
   for (const s of slotsFor(team)) {
     const src = (j.slots && j.slots[String(s)]) || {};
     const st = defaultStats();
     for (const k of STATS) st[k] = Math.min(10, Math.max(1, num(src[k], st[k])));
     out.slots[String(s)] = st;
   }
-  const p = j.policy || {};
-  out.policy.opening = OPENINGS[p.opening] ? p.opening : 'center';
-  out.policy.aggression = Math.min(10, Math.max(0, num(p.aggression, 5)));
-  out.policy.heal_at = Math.min(100, Math.max(0, num(p.heal_at, 60)));
-  out.policy.flee_at = Math.min(100, Math.max(0, num(p.flee_at, 35)));
-  out.policy.ring_margin = Math.min(4, Math.max(0, num(p.ring_margin, 1)));
-  out.policy.finale = p.finale === 'evade' ? 'evade' : 'fight';
-  if (Array.isArray(p.loot_priority))
-    out.policy.loot_priority = p.loot_priority.filter(x => typeof x === 'string');
-  if (typeof j.notes === 'string') out.notes = j.notes;
+  // the prompt is the source of truth: re-run the interpreter on load
+  if (typeof j.prompt === 'string') out.prompt = j.prompt;
+  out.policy = interpretPrompt(out.prompt).policy;
   return out;
 }
 
-// ---- policy field group (shared by wizard step 3 and the panel editor) ----
-// buildPolicyFields(root, px) creates controls with ids px+name;
-// readPolicy(px) -> {policy, notes, err}; writePolicy(px, state)
-function frow(labelText, control, hintText) {
-  const r = mk('div', 'frow');
-  const lb = mk('label', null, labelText);
-  if (control.id) lb.htmlFor = control.id;
-  r.append(lb, control);
-  if (hintText !== undefined) r.append(mk('div', 'hint', hintText));
-  return r;
+// ---- game plan prompt (shared by wizard step 3 and the panel editor) ------
+// The coach writes free-form orders; interpretPrompt derives the wire policy
+// deterministically, client-side, and the UNDERSTOOD-AS chips read it back.
+// buildPromptBox(root, px) creates a textarea id px+'prompt' + chips;
+// readPrompt(px) -> {policy, prompt}; writePrompt(px, state)
+const PLAN_PLACEHOLDER =
+  'Rush the fortress for a sword, play aggressive early, heal below 50, ' +
+  'never flee, grab camouflage if you see it, and at the finale spare ' +
+  'your partner';
+// loot cues, ordered by first mention in the prompt (regexes have no /g,
+// so exec() always reports the first hit)
+const LOOT_CUES = [
+  [/sword/, 'sword'], [/spear/, 'spear'], [/bow/, 'bow'],
+  [/knife|knives/, 'knives'], [/blowgun/, 'blowgun'], [/dart/, 'darts'],
+  [/arrow/, 'arrows'], [/net/, 'net'],
+  [/first aid|first-aid|medkit|med kit/, 'first_aid'],
+  [/ration|food/, 'rations'], [/backpack|pack(?! a)/, 'backpack'],
+  [/camo|camouflage/, 'camouflage']];
+function interpretPrompt(text) {
+  const t = String(text || '').toLowerCase().replace(/[’']/g, '');
+  const p = defaultPolicy();
+  // opening — "avoid the fortress" / rim cues must outrank the fortress cue
+  if (/outer|edge|perimeter|stay (wide|out|away)|avoid the fortress/.test(t))
+    p.opening = 'outer';
+  else if (/fortress|rush (the )?(center|middle)/.test(t)) p.opening = 'fortress';
+  else if (/forage|berr|bush/.test(t)) p.opening = 'forage';
+  // aggression — an explicit number always wins
+  let m = t.match(/aggression\s*[:=]?\s*(\d{1,2})/);
+  if (m) p.aggression = clamp(+m[1], 0, 10);
+  else if (/never fight|pacifist|avoid (all )?fights?/.test(t)) p.aggression = 1;
+  else if (/very aggressive|relentless|bloodthirsty|hunt everyone|kill everyone/
+           .test(t)) p.aggression = 9;
+  else if (/aggressive|hunt|pick fights|attack/.test(t)) p.aggression = 7;
+  else if (/cautious|careful|defensive|only fight (the )?(weak|wounded)/.test(t))
+    p.aggression = 3;
+  m = t.match(/heal (at|below|under)\s*(\d{1,3})/);
+  if (m) p.heal_at = clamp(+m[2], 0, 100);
+  else if (/heal early/.test(t)) p.heal_at = 70;
+  else if (/heal late|tough it out/.test(t)) p.heal_at = 40;
+  m = t.match(/flee (at|below|under)\s*(\d{1,3})/);
+  if (m) p.flee_at = clamp(+m[2], 0, 100);
+  else if (/never (flee|run|retreat)|fight to the death|no retreat/.test(t))
+    p.flee_at = 0;
+  else if (/run (away )?early|stay safe|play it safe/.test(t)) p.flee_at = 50;
+  if (/hug the (ring|zone|edge)/.test(t)) p.ring_margin = 0;
+  else if (/stay (deep|central|inside)/.test(t)) p.ring_margin = 3;
+  // shopping list: left-to-right first mentions, dedup, cap 6
+  const found = [];
+  for (const [re, id] of LOOT_CUES) {
+    const hit = re.exec(t);
+    if (hit && !found.some(f => f.id === id)) found.push({at: hit.index, id});
+  }
+  found.sort((a, b) => a.at - b.at);
+  p.loot_priority = found.slice(0, 6).map(f => f.id);
+  // finale — unambiguous mercy beats the kill cue ("dont kill your partner"),
+  // then fight-specific ("no mercy") beats the bare mercy/evade cues
+  if (/spare|dont (kill|fight) (your |the )?(partner|teammate)|run from (your|the) partner/
+      .test(t)) p.finale = 'evade';
+  else if (/no mercy|betray|kill (your |the )?(partner|teammate)|win alone/.test(t))
+    p.finale = 'fight';
+  else if (/mercy|evade/.test(t)) p.finale = 'evade';
+  return {policy: p, chips: chipsFor(p)};
 }
-function buildPolicyFields(root, px) {
+function chipsFor(p) {
+  return [
+    'opening: ' + (OPEN_CHIP[p.opening] || p.opening),
+    'aggression: ' + p.aggression + '/10',
+    'heal below ' + p.heal_at,
+    p.flee_at === 0 ? 'never flees' : 'flees below ' + p.flee_at,
+    p.ring_margin === 0 ? 'hugs the ring edge'
+                        : 'ring margin: ' + p.ring_margin + ' inside',
+    'shopping list: ' + (p.loot_priority.length ? p.loot_priority.join(', ')
+                                                : 'whatever drops'),
+    'finale: ' + (p.finale === 'evade' ? 'spares partner' : 'turns on partner')
+  ];
+}
+function renderChips(px) {
+  const host = el(px + 'chips');
+  host.textContent = '';
+  for (const c of interpretPrompt(el(px + 'prompt').value).chips)
+    host.append(mk('span', 'chip', c));
+}
+function buildPromptBox(root, px) {
   root.textContent = '';
-  const sel = mk('select'); sel.id = px + 'opening';
-  for (const k of Object.keys(OPENINGS)) sel.append(new Option(k, k));
-  const openHint = mk('div', 'hint', OPENINGS.center);
-  const orow = frow('opening', sel);
-  orow.append(openHint);
-  sel.addEventListener('change', () => { openHint.textContent = OPENINGS[sel.value]; });
-  root.append(orow);
-
-  const wrap = mk('div', 'rgwrap');
-  const rg = mk('input'); rg.type = 'range'; rg.min = 0; rg.max = 10;
-  rg.step = 1; rg.value = 5; rg.id = px + 'aggression';
-  const rv = mk('span', 'rgval', '5'); rv.id = px + 'aggval';
-  rg.addEventListener('input', () => { rv.textContent = rg.value; });
-  wrap.append(rg, rv);
-  root.append(frow('aggression', wrap, '0 = never engage · 10 = force every fight'));
-
-  const mkNum = (name, min, max, dflt) => {
-    const n = mk('input'); n.type = 'number'; n.min = min; n.max = max;
-    n.value = dflt; n.id = px + name; n.style.width = '72px'; return n;
-  };
-  root.append(frow('heal below', mkNum('heal_at', 0, 100, 60),
-                   'use first aid when HP drops under this'));
-  root.append(frow('flee below', mkNum('flee_at', 0, 100, 35),
-                   'disengage and run under this HP'));
-  root.append(frow('ring margin', mkNum('ring_margin', 0, 4, 1),
-                   'stay this many tiles inside the ring edge (0–4)'));
-
-  const lp = mk('input'); lp.type = 'text'; lp.id = px + 'loot_priority';
-  lp.placeholder = 'e.g. sword, first_aid, arrows';
-  lp.setAttribute('spellcheck', 'false');
-  root.append(frow('loot priority', lp,
-                   'comma-separated, best first · ids: ' + VALID_ITEMS.join(' ')));
-
-  const fs = mk('select'); fs.id = px + 'finale';
-  fs.append(new Option('fight', 'fight'), new Option('evade', 'evade'));
-  root.append(frow('finale', fs,
-                   'when the alliance breaks: turn on your partner, or evade'));
-
-  const nt = mk('textarea'); nt.id = px + 'notes';
-  nt.placeholder = 'scouting notes — saved with the policy';
-  root.append(frow('notes', nt));
+  const ta = mk('textarea', 'plan'); ta.id = px + 'prompt';
+  ta.placeholder = PLAN_PLACEHOLDER;
+  ta.maxLength = 4000;               // server caps the stored prompt at 4000
+  ta.setAttribute('spellcheck', 'false');
+  const chips = mk('div', 'chips'); chips.id = px + 'chips';
+  root.append(mk('div', 'planlabel', 'YOUR GAME PLAN'), ta,
+              mk('div', 'caption chipcap', 'UNDERSTOOD AS'), chips);
+  let timer = null;
+  ta.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => renderChips(px), 300);
+  });
+  renderChips(px);
 }
-function readPolicy(px) {
-  const g = name => el(px + name);
-  const clampNum = (name, min, max, dflt) =>
-    Math.min(max, Math.max(min, num(g(name).value, dflt)));
-  const raw = g('loot_priority').value.split(',')
-    .map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
-  const bad = raw.filter(s => !VALID_ITEMS.includes(s));
-  const err = bad.length
-    ? 'unknown loot ids: ' + bad.join(', ') + '\nvalid: ' + VALID_ITEMS.join(' ')
-    : '';
-  return {
-    policy: {
-      opening: g('opening').value,
-      aggression: clampNum('aggression', 0, 10, 5),
-      heal_at: clampNum('heal_at', 0, 100, 60),
-      flee_at: clampNum('flee_at', 0, 100, 35),
-      ring_margin: clampNum('ring_margin', 0, 4, 1),
-      loot_priority: raw,
-      finale: g('finale').value
-    },
-    notes: g('notes').value,
-    err
-  };
+function readPrompt(px) {
+  const prompt = el(px + 'prompt').value;
+  return {prompt, policy: interpretPrompt(prompt).policy};
 }
-function writePolicy(px, st) {
-  const g = name => el(px + name);
-  const p = st.policy;
-  g('opening').value = p.opening;
-  g('opening').dispatchEvent(new Event('change'));
-  g('aggression').value = p.aggression;
-  el(px + 'aggval').textContent = String(p.aggression);
-  g('heal_at').value = p.heal_at;
-  g('flee_at').value = p.flee_at;
-  g('ring_margin').value = p.ring_margin;
-  g('loot_priority').value = p.loot_priority.join(', ');
-  g('finale').value = p.finale;
-  g('notes').value = st.notes;
+function writePrompt(px, st) {
+  el(px + 'prompt').value = st.prompt || '';
+  renderChips(px);
 }
 
 // ---- wizard ---------------------------------------------------------------
 let wStep = 1, wTeam = null;
-const STEP_TAGS = {1:'TEAM', 2:'STATS', 3:'POLICY'};
+const STEP_TAGS = {1:'TEAM', 2:'STATS', 3:'GAME PLAN'};
 function buildTeamGrid() {
   const grid = el('tGrid');
   grid.textContent = '';
@@ -427,7 +438,7 @@ function openWizard(prefill) {
       const st = prefill.slots[String(slots[ix])] || defaultStats();
       for (const s of STATS) el('ag' + ix + '_' + s).value = st[s];
     }
-    writePolicy('w_', prefill);
+    writePrompt('w_', prefill);
   }
   renderAgentNames();
   refreshStatHints(0); refreshStatHints(1);
@@ -438,8 +449,8 @@ function wizardPayload() {
   const slots = {}, sl = slotsFor(wTeam);
   slots[String(sl[0])] = readStats(0);
   slots[String(sl[1])] = readStats(1);
-  const {policy, notes} = readPolicy('w_');
-  return {team: wTeam, slots, policy, notes};
+  const {policy, prompt} = readPrompt('w_');
+  return {team: wTeam, slots, policy, prompt, notes: ''};
 }
 el('wBack').addEventListener('click', () => { if (wStep > 1) showStep(wStep - 1); });
 el('wNext').addEventListener('click', () => {
@@ -459,8 +470,6 @@ el('wNext').addEventListener('click', () => {
   }
 });
 el('wStart').addEventListener('click', async () => {
-  const {err} = readPolicy('w_');
-  if (err) { el('wErr').textContent = err; return; }
   el('wStart').disabled = true;
   const payload = wizardPayload();
   const e = await postCoach(payload);
@@ -514,27 +523,101 @@ function applyState() {
     line.append(sp);
     ag.append(line);
   }
-  writePolicy('p_', state);
+  writePrompt('p_', state);
+  renderComms();   // team change re-filters the comms log
   // sponsor console keys off the coached team
   const want = '/client/sponsor?team=' + state.team + '&token=s' + state.team;
   const sp = el('sponsor');
   if (sp.getAttribute('src') !== want) sp.setAttribute('src', want);
 }
 el('saveBtn').addEventListener('click', async () => {
-  const {policy, notes, err} = readPolicy('p_');
-  if (err) { el('pErr').textContent = err; return; }
+  const {policy, prompt} = readPrompt('p_');
   el('pErr').textContent = '';
   el('saveBtn').disabled = true;
-  const payload = {team: state.team, slots: state.slots, policy, notes};
+  const payload = {team: state.team, slots: state.slots, policy, prompt,
+                   notes: ''};
   const e = await postCoach(payload);
   el('saveBtn').disabled = false;
   if (e) { el('pErr').textContent = e; return; }
-  state.policy = policy; state.notes = notes;
+  state.policy = policy; state.prompt = prompt;
   const note = el('saveNote');
   note.textContent = 'saved — applies from the next match';
   setTimeout(() => { note.textContent = 'applies from the next match'; }, 4000);
 });
 el('editBtn').addEventListener('click', () => openWizard(state));
+
+// ---- TEAM COMMS: own socket on the public /analyst feed -------------------
+// Shows every broadcast line (dim) plus anything from/to my two slots
+// (team colour for team/broadcast talk, amber for DMs). Chat text is
+// agent-authored: textContent only, never innerHTML.
+const COMMS_CAP = 100, COMMS_BUF = 300;
+let commsBuf = [];             // deduped rows, oldest first
+let commsSeen = new Set();     // dedup by tick+from+to
+function fmtT(tick) {          // 24 ticks/s (matches the analyst desk)
+  const s = Math.floor(tick / 24);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function renderComms() {
+  const log = el('commsLog');
+  log.textContent = '';
+  const mine = state ? slotsFor(state.team) : [];
+  let shown = 0;
+  for (let i = commsBuf.length - 1; i >= 0 && shown < COMMS_CAP; i--) {
+    const c = commsBuf[i];
+    const isMine = mine.includes(c.from) || mine.includes(c.to);
+    if (!isMine && c.channel !== 'broadcast') continue;
+    const who = c.channel === 'dm' ? 'P' + c.from + '→P' + c.to
+                                   : 'P' + c.from + '·' + c.channel;
+    const d = mk('div', 'crow',
+                 '[' + fmtT(c.tick) + '] ' + who + ': ' + c.text);
+    if (isMine)
+      d.style.color = c.channel === 'dm'
+        ? 'var(--gold)' : (TEAM_HUE[state.team] || 'var(--teal)');
+    log.append(d);               // buffer walked newest-first
+    shown++;
+  }
+  if (!shown)
+    log.append(mk('div', 'caption',
+                  'no talk yet — bots speak when the match starts'));
+}
+function commsIngest(m) {
+  let added = false;
+  for (const c of (m.chat || [])) {
+    if (typeof c.tick !== 'number' || typeof c.from !== 'number') continue;
+    const key = c.tick + '|' + c.from + '|' + (c.to == null ? '' : c.to);
+    if (commsSeen.has(key)) continue;
+    commsSeen.add(key);
+    commsBuf.push({tick: c.tick, from: c.from,
+                   to: (typeof c.to === 'number' ? c.to : -1),
+                   channel: String(c.channel || 'broadcast'),
+                   text: String(c.text == null ? '' : c.text)});
+    added = true;
+  }
+  if (commsBuf.length > COMMS_BUF)
+    commsBuf.splice(0, commsBuf.length - COMMS_BUF);
+  if (added) renderComms();
+}
+function commsConnect() {
+  try {
+    const ws = new WebSocket(
+      (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+      location.host + '/analyst');
+    ws.addEventListener('open', () => {
+      // fresh socket = possibly a fresh match: ticks restart, so must dedup
+      commsBuf = []; commsSeen = new Set();
+      renderComms();
+    });
+    ws.addEventListener('message', ev => {
+      try {
+        const m = JSON.parse(ev.data);
+        if (m && m.type === 'analyst') commsIngest(m);
+      } catch (_) {}
+    });
+    ws.addEventListener('close', () => { setTimeout(commsConnect, 5000); });
+  } catch (_) {
+    setTimeout(commsConnect, 5000);
+  }
+}
 
 // ---- resilience: the relauncher kills the server between matches ----------
 let serverUp = true;   // page just came from the server
@@ -566,8 +649,10 @@ setInterval(pollHealth, 4000);
 // ---- boot -----------------------------------------------------------------
 buildTeamGrid();
 buildStatEditors();
-buildPolicyFields(el('wFields'), 'w_');
-buildPolicyFields(el('pFields'), 'p_');
+buildPromptBox(el('wFields'), 'w_');
+buildPromptBox(el('pFields'), 'p_');
+renderComms();
+commsConnect();
 async function init() {
   let data = null, answered = false;
   try {

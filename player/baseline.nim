@@ -29,6 +29,14 @@ type
     staticMap: seq[string]
     coach: Coach
     finaleOn: bool
+    # talk bookkeeping: the transcript is the game's public record —
+    # a silent bot is a bug, not a style
+    lastTalkTick: int
+    lastContactTick: int
+    lastHurtTick: int
+    lastGiftTick: int
+    saidPlan: bool
+    saidFinale: bool
 
 proc defaultCoach(): Coach =
   Coach(active: false, stats: [6, 6, 4, 4], opening: "center",
@@ -127,6 +135,66 @@ proc weaponRank(id: string): int =
   of "blowgun": 2
   of "net": 1
   else: 0
+
+proc maybeTalk(c: var Ctx, m: JsonNode, ws: WebSocket) =
+  ## Event-driven chatter (team channel mostly). The sim rate-limits to
+  ## 1 msg/s; we stay sparser so the transcript reads as intent, not spam.
+  let tick = m{"tick"}.getInt(0)
+  if tick - c.lastTalkTick < 96:
+    return
+  let you = m["you"]
+  let x = you["pos"][0].getInt()
+  let y = you["pos"][1].getInt()
+  let hp = you["hp"].getInt()
+
+  template say(channelArg, textArg: string) =
+    ws.send($(%*{"type": "talk", "channel": channelArg, "to": -1,
+                 "text": textArg}), TextMessage)
+    c.lastTalkTick = tick
+    return
+
+  for e in m{"events"}.getElems():
+    case e{"type"}.getStr()
+    of "ignition":
+      if not c.saidPlan and c.slot mod 2 == 0:   # pair lead calls the plan
+        c.saidPlan = true
+        case c.coach.opening
+        of "fortress": say("team", "plan: straight into the fortress. watch the mouths")
+        of "outer": say("team", "plan: outer band. loot quiet, live long")
+        of "forage": say("team", "plan: berries and patience. let them bleed each other")
+        else: say("team", "plan: hold mid. stay close, take smart fights")
+      elif not c.saidPlan and c.coach.aggression >= 8:
+        c.saidPlan = true
+        say("broadcast", "good luck everyone. you will need it")
+    of "finale":
+      if not c.saidFinale:
+        c.saidFinale = true
+        if c.coach.finaleMode == "evade":
+          say("broadcast", "i wont fight you, partner. catch me if you can")
+        else:
+          say("broadcast", "just us now, partner. no hard feelings")
+    of "gift_landed":
+      if tick - c.lastGiftTick > 240 and e{"pos"} != nil:
+        let gx = e["pos"][0].getInt()
+        let gy = e["pos"][1].getInt()
+        if (gx - x) * (gx - x) + (gy - y) * (gy - y) <= 144:
+          c.lastGiftTick = tick
+          say("team", "drop at (" & $gx & "," & $gy & ") - im close, claiming it")
+    else:
+      discard
+
+  if hp < 25 and tick - c.lastHurtTick > 480:
+    c.lastHurtTick = tick
+    say("team", "im hurt bad. falling back")
+  if tick - c.lastContactTick > 240:
+    for a in m["visible"]["agents"]:
+      let slot = a["slot"].getInt()
+      if slot == c.teammate and not c.finaleOn:
+        continue
+      c.lastContactTick = tick
+      let ax = a["pos"][0].getInt()
+      let ay = a["pos"][1].getInt()
+      say("team", "contact: P" & $slot & " at (" & $ax & "," & $ay & ")")
 
 proc decide(c: var Ctx, m: JsonNode): JsonNode =
   let you = m["you"]
@@ -325,6 +393,7 @@ when isMainModule:
     of "observation":
       if ctx.staticMap.len > 0:
         try:
+          ctx.maybeTalk(m, ws)
           ws.send($decide(ctx, m), TextMessage)
         except CatchableError:
           break
