@@ -20,6 +20,11 @@ jobs:
         with:
           nim-version: "2.2.4"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: sync pinned deps
+        shell: bash
+        run: |
+          nimble install -y nimby
+          nimby sync nimby.lock
       - name: run sim tests
         shell: bash
         run: |
@@ -61,6 +66,11 @@ jobs:
         with:
           nim-version: "2.2.4"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: sync pinned deps
+        shell: bash
+        run: |
+          nimble install -y nimby
+          nimby sync nimby.lock
       - name: nim check all programs
         shell: bash
         run: |
