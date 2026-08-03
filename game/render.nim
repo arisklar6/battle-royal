@@ -476,6 +476,9 @@ proc weaponGlyph(id: ItemId): seq[uint8] =
 # ---------------------------------------------------------------- misc art
 
 proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
+  ## Ray star with hash-dithered scatter (ctf technique): clean rays read
+  ## as a diagram, dithered ones read as thrown particles. Density falls
+  ## with radius, so the core stays solid and the tips break up.
   result = newSeq[uint8](size * size * 4)
   let c = size div 2
   for y in 0 ..< size:
@@ -483,9 +486,15 @@ proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
       let dx = x - c
       let dy = y - c
       let d2 = dx * dx + dy * dy
+      if d2 > c * c:
+        continue
       let onRay = dx == 0 or dy == 0 or dx == dy or dx == -dy
-      if onRay and d2 <= c * c:
-        result.put(size, x, y, (r, g, b), uint8(255 - min(220, d2 * 220 div (c * c))))
+      let fade = 255 - min(220, d2 * 220 div (c * c))
+      if onRay:
+        result.put(size, x, y, (r, g, b), uint8(fade))
+      elif pixHash(x * 5 + 3, y * 7 + 11) mod 100 < (fade div 6):
+        # sparse embers between the rays, thinning outward
+        result.put(size, x, y, (r, g, b), uint8(fade * 3 div 5))
 
 proc plasmaPixels(phase: int, crit: bool): seq[uint8] =
   ## Swirling plasma wall: teal (stages 1-4) or crimson (endgame).
@@ -503,21 +512,27 @@ proc plasmaPixels(phase: int, crit: bool): seq[uint8] =
         result.put(TileSize, x, y, coldC, 150)
 
 proc floodPixels(phase: int): seq[uint8] =
-  ## Toxic hyper-reflective fluid (#39FF14).
+  ## Commanded-flood fluid. Hash dither breaks the crest lattice so the
+  ## surface reads as moving liquid instead of a repeating hatch.
   result = newSeq[uint8](TileSize * TileSize * 4)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      let crest = (x + y * 2 + phase * 3) mod 6 == 0
+      let n = pixHash(x * 3 + phase * 29, y * 5 + phase * 17) mod 5
+      let crest = (x + y * 2 + phase * 3 + n) mod 6 == 0
       result.put(TileSize, x, y,
         (if crest: (255'u8, 160'u8, 205'u8) else: RingMagenta),
-        (if crest: 220'u8 else: 150'u8))
+        (if crest: 220'u8 else: uint8(132 + n * 6)))
 
 proc stormPixels(phase: int): seq[uint8] =
+  ## Firestorm: dithered density rather than a checkerboard, so overlapping
+  ## tiles merge into one field instead of showing their tile seams.
   result = newSeq[uint8](TileSize * TileSize * 4)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      if (x + y + phase) mod 2 == 0:
-        result.put(TileSize, x, y, (255'u8, 90'u8, 30'u8), 120)
+      let n = pixHash(x * 7 + phase * 13, y * 11 + phase * 23) mod 100
+      if n < 55:
+        result.put(TileSize, x, y, (255'u8, 90'u8, 30'u8),
+                   uint8(90 + (n mod 5) * 12))
 
 proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
   ## Crate keyed to contents: the strap carries the item color so a
@@ -558,9 +573,13 @@ proc bushPixels(berries: int): seq[uint8] =
     for x in 0 ..< TileSize:
       let dx = x * 2 + 1 - TileSize
       let dy = y * 2 + 1 - TileSize
-      if dx * dx + dy * dy <= (TileSize - 1) * (TileSize - 1):
+      let d2 = dx * dx + dy * dy
+      let r2 = (TileSize - 1) * (TileSize - 1)
+      # dithered rim: foliage frays instead of ending on a hard circle
+      let n = pixHash(x * 13 + 5, y * 17 + 3) mod 100
+      if d2 <= r2 - r2 div 3 or (d2 <= r2 and n < 62):
         result.put(TileSize, x, y,
-          (if (x + y) mod 3 == 0: shade(leaf, 16) else: leaf))
+          (if n mod 3 == 0: shade(leaf, 16) else: leaf))
   const spots = [(1, 2), (4, 1), (3, 4)]
   for i in 0 ..< min(berries, 3):
     result.put(TileSize, spots[i][0], spots[i][1], (215'u8, 45'u8, 60'u8))
@@ -591,7 +610,9 @@ proc poisonHaloPixels(phase: int): seq[uint8] =
       let dx = x * 2 + 1 - 10
       let dy = y * 2 + 1 - 10
       let d2 = dx * dx + dy * dy
-      if d2 > 36 and d2 <= 81 and (x + y + phase) mod 2 == 0:
+      # poison is airborne, not a signal ring: dither it into mist
+      if d2 > 36 and d2 <= 81 and
+         pixHash(x * 9 + phase * 31, y * 7 + phase * 19) mod 100 < 55:
         result.put(10, x, y, Klaxon, 130)
 
 proc voidBeamPixels(): seq[uint8] =
