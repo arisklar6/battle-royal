@@ -211,24 +211,72 @@ proc grassAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
   if h mod 5 == 0:                        # faint plate wear
     px.put(w, ox + 2 + (h mod 3), oy + 2 + (h div 3) mod 3, shade(base, 10))
 
-proc bricksAt(px: var seq[uint8], w, ox, oy, tx, ty: int,
-              base: (uint8, uint8, uint8)) =
-  let mortar = shade(base, -36)
+# --- structural material: shading derived from the collision mask ---
+# Ported technique (coworld-ctf map_art.nim rooftopColorAt): instead of a
+# flat tile pattern, every structural pixel measures its distance to the
+# nearest open pixel along 4 rays and shades by that distance — ground
+# ink line, lit/shadowed parapet rim, then roof face. The art therefore
+# matches the colliders exactly and reads as built volume rather than
+# texture. Light comes from up-left throughout the renderer.
+const
+  StoneInk = (16'u8, 22'u8, 28'u8)     # contact line — never pure black
+  WallBevelPx = 2                      # rim width; tiles are only 6px
+  RoofSeamPeriod = 8
+
+proc isStructure(a: Arena, tx, ty: int): bool =
+  ## Off-map counts as solid so the border wall keeps a face, not a rim.
+  if tx < 0 or ty < 0 or tx >= ArenaSize or ty >= ArenaSize:
+    return true
+  a.tiles[ty][tx] in {tkWall, tkFortressWall}
+
+proc structureAtPx(a: Arena, wx, wy: int): bool =
+  isStructure(a, wx div TileSize, wy div TileSize)
+
+proc openDistDir(a: Arena, wx, wy, dx, dy, maxD: int): int =
+  ## Steps to the nearest non-structural pixel in one direction.
+  for d in 1 .. maxD:
+    if not structureAtPx(a, wx + dx * d, wy + dy * d):
+      return d
+  maxD + 1
+
+proc parapetColorAt(a: Arena, wx, wy: int,
+                    base: (uint8, uint8, uint8)): (uint8, uint8, uint8) =
+  const MaxD = WallBevelPx + 2
+  let up = openDistDir(a, wx, wy, 0, -1, MaxD)
+  let dn = openDistDir(a, wx, wy, 0, 1, MaxD)
+  let lf = openDistDir(a, wx, wy, -1, 0, MaxD)
+  let rt = openDistDir(a, wx, wy, 1, 0, MaxD)
+  let edge = min(min(up, dn), min(lf, rt))
+  if edge <= 1:
+    StoneInk
+  elif edge <= WallBevelPx:
+    # rim: lit where the opening lies up-left, shadowed down-right
+    if min(up, lf) <= min(dn, rt): shade(base, 40) else: shade(base, -26)
+  elif (wx + wy) mod RoofSeamPeriod == 0:
+    shade(base, -12)                   # roof seam
+  else:
+    base
+
+proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena,
+            base: (uint8, uint8, uint8)) =
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      let brickShift = (if (ty * 2 + y div 3) mod 2 == 0: 0 else: 3)
-      let onMortar = (y mod 3 == 2) or ((x + brickShift) mod 3 == 2)
-      let jitter = (if tileHash(tx * 6 + x, ty * 6 + y) mod 7 == 0: -8 else: 0)
-      px.put(w, ox + x, oy + y, (if onMortar: mortar else: shade(base, jitter)))
+      px.put(w, ox + x, oy + y, parapetColorAt(a, ox + x, oy + y, base))
 
 proc rockAt(px: var seq[uint8], w, ox, oy: int) =
-  let base = (118'u8, 88'u8, 58'u8)
+  ## Boulder under the same up-left key light as the walls.
+  let base = (86'u8, 78'u8, 70'u8)
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      let edge = x == 0 or y == 0 or x == TileSize - 1 or y == TileSize - 1
-      px.put(w, ox + x, oy + y, (if edge: shade(base, -30) else: base))
-  px.put(w, ox + 1, oy + 1, shade(base, 26))
-  px.put(w, ox + 2, oy + 1, shade(base, 26))
+      let lit = x + y <= 2
+      let dark = (TileSize - 1 - x) + (TileSize - 1 - y) <= 2
+      let rim = x == 0 or y == 0 or x == TileSize - 1 or y == TileSize - 1
+      var c = base
+      if lit: c = shade(base, 34)
+      elif dark: c = shade(base, -30)
+      elif rim: c = shade(base, -16)
+      px.put(w, ox + x, oy + y, c)
+  px.put(w, ox + TileSize - 1, oy + TileSize - 1, StoneInk)
 
 proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
   let gold = (235'u8, 166'u8, 76'u8)      # amber family (matter)
@@ -255,9 +303,9 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
       of tkGround, tkBush:      # bushes are objects; plate beneath
         grassAt(result, WorldPx, ox, oy, tx, ty)
       of tkWall:
-        bricksAt(result, WorldPx, ox, oy, tx, ty, Masonry)
+        wallAt(result, WorldPx, ox, oy, a, Masonry)
       of tkFortressWall:
-        bricksAt(result, WorldPx, ox, oy, tx, ty, shade(Masonry, 22))
+        wallAt(result, WorldPx, ox, oy, a, shade(Masonry, 22))
       of tkRock:
         grassAt(result, WorldPx, ox, oy, tx, ty)
         rockAt(result, WorldPx, ox, oy)
