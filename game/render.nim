@@ -198,6 +198,33 @@ proc shade(c: (uint8, uint8, uint8), d: int): (uint8, uint8, uint8) =
 
 proc tileHash(x, y: int): int = (x * 7 + y * 13 + (x * y) mod 11) mod 16
 
+proc alphaAt(px: seq[uint8], w, x, y: int): int =
+  if x < 0 or y < 0 or x >= w:
+    return 0
+  let i = (y * w + x) * 4 + 3
+  if i >= px.len: 0 else: int(px[i])
+
+proc addBacklight(px: var seq[uint8], w, h: int, c: (uint8, uint8, uint8),
+                  a: uint8, dx = 0, dy = 0) =
+  ## Writes a one-pixel halo into empty space around what is already
+  ## drawn — CTF gets this from pixie.shadow() behind the weapon
+  ## (spread 1.0, blur 0.6, warm amber); at 6px tiles a crisp single-pixel
+  ## rim reads better than a blur and costs one pass. dx/dy offset turns
+  ## the same helper into a contact shadow.
+  let src = px
+  for y in 0 ..< h:
+    for x in 0 ..< w:
+      if alphaAt(src, w, x, y) >= 40:
+        continue                      # only fill empty space
+      var touching = false
+      for ny in -1 .. 1:
+        for nx in -1 .. 1:
+          if (nx != 0 or ny != 0) and
+             alphaAt(src, w, x + nx - dx, y + ny - dy) >= 128:
+            touching = true
+      if touching:
+        px.put(w, x, y, c, a)
+
 # ---------------------------------------------------------------- tiles
 
 # --- floor material: value noise + panel joints (from ctf build_floor) ---
@@ -419,6 +446,9 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
     P(4 + sx, 5, BgDark)
   if parity == 1:
     P(2, 4, PhosphorPeak)      # teammate pip
+  # contact shadow before the diamond: grounds the chassis so it does not
+  # look pasted onto the floor (CTF bakes this into its soldier masters)
+  result.addBacklight(BodyW, BodyH, StoneInk, 90, dx = 1, dy = 1)
   # team diamond rows 9..11 (ground mark, unaffected by the bob)
   result.put(BodyW, 3, 9, tunic)
   result.put(BodyW, 4, 9, tunic)
@@ -546,6 +576,7 @@ proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
   for x in 0 ..< TileSize:
     result.put(TileSize, x, TileSize div 2, band)
   result.put(TileSize, 1, 1, band)
+  result.addBacklight(TileSize, TileSize, GoldTone, 80)
 
 proc podChutePixels(): seq[uint8] =
   ## 10x12: canopy + lines + crate.
@@ -694,6 +725,8 @@ proc itemPixels(id: ItemId): seq[uint8] =
         result.put(TileSize, x, y,
           (if d >= TileSize - 2: shade(c, -60) else: c))
   result.put(TileSize, 2, 2, (255'u8, 255'u8, 255'u8))
+  # amber backlight: matter glows, so loot separates from the plate
+  result.addBacklight(TileSize, TileSize, GoldTone, 70)
 
 proc projPixels(id: ItemId): seq[uint8] =
   result = newSeq[uint8](4 * 4 * 4)
