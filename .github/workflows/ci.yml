@@ -57,6 +57,17 @@ jobs:
             echo "seed $seed deterministic"
           done
 
+  # Cockpit game-plan interpreter: the prompt is the whole policy UI, so
+  # its parse and its read-back chips are golden-tested.
+  cockpit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node tests/t_cockpit_prompt.js
+
   # Compile-check every top-level program (clients of the sim API).
   check:
     runs-on: ubuntu-latest

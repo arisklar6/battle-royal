@@ -234,10 +234,13 @@ function normalize(j) {
 // deterministically, client-side, and the UNDERSTOOD-AS chips read it back.
 // buildPromptBox(root, px) creates a textarea id px+'prompt' + chips;
 // readPrompt(px) -> {policy, prompt}; writePrompt(px, state)
+// Every clause here is one the interpreter actually reads, the settings do
+// not cancel each other, and the finale line is the winning one: mutual
+// evasion just hands the match to ring closure.
 const PLAN_PLACEHOLDER =
-  'Rush the fortress for a sword, play aggressive early, heal below 50, ' +
-  'never flee, grab camouflage if you see it, and at the finale spare ' +
-  'your partner';
+  'Rush the fortress for a sword and a first aid kit, play aggressive, ' +
+  'heal below 60, flee below 30, stay deep inside the ring, and at the ' +
+  'finale win alone.';
 // loot cues, ordered by first mention in the prompt (regexes have no /g,
 // so exec() always reports the first hit)
 const LOOT_CUES = [
@@ -297,7 +300,13 @@ function chipsFor(p) {
     'opening: ' + (OPEN_CHIP[p.opening] || p.opening),
     'aggression: ' + p.aggression + '/10',
     'heal below ' + p.heal_at,
-    p.flee_at === 0 ? 'never flees' : 'flees below ' + p.flee_at,
+    // an evade finale forces flight regardless of flee_at (baseline.nim
+    // raises the threshold to 101 once the alliance breaks) — the chip
+    // must say so, or the two settings read as independent
+    p.finale === 'evade'
+      ? (p.flee_at === 0 ? 'never flees — except at the finale'
+                         : 'flees below ' + p.flee_at + ' — always at the finale')
+      : (p.flee_at === 0 ? 'never flees' : 'flees below ' + p.flee_at),
     p.ring_margin === 0 ? 'hugs the ring edge'
                         : 'ring margin: ' + p.ring_margin + ' inside',
     'shopping list: ' + (p.loot_priority.length ? p.loot_priority.join(', ')
