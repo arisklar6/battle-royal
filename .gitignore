@@ -47,3 +47,7 @@ libcurl.dll
 nim.cfg.local
 _to_delete/
 dist/
+
+# local coach plan + stray nim linker arg file
+coach_policy.json
+*_linkerArgs.txt
