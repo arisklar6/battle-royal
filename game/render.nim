@@ -200,16 +200,59 @@ proc tileHash(x, y: int): int = (x * 7 + y * 13 + (x * y) mod 11) mod 16
 
 # ---------------------------------------------------------------- tiles
 
-proc grassAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
-  ## Dark-brutalist steel plate with a recessed grid seam (DESIGN §21.3).
-  let h = tileHash(tx, ty)
-  let base = shade(BgDark, (h mod 3) * 3)
+# --- floor material: value noise + panel joints (from ctf build_floor) ---
+# The plate used to be one flat tone plus a grid line, which read as graph
+# paper. CTF bakes its floor as a material: broad mottling, fine grain,
+# aggregate flecks, pinholes, and embossed panel joints spaced far wider
+# than a tile. Same recipe here, generated per-pixel instead of sampled
+# from a texture so no asset ships.
+const
+  PanelPeriodPx = 8 * TileSize        # joints every 8 tiles, not every tile
+  FloorLo = -7                        # luminance envelope around Faraday
+  FloorHi = 9
+
+proc pixHash(x, y: int): int =
+  ## Deterministic prime-mix hash in uint64 (wraps, never overflows).
+  var h = uint64(x and 0xFFFF) * 73856093'u64 xor
+          uint64(y and 0xFFFF) * 19349663'u64
+  h = h xor (h shr 13)
+  h = h * 0x85EBCA6B'u64
+  h = h xor (h shr 16)
+  int(h and 0xFF'u64)
+
+proc noiseAt(x, y, cell: int): int =
+  ## Value noise: bilinear blend of per-cell hashes, returns -128..127.
+  let gx = x div cell
+  let gy = y div cell
+  let fx = x mod cell
+  let fy = y mod cell
+  let a = pixHash(gx, gy)
+  let b = pixHash(gx + 1, gy)
+  let c = pixHash(gx, gy + 1)
+  let d = pixHash(gx + 1, gy + 1)
+  let top = a * (cell - fx) + b * fx
+  let bot = c * (cell - fx) + d * fx
+  ((top * (cell - fy) + bot * fy) div (cell * cell)) - 128
+
+proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
   for y in 0 ..< TileSize:
     for x in 0 ..< TileSize:
-      let seam = x == 0 or y == 0
-      px.put(w, ox + x, oy + y, (if seam: EtchDim else: base))
-  if h mod 5 == 0:                        # faint plate wear
-    px.put(w, ox + 2 + (h mod 3), oy + 2 + (h div 3) mod 3, shade(base, 10))
+      let wx = ox + x
+      let wy = oy + y
+      # two octaves of mottling plus per-pixel grain
+      var d = (noiseAt(wx, wy, 16) * 5) div 128 +
+              (noiseAt(wx, wy, 4) * 3) div 128 +
+              (pixHash(wx, wy) mod 3) - 1
+      let g = pixHash(wx * 3 + 1, wy * 3 + 7)
+      if g mod 211 == 0: d += 14        # aggregate fleck
+      elif g mod 397 == 0: d -= 9       # pinhole
+      # embossed panel joint: recessed line with a lit lip up-left of it
+      let jx = wx mod PanelPeriodPx
+      let jy = wy mod PanelPeriodPx
+      if jx == 0 or jy == 0: d -= 10
+      elif jx == 1 or jy == 1: d += 6
+      elif x == 0 or y == 0: d -= 3     # faint per-tile etch grid
+      px.put(w, wx, wy, shade(BgDark, max(FloorLo, min(FloorHi, d))))
 
 # --- structural material: shading derived from the collision mask ---
 # Ported technique (coworld-ctf map_art.nim rooftopColorAt): instead of a
@@ -301,16 +344,16 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
       let oy = ty * TileSize
       case a.tiles[ty][tx]
       of tkGround, tkBush:      # bushes are objects; plate beneath
-        grassAt(result, WorldPx, ox, oy, tx, ty)
+        plateAt(result, WorldPx, ox, oy, tx, ty)
       of tkWall:
         wallAt(result, WorldPx, ox, oy, a, Masonry)
       of tkFortressWall:
         wallAt(result, WorldPx, ox, oy, a, shade(Masonry, 22))
       of tkRock:
-        grassAt(result, WorldPx, ox, oy, tx, ty)
+        plateAt(result, WorldPx, ox, oy, tx, ty)
         rockAt(result, WorldPx, ox, oy)
       of tkPedestal:
-        grassAt(result, WorldPx, ox, oy, tx, ty)
+        plateAt(result, WorldPx, ox, oy, tx, ty)
         pedestalAt(result, WorldPx, ox, oy)
       let dx = tx - c
       let dy = ty - c
