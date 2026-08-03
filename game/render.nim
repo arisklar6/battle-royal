@@ -106,6 +106,15 @@ const
   LayerHudBL = 4
   LayerBanner = 5
 
+  ## Painter bands (client sorts z, then y, then id — so entities inside a
+  ## band already resolve their own overlap by map position). Environment
+  ## effects must sit BELOW entities: a carrier standing in the flood or
+  ## crossing the ring was being hidden behind the terrain effect drawn on
+  ## its own tile. Transient combat FX stay above everything.
+  HazardZ = 7                # flood / firestorm fields
+  RingZ = 9                  # zone boundary + next-radius ghost
+  AgentZ = 10                # carriers and their chrome sit above both
+
   BodyW = 8
   BodyH = 12
 
@@ -1352,7 +1361,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
           let dy = ty - ev.center.y
           if dx * dx + dy * dy <= ev.radius * ev.radius:
             result.addObject(ObRegionBase + regIdx, tx * TileSize, ty * TileSize,
-              14, LayerMap,
+              HazardZ, LayerMap,
               (if (phase + tx + ty) mod 2 == 0: SpFirestormA
                else: SpFirestormB))
             inc regIdx
@@ -1361,7 +1370,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         for tx in max(1, ev.rect[0]) .. min(ArenaSize - 2, ev.rect[2]):
           if regIdx >= RegionPool: break
           result.addObject(ObRegionBase + regIdx, tx * TileSize, ty * TileSize,
-            14, LayerMap,
+            HazardZ, LayerMap,
             (if (phase + tx + ty) mod 2 == 0: SpFloodA else: SpFloodB))
           inc regIdx
   for stale in regIdx ..< r.regionDrawn:
@@ -1487,7 +1496,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
             (if crit: (if flip: SpPlasmaCritA else: SpPlasmaCritB)
              else: (if flip: SpZoneFireA else: SpZoneFireB))
           result.addObject(ObZoneRingBase + ringIdx, tx * TileSize, ty * TileSize,
-            15, LayerMap, sp)
+            RingZ, LayerMap, sp)
           inc ringIdx
   for stale in ringIdx ..< r.ringDrawn:
     result.addDeleteObject(ObZoneRingBase + stale)
@@ -1507,7 +1516,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
               let d2 = dx * dx + dy * dy
               if d2 > st.rEnd * st.rEnd and d2 <= (st.rEnd + 1) * (st.rEnd + 1):
                 result.addObject(ObNextRingBase + ghostIdx, tx * TileSize,
-                  ty * TileSize, 15, LayerMap, SpRingGhost)
+                  ty * TileSize, RingZ, LayerMap, SpRingGhost)
                 inc ghostIdx
       break
   for stale in ghostIdx ..< r.nextRingDrawn:
