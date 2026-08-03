@@ -62,6 +62,13 @@ const
   SpPingB = 875
   SpHitFlash = 876         # 1-frame peak-white hit silhouette
   SpDmgBase = 880          # 880..895: rotating damage numerals
+  # baked fade ramps, 4 stages each (920..935) — the protocol carries no
+  # per-object alpha, so dimming means swapping to a pre-dimmed sprite
+  FadeStages = 4
+  SpFadeDeath = 920        # 920..923
+  SpFadeIgnite = 924       # 924..927
+  SpFadeMine = 928         # 928..931
+  SpFadeVoid = 932         # 932..935
   SpPodCrateBase = 900     # 900 + ord(ItemId): contents-keyed crates
   SpPodLabelBase = 1000    # 1000 + pod index: persistent cargo labels
 
@@ -145,6 +152,15 @@ type
   Effect = object
     objId: int
     dieTick: int
+    # staged fade (ctf technique 6): sprite_v1 has no per-object alpha, so
+    # an effect that should dim bakes its stages as separate sprites and
+    # swaps between them as it ages. stageBase < 0 = no fade.
+    stageBase: int
+    stages: int
+    bornTick: int
+    ttl: int
+    stageShown: int
+    x, y: int
 
   Renderer* = object
     nextEffect: int
@@ -513,6 +529,14 @@ proc weaponGlyph(id: ItemId): seq[uint8] =
     discard
 
 # ---------------------------------------------------------------- misc art
+
+proc dimmed(px: seq[uint8], mul: int): seq[uint8] =
+  ## Alpha-scaled copy for a baked fade stage.
+  result = px
+  var i = 3
+  while i < result.len:
+    result[i] = uint8(int(result[i]) * mul div 255)
+    i += 4
 
 proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
   ## Ray star with hash-dithered scatter (ctf technique): clean rays read
@@ -1112,6 +1136,17 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpPoisonHaloA, 10, 10, poisonHaloPixels(0), "haloA")
   result.addSprite(SpPoisonHaloB, 10, 10, poisonHaloPixels(1), "haloB")
   result.addSprite(SpVoidBeam, 6, 48, voidBeamPixels(), "void_beam")
+  # baked fade ramps: stage 0 is full strength, later stages pre-dimmed
+  for k in 0 ..< FadeStages:
+    let m = (FadeStages - k) * 255 div FadeStages
+    result.addSprite(SpFadeDeath + k, 18, 18,
+                     dimmed(burstPixels(18, 233, 228, 216), m), "fade_death")
+    result.addSprite(SpFadeIgnite + k, 18, 18,
+                     dimmed(burstPixels(18, 255, 210, 110), m), "fade_ignite")
+    result.addSprite(SpFadeMine + k, 12, 12,
+                     dimmed(burstPixels(12, 255, 74, 54), m), "fade_mine")
+    result.addSprite(SpFadeVoid + k, 6, 48,
+                     dimmed(voidBeamPixels(), m), "fade_void")
   result.addSprite(SpGoldBeam, 8, 54, goldBeamPixels(), "gold_beam")
   result.addSprite(SpGlitch, BodyW, BodyH, glitchPixels(), "glitch")
   result.addSprite(SpMouthA, TileSize, TileSize, mouthLightPixels(0), "mouthA")
@@ -1185,13 +1220,19 @@ proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
                    SpHpBandBase + band)
 
 proc spawnEffect(r: var Renderer, packet: var seq[uint8], s: Sim,
-                 spriteId, cx, cy, size, ttl: int) =
+                 spriteId, cx, cy, size, ttl: int,
+                 stageBase = -1, stages = 0) =
   # ids must stay below ObBushBase (20000) — effects rotating past that
   # range would clobber pooled world objects mid-broadcast
   let objId = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
   inc r.nextEffect
-  packet.addObject(objId, cx - size div 2, cy - size div 2, 20, LayerMap, spriteId)
-  r.effects.add(Effect(objId: objId, dieTick: s.tick + ttl))
+  let px = cx - size div 2
+  let py = cy - size div 2
+  packet.addObject(objId, px, py, 20, LayerMap, spriteId)
+  r.effects.add(Effect(objId: objId, dieTick: s.tick + ttl,
+                       stageBase: stageBase, stages: stages,
+                       bornTick: s.tick, ttl: ttl, stageShown: 0,
+                       x: px, y: py))
 
 proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   r.ensureTrace()
@@ -1301,7 +1342,8 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         a.pos.y * TileSize + TileSize div 2 - 6, 5, LayerMap,
         SpCorpseBase + slot)
       r.spawnEffect(result, s, SpVoidBeam,
-        a.pos.x * TileSize + TileSize div 2, a.pos.y * TileSize - 20, 6, 36)
+        a.pos.x * TileSize + TileSize div 2, a.pos.y * TileSize - 20, 6, 36,
+        SpFadeVoid, FadeStages)
       r.deadDrawn[slot] = true
     elif r.weaponDrawn[slot]:
       result.addDeleteObject(ObWeaponBase + slot)
@@ -1443,9 +1485,12 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     let cx = e.pos.x * TileSize + TileSize div 2
     let cy = e.pos.y * TileSize + TileSize div 2
     case e.kind
-    of evMineExplosion: r.spawnEffect(result, s, SpMineFlash, cx, cy, 12, 12)
+    of evMineExplosion:
+      r.spawnEffect(result, s, SpMineFlash, cx, cy, 12, 12,
+                    SpFadeMine, FadeStages)
     of evDeathFireworks:
-      r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36)
+      r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36,
+                    SpFadeDeath, FadeStages)
       if e.slot >= 0:
         # kill feed (Tier 1): credit = last damager, same rule as scoring
         let k = s.agents[e.slot].lastDamager
@@ -1464,19 +1509,32 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         result.addObject(lineObj, 0, e.pos.y * TileSize + 2, 22, LayerMap,
                          SpSettleLine)
         r.effects.add(Effect(objId: lineObj, dieTick: s.tick + 10))
-    of evIgnition: r.spawnEffect(result, s, SpFwGold, cx, cy, 18, 48)
+    of evIgnition:
+      r.spawnEffect(result, s, SpFwGold, cx, cy, 18, 48,
+                    SpFadeIgnite, FadeStages)
     of evMatchEnd:
       if e.slot >= 0:
         let p = s.agents[e.slot].pos
         r.spawnEffect(result, s, SpFwGold,
-          p.x * TileSize + TileSize div 2, p.y * TileSize + TileSize div 2, 18, 96)
+          p.x * TileSize + TileSize div 2, p.y * TileSize + TileSize div 2, 18, 96,
+          SpFadeIgnite, FadeStages)
     else: discard
   var kept: seq[Effect] = @[]
   for ef in r.effects:
     if s.tick >= ef.dieTick:
       result.addDeleteObject(ef.objId)
     else:
-      kept.add(ef)
+      var e = ef
+      if e.stages > 1 and e.ttl > 0:
+        # advance the baked fade: re-point the same object at a dimmer
+        # sprite, so effects ebb away instead of vanishing on one frame
+        let want = min(e.stages - 1,
+                       ((s.tick - e.bornTick) * e.stages) div e.ttl)
+        if want != e.stageShown:
+          e.stageShown = want
+          result.addObject(e.objId, e.x, e.y, 20, LayerMap,
+                           e.stageBase + want)
+      kept.add(e)
   r.effects = kept
   # zone plasma ring (flicker); crimson crit arc once damage hits stage 5 (§21.3)
   var ringIdx = 0
