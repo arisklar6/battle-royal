@@ -10,6 +10,15 @@ import zero_sum/[types, arena, sim]
 const
   LayerMap* = 0
   WorldPx* = ArenaSize * TileSize
+  ## Supersampling (coworld-ctf global.nim RenderScale): the map layer
+  ## announces an RS-times viewport and every board coordinate scales into
+  ## it. Art authored natively at RS gains real detail; art still authored
+  ## at 1x is nearest-neighbour upscaled so proportions hold. Costs ~3x
+  ## stream — free over localhost, and the only way to have any room for
+  ## detail on a 6px tile.
+  RS* = 2
+  WorldPxR* = WorldPx * RS
+  TilePxR* = TileSize * RS
 
   # sprite ids
   SpBackground = 1
@@ -137,9 +146,16 @@ const
   ## AFTERGLOW palette tokens (docs/VISUAL_REDESIGN.md §3.1).
   ## Semantic contracts: phosphor = live signal, amber = matter & economy,
   ## magenta = commanded geometry, klaxon = harm now. No green anywhere.
-  BgDark = (12'u8, 17'u8, 22'u8)          # Faraday #0C1116 substrate
-  EtchDim = (28'u8, 36'u8, 43'u8)         # Etch ramp low #1C242B
-  Masonry = (54'u8, 68'u8, 79'u8)         # Etch #36444F structural ink
+  ## Substrate lifted out of near-black (2026-08-03). The old Faraday
+  ## #0C1116 board sat at luma 9-25 of 255, so every material detail
+  ## painted on it — noise, panel joints, bevels — fell below the
+  ## perceptual floor. coworld-ctf holds its floor at luma 72-112, and
+  ## that headroom is why its surfaces read at all. Same hues, raised
+  ## into a lit range; entity phosphor and the team wheel still sit well
+  ## above them.
+  BgDark = (40'u8, 48'u8, 57'u8)          # lit slate substrate
+  EtchDim = (58'u8, 68'u8, 79'u8)         # ramp low
+  Masonry = (104'u8, 119'u8, 132'u8)      # structural ink
   Phosphor = (165'u8, 227'u8, 238'u8)     # #A5E3EE
   PhosphorPeak = (234'u8, 247'u8, 250'u8) # #EAF7FA
   RingMagenta = (255'u8, 79'u8, 163'u8)   # Directive Magenta #FF4FA3
@@ -207,6 +223,43 @@ type
 
 # ---------------------------------------------------------------- helpers
 
+proc upscaled(px: openArray[uint8], w, h: int): seq[uint8] =
+  ## Nearest-neighbour ×RS for sprites still authored at 1x.
+  result = newSeq[uint8](w * RS * h * RS * 4)
+  for y in 0 ..< h * RS:
+    for x in 0 ..< w * RS:
+      let si = ((y div RS) * w + (x div RS)) * 4
+      let di = (y * w * RS + x) * 4
+      for c in 0 .. 3:
+        result[di + c] = px[si + c]
+
+proc isUiSprite(id: int): bool =
+  ## The only sprites that live on UI layers; everything else is board art
+  ## and therefore scales with the map viewport.
+  id in 200 .. 215 or id in 840 .. 861
+
+proc addSprite(packet: var seq[uint8], spriteId, width, height: int,
+               pixels: openArray[uint8], label = "") =
+  ## Board sprites authored at 1x are upscaled into the RS viewport; UI
+  ## sprites keep their own 1:1 space. Sprites already authored natively
+  ## at RS pass their true dimensions and skip this path.
+  if RS == 1 or isUiSprite(spriteId) or width == WorldPxR:
+    # width == WorldPxR means the caller already rasterized at RS
+    spriteprotocol.addSprite(packet, spriteId, width, height, pixels, label)
+  else:
+    spriteprotocol.addSprite(packet, spriteId, width * RS, height * RS,
+                             upscaled(pixels, width, height), label)
+
+proc addObject(packet: var seq[uint8],
+               objectId, x, y, z, layer, spriteId: int) =
+  ## Map placements scale into the supersampled viewport in one place, so
+  ## no call site has to know about RS.
+  if layer == LayerMap:
+    spriteprotocol.addObject(packet, objectId, x * RS, y * RS, z, layer,
+                             spriteId)
+  else:
+    spriteprotocol.addObject(packet, objectId, x, y, z, layer, spriteId)
+
 proc put(pixels: var seq[uint8], w, x, y: int, rgb: (uint8, uint8, uint8),
          a: uint8 = 255) =
   if x < 0 or y < 0 or x >= w:
@@ -259,9 +312,9 @@ proc addBacklight(px: var seq[uint8], w, h: int, c: (uint8, uint8, uint8),
 # than a tile. Same recipe here, generated per-pixel instead of sampled
 # from a texture so no asset ships.
 const
-  PanelPeriodPx = 8 * TileSize        # joints every 8 tiles, not every tile
-  FloorLo = -7                        # luminance envelope around Faraday
-  FloorHi = 9
+  PanelPeriodPx = 8 * TilePxR         # joints every 8 tiles, not every tile
+  FloorLo = -16                       # luminance envelope; wide enough to see
+  FloorHi = 20
 
 proc pixHash(x, y: int): int =
   ## Deterministic prime-mix hash in uint64 (wraps, never overflows).
@@ -287,13 +340,15 @@ proc noiseAt(x, y, cell: int): int =
   ((top * (cell - fy) + bot * fy) div (cell * cell)) - 128
 
 proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
+  ## Rasterized in render space: at RS=2 the octaves resolve twice as
+  ## finely and a third, sub-world octave appears that 1x had no room for.
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
       let wx = ox + x
       let wy = oy + y
-      # two octaves of mottling plus per-pixel grain
-      var d = (noiseAt(wx, wy, 16) * 5) div 128 +
-              (noiseAt(wx, wy, 4) * 3) div 128 +
+      var d = (noiseAt(wx, wy, 16 * RS) * 5) div 128 +
+              (noiseAt(wx, wy, 4 * RS) * 3) div 128 +
+              (noiseAt(wx, wy, 2 * RS) * 2) div 128 +
               (pixHash(wx, wy) mod 3) - 1
       let g = pixHash(wx * 3 + 1, wy * 3 + 7)
       if g mod 211 == 0: d += 14        # aggregate fleck
@@ -301,9 +356,9 @@ proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
       # embossed panel joint: recessed line with a lit lip up-left of it
       let jx = wx mod PanelPeriodPx
       let jy = wy mod PanelPeriodPx
-      if jx == 0 or jy == 0: d -= 10
-      elif jx == 1 or jy == 1: d += 6
-      elif x == 0 or y == 0: d -= 3     # faint per-tile etch grid
+      if jx < RS or jy < RS: d -= 10
+      elif jx < RS * 2 or jy < RS * 2: d += 6
+      elif x < RS or y < RS: d -= 3     # faint per-tile etch grid
       px.put(w, wx, wy, shade(BgDark, max(FloorLo, min(FloorHi, d))))
 
 # --- structural material: shading derived from the collision mask ---
@@ -315,8 +370,8 @@ proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
 # texture. Light comes from up-left throughout the renderer.
 const
   StoneInk = (16'u8, 22'u8, 28'u8)     # contact line — never pure black
-  WallBevelPx = 2                      # rim width; tiles are only 6px
-  RoofSeamPeriod = 8
+  WallBevelPx = 2 * RS                 # rim width, in render pixels
+  RoofSeamPeriod = 8 * RS
 
 proc isStructure(a: Arena, tx, ty: int): bool =
   ## Off-map counts as solid so the border wall keeps a face, not a rim.
@@ -325,7 +380,7 @@ proc isStructure(a: Arena, tx, ty: int): bool =
   a.tiles[ty][tx] in {tkWall, tkFortressWall}
 
 proc structureAtPx(a: Arena, wx, wy: int): bool =
-  isStructure(a, wx div TileSize, wy div TileSize)
+  isStructure(a, wx div TilePxR, wy div TilePxR)
 
 proc openDistDir(a: Arena, wx, wy, dx, dy, maxD: int): int =
   ## Steps to the nearest non-structural pixel in one direction.
@@ -354,33 +409,35 @@ proc parapetColorAt(a: Arena, wx, wy: int,
 
 proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena,
             base: (uint8, uint8, uint8)) =
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
       px.put(w, ox + x, oy + y, parapetColorAt(a, ox + x, oy + y, base))
 
 proc rockAt(px: var seq[uint8], w, ox, oy: int) =
   ## Boulder under the same up-left key light as the walls.
   let base = (86'u8, 78'u8, 70'u8)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let lit = x + y <= 2
-      let dark = (TileSize - 1 - x) + (TileSize - 1 - y) <= 2
-      let rim = x == 0 or y == 0 or x == TileSize - 1 or y == TileSize - 1
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let lit = x + y <= 2 * RS
+      let dark = (TilePxR - 1 - x) + (TilePxR - 1 - y) <= 2 * RS
+      let rim = x < RS or y < RS or x >= TilePxR - RS or y >= TilePxR - RS
       var c = base
       if lit: c = shade(base, 34)
       elif dark: c = shade(base, -30)
       elif rim: c = shade(base, -16)
       px.put(w, ox + x, oy + y, c)
-  px.put(w, ox + TileSize - 1, oy + TileSize - 1, StoneInk)
+  px.put(w, ox + TilePxR - 1, oy + TilePxR - 1, StoneInk)
 
 proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
   let gold = (235'u8, 166'u8, 76'u8)      # amber family (matter)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let ring = x in [0, TileSize - 1] or y in [0, TileSize - 1]
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let ring = x < RS or y < RS or x >= TilePxR - RS or y >= TilePxR - RS
       px.put(w, ox + x, oy + y, (if ring: shade(gold, -50) else: gold))
-  px.put(w, ox + 2, oy + 2, shade(gold, 30))
-  px.put(w, ox + 3, oy + 3, shade(gold, 30))
+  for i in 0 ..< RS:
+    for j in 0 ..< RS:
+      px.put(w, ox + 2 * RS + i, oy + 2 * RS + j, shade(gold, 30))
+      px.put(w, ox + 3 * RS + i, oy + 3 * RS + j, shade(gold, 30))
 
 proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
   ## safeR: tiles outside this center radius are reclaimed territory.
@@ -388,51 +445,54 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
   ## machine deallocating the world): 0 = red "off-air" wash,
   ## 1 = art decays to Etch wireframe, 2 = raw substrate + dropped-pixel
   ## dither. Pass safeR >= ArenaSize for an untouched board.
-  result = newSeq[uint8](WorldPx * WorldPx * 4)
+  ## Rasterized natively at RS — this is the one sprite where the extra
+  ## resolution buys genuine detail (finer bevels, a third noise octave)
+  ## rather than doubled pixels.
+  result = newSeq[uint8](WorldPxR * WorldPxR * 4)
   let c = ArenaSize div 2
   for ty in 0 ..< ArenaSize:
     for tx in 0 ..< ArenaSize:
-      let ox = tx * TileSize
-      let oy = ty * TileSize
+      let ox = tx * TilePxR
+      let oy = ty * TilePxR
       case a.tiles[ty][tx]
       of tkGround, tkBush:      # bushes are objects; plate beneath
-        plateAt(result, WorldPx, ox, oy, tx, ty)
+        plateAt(result, WorldPxR, ox, oy, tx, ty)
       of tkWall:
-        wallAt(result, WorldPx, ox, oy, a, Masonry)
+        wallAt(result, WorldPxR, ox, oy, a, Masonry)
       of tkFortressWall:
-        wallAt(result, WorldPx, ox, oy, a, shade(Masonry, 22))
+        wallAt(result, WorldPxR, ox, oy, a, shade(Masonry, 22))
       of tkRock:
-        plateAt(result, WorldPx, ox, oy, tx, ty)
-        rockAt(result, WorldPx, ox, oy)
+        plateAt(result, WorldPxR, ox, oy, tx, ty)
+        rockAt(result, WorldPxR, ox, oy)
       of tkPedestal:
-        plateAt(result, WorldPx, ox, oy, tx, ty)
-        pedestalAt(result, WorldPx, ox, oy)
+        plateAt(result, WorldPxR, ox, oy, tx, ty)
+        pedestalAt(result, WorldPxR, ox, oy)
       let dx = tx - c
       let dy = ty - c
       if dx * dx + dy * dy > safeR * safeR:
         if derez == 0:
-          for y in 0 ..< TileSize:
-            for x in 0 ..< TileSize:
-              let i = ((oy + y) * WorldPx + ox + x) * 4
+          for y in 0 ..< TilePxR:
+            for x in 0 ..< TilePxR:
+              let i = ((oy + y) * WorldPxR + ox + x) * 4
               result[i] = uint8(int(result[i]) * 3 div 5 + 26)
               result[i+1] = uint8(int(result[i+1]) * 3 div 5 + 4)
               result[i+2] = uint8(int(result[i+2]) * 3 div 5 + 8)
         else:
           let structural = a.tiles[ty][tx] in
             {tkWall, tkFortressWall, tkRock, tkPedestal}
-          for y in 0 ..< TileSize:
-            for x in 0 ..< TileSize:
+          for y in 0 ..< TilePxR:
+            for x in 0 ..< TilePxR:
               var col = BgDark
               if derez == 1:
-                if x == 0 or y == 0:
+                if x < RS or y < RS:
                   col = EtchDim
-                if structural and (x == 0 or y == 0 or x == TileSize - 1 or
-                                   y == TileSize - 1):
+                if structural and (x < RS or y < RS or x >= TilePxR - RS or
+                                   y >= TilePxR - RS):
                   col = Masonry
               else:
                 if tileHash(tx * 3 + x, ty * 3 + y) mod 13 == 0:
                   col = EtchDim
-              let i = ((oy + y) * WorldPx + ox + x) * 4
+              let i = ((oy + y) * WorldPxR + ox + x) * 4
               result[i] = col[0]
               result[i+1] = col[1]
               result[i+2] = col[2]
@@ -1109,7 +1169,7 @@ proc derezLevel(s: Sim): int =
   else: 2
 
 proc spriteDefs(s: Sim): seq[uint8] =
-  result.addSprite(SpBackground, WorldPx, WorldPx,
+  result.addSprite(SpBackground, WorldPxR, WorldPxR,
                    backgroundPixels(s.arena, s.effectiveSafeRadius(),
                                     s.derezLevel()), "arena")
   for slot in 0 .. 15:
@@ -1607,7 +1667,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   let bgKey = bgR * 4 + s.derezLevel()
   if bgKey != r.lastBgRadius:
     r.lastBgRadius = bgKey
-    result.addSprite(SpBackground, WorldPx, WorldPx,
+    result.addSprite(SpBackground, WorldPxR, WorldPxR,
                      backgroundPixels(s.arena, bgR, s.derezLevel()), "arena")
     result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
   # Fortress mouth gold light (§21.3): warm pulse in each wall gap
@@ -1694,7 +1754,7 @@ proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
   ## Complete current scene for a fresh viewer (or replay-loop restart).
   result.addClearObjects()
   result.addLayer(LayerMap, 0x00, 0x01)
-  result.addViewport(LayerMap, WorldPx, WorldPx)
+  result.addViewport(LayerMap, WorldPxR, WorldPxR)
   result.addLayer(LayerHudTL, 0x01, 0x02)
   result.addViewport(LayerHudTL, 240, 52)
   result.addLayer(LayerHudBL, 0x04, 0x02)
