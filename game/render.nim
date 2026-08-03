@@ -133,6 +133,8 @@ const
 
   BodyW = 8
   BodyH = 12
+  BodyWR = BodyW * RS      # carrier is authored natively at render scale
+  BodyHR = BodyH * RS
 
   ## AFTERGLOW team wheel (VISUAL_REDESIGN §3.1): S/L-locked fills, only
   ## polychrome in the arena. F ice-white and E crimson retired (invisible /
@@ -239,12 +241,11 @@ proc isUiSprite(id: int): bool =
   id in 200 .. 215 or id in 840 .. 861
 
 proc addSprite(packet: var seq[uint8], spriteId, width, height: int,
-               pixels: openArray[uint8], label = "") =
+               pixels: openArray[uint8], label = "", native = false) =
   ## Board sprites authored at 1x are upscaled into the RS viewport; UI
-  ## sprites keep their own 1:1 space. Sprites already authored natively
-  ## at RS pass their true dimensions and skip this path.
-  if RS == 1 or isUiSprite(spriteId) or width == WorldPxR:
-    # width == WorldPxR means the caller already rasterized at RS
+  ## sprites keep their own 1:1 space. `native` marks art already
+  ## rasterized at RS (CTF passes the same flag through addBoardSprite).
+  if RS == 1 or native or isUiSprite(spriteId) or width == WorldPxR:
     spriteprotocol.addSprite(packet, spriteId, width, height, pixels, label)
   else:
     spriteprotocol.addSprite(packet, spriteId, width * RS, height * RS,
@@ -501,46 +502,71 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
 # ---------------------------------------------------------------- humanoids
 
 proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
-  ## AFTERGLOW carrier (VISUAL_REDESIGN §3.3): compact phosphor
-  ## silhouette riding a team-hue diamond — the only polychrome in the
-  ## arena. Drawn inside the legacy 8x12 frame so every offset in the
-  ## pipeline stays valid. facing nudges the sensor pixels; frame is a
-  ## 1px hover bob (the diamond is the ground mark and never lifts).
-  result = newSeq[uint8](BodyW * BodyH * 4)
+  ## AFTERGLOW carrier, authored natively at RS (16x24 at RS=2). The 8x12
+  ## version had no room for shape: at play size it read as a pale blob.
+  ## With the doubled canvas the chassis gets a shaded hull, a rim light
+  ## from up-left, a dark sensor visor that actually shows facing, and a
+  ## ground diamond big enough to carry team identity on its own.
+  ## Placement offsets stay in 1x tile space and are scaled by addObject.
+  result = newSeq[uint8](BodyWR * BodyHR * 4)
   let tunic = TeamColors[team]
+  let hull = Phosphor
   let lift = (if frame == 1: -1 else: 0)
   template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
-    result.put(BodyW, x, y + lift, c, a)
-  # chassis rows 3..7, cols 1..6
-  for x in 2 .. 5:
-    P(x, 3, PhosphorPeak)
-  for y in 4 .. 6:
-    P(1, y, Phosphor)
-    P(6, y, Phosphor)
-    for x in 2 .. 5:
-      P(x, y, Phosphor)
-  for x in 2 .. 5:
-    P(x, 7, shade(Phosphor, -70))
-  # sensor pair, nudged toward the facing
-  let sx = (if facing == 2: 1 elif facing == 3: -1 else: 0)
-  if facing == 1:              # north: dorsal line, no sensors
-    for x in 2 .. 5:
-      P(x, 4, shade(Phosphor, -50))
+    result.put(BodyWR, x, y + lift, c, a)
+
+  # --- hull: rows 5..17, an ovoid with a flat shoulder line ---
+  for y in 5 .. 17:
+    # half-width profile: narrow at the crown, widest mid-body, tucked base
+    let hw =
+      if y <= 6: 3
+      elif y <= 8: 5
+      elif y <= 14: 6
+      elif y == 15: 5
+      else: 4
+    for x in (8 - hw) ..< (8 + hw):
+      var c = hull
+      if y <= 7: c = shade(hull, 34)             # crown catches the key light
+      elif y >= 15: c = shade(hull, -76)         # underside in shadow
+      elif x < 8 - hw + 2: c = shade(hull, 18)   # left rim lit
+      elif x >= 8 + hw - 2: c = shade(hull, -40) # right flank falls off
+      P(x, y, c)
+  # crown specular and outline
+  for x in 6 .. 9:
+    P(x, 4, shade(hull, 52))
+  for y in 5 .. 17:
+    let hw = (if y <= 6: 3 elif y <= 8: 5 elif y <= 14: 6 elif y == 15: 5 else: 4)
+    P(8 - hw - 1, y, StoneInk, 190)
+    P(8 + hw, y, StoneInk, 190)
+
+  # --- sensor visor: dark band with a bright pupil, swung by facing ---
+  let sx = (if facing == 2: 2 elif facing == 3: -2 else: 0)
+  if facing == 1:                      # north: dorsal ridge, no visor
+    for x in 5 .. 10:
+      P(x, 9, shade(hull, -54))
+    for x in 6 .. 9:
+      P(x, 10, shade(hull, -34))
   else:
-    P(3 + sx, 5, BgDark)
-    P(4 + sx, 5, BgDark)
-  if parity == 1:
-    P(2, 4, PhosphorPeak)      # teammate pip
-  # contact shadow before the diamond: grounds the chassis so it does not
-  # look pasted onto the floor (CTF bakes this into its soldier masters)
-  result.addBacklight(BodyW, BodyH, StoneInk, 90, dx = 1, dy = 1)
-  # team diamond rows 9..11 (ground mark, unaffected by the bob)
-  result.put(BodyW, 3, 9, tunic)
-  result.put(BodyW, 4, 9, tunic)
-  for x in 2 .. 5:
-    result.put(BodyW, x, 10, tunic)
-  result.put(BodyW, 3, 11, tunic)
-  result.put(BodyW, 4, 11, tunic)
+    for x in (5 + sx) .. (10 + sx):
+      P(x, 10, StoneInk)
+      P(x, 11, shade(StoneInk, 14))
+    P(7 + sx, 10, PhosphorPeak)
+    P(8 + sx, 10, PhosphorPeak)
+  if parity == 1:                      # teammate pip on the shoulder
+    P(5, 7, PhosphorPeak)
+    P(6, 7, PhosphorPeak)
+
+  # contact shadow before the diamond goes down
+  result.addBacklight(BodyWR, BodyHR, StoneInk, 95, dx = RS, dy = RS)
+
+  # --- ground diamond: the team mark, unaffected by the hover bob ---
+  for dy in 0 .. 5:
+    let wdt = (if dy <= 2: dy + 1 else: 6 - dy)
+    for dx in -wdt .. wdt:
+      let c = (if dy <= 2: tunic else: shade(tunic, -34))
+      result.put(BodyWR, 8 + dx, 18 + dy, c)
+  for dx in -2 .. 2:                   # bright core so it reads when tiny
+    result.put(BodyWR, 8 + dx, 20, shade(tunic, 30))
 
 proc corpsePixels(team, parity: int): seq[uint8] =
   ## 12x6 decommissioned carrier: shadow pool, toppled cold chassis,
@@ -1176,8 +1202,8 @@ proc spriteDefs(s: Sim): seq[uint8] =
     for facing in 0 .. 3:
       for frame in 0 .. 1:
         result.addSprite(SpBodyBase + slot * 10 + facing * 2 + frame,
-          BodyW, BodyH, bodyPixels(slot div 2, slot mod 2, facing, frame),
-          "body" & $slot)
+          BodyWR, BodyHR, bodyPixels(slot div 2, slot mod 2, facing, frame),
+          "body" & $slot, native = true)
     result.addSprite(SpCorpseBase + slot, 12, 6,
       corpsePixels(slot div 2, slot mod 2), "corpse" & $slot)
   for id in [iSword, iSpear, iBow, iKnives, iBlowgun, iNet]:
