@@ -16,13 +16,17 @@
 
 param(
   [int]$Port = 8321,
-  [int]$Matches = 1        # 1 = single match; 0 = loop until window closed
+  # NB: not named $Matches — that is a PowerShell automatic variable that
+  # any -match operation would clobber. -Matches still works as an alias.
+  [Alias('Matches')]
+  [int]$MatchCount = 1,    # 1 = single match; 0 = loop until window closed
+  [string]$Config = ''     # defaults to configs\coached_match.json
 )
 
 $root = Split-Path $PSScriptRoot -Parent
 $server = Join-Path $root "game\server.exe"
 $bot = Join-Path $root "player\baseline.exe"
-$config = Join-Path $root "configs\coached_match.json"
+$config = if ($Config) { $Config } else { Join-Path $root "configs\coached_match.json" }
 $coachFile = Join-Path $root "coach_policy.json"
 
 if (-not (Test-Path $server)) { throw "game\server.exe missing - compile it first (see README)" }
@@ -64,7 +68,9 @@ while ($true) {
     try {
       $plan = Get-Content $coachFile -Raw | ConvertFrom-Json
       $ti = [int][char]$plan.team[0] - 65
-      $coachSlots = @(2 * $ti, 2 * $ti + 1)
+      # parens are load-bearing: PowerShell's comma binds tighter than '*',
+      # so @(2*$ti, 2*$ti+1) parses as 2 * ($ti,2) * $ti + 1 and throws
+      $coachSlots = @((2 * $ti), (2 * $ti + 1))
       Write-Host "coaching team $($plan.team) (slots $($coachSlots -join ', '))"
     } catch { Write-Host "coach_policy.json unreadable - all-baseline match" }
   }
@@ -88,7 +94,7 @@ while ($true) {
   $proc.WaitForExit()
   Write-Host "match $match over - artifacts in results\ (results.json, chat_transcript.txt, events.json)."
 
-  if ($Matches -gt 0 -and $match -ge $Matches) {
+  if ($MatchCount -gt 0 -and $match -ge $MatchCount) {
     Write-Host "Done. Play again with the same command;"
     Write-Host "add -Matches 0 if you want a continuous coaching loop."
     break
