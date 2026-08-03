@@ -4,17 +4,19 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\run_match.ps1
 #   powershell ... -File scripts\run_match.ps1 -Port 8400 -Matches 3
 #
-# Flow per match: the server starts and waits (up to 10 min) for all 16
-# seats. The cockpit's setup wizard writes coach_policy.json via POST
-# /coach; this script waits for that file, then launches 14 baseline bots
-# plus YOUR team's two bots running the coached policy. When the match
-# ends the server exits and the next match starts automatically with the
-# current policy — edit it in the cockpit between (or during) matches.
-# All 16 seats stay AI: you coach, the bots execute.
+# Flow: the server starts and waits (up to 10 min) for all 16 seats. The
+# cockpit's setup wizard writes coach_policy.json via POST /coach; this
+# script waits for that file, then launches 14 baseline bots plus YOUR
+# team's two bots running the coached policy. All 16 seats stay AI: you
+# coach, the bots execute.
+#
+# ONE match by default — nothing keeps running after it ends. Pass
+# -Matches N to play a set, or -Matches 0 to loop until you close the
+# window (the coaching cycle: play, read the result, edit the plan).
 
 param(
   [int]$Port = 8321,
-  [int]$Matches = 0        # 0 = keep playing until this window is closed
+  [int]$Matches = 1        # 1 = single match; 0 = loop until window closed
 )
 
 $root = Split-Path $PSScriptRoot -Parent
@@ -84,8 +86,19 @@ while ($true) {
 
   Write-Host "match running - watch the cockpit. Replay bundle lands in results\ when it ends."
   $proc.WaitForExit()
-  Write-Host "match $match over (results\results.json). Tweak your policy in the cockpit."
+  Write-Host "match $match over - artifacts in results\ (results.json, chat_transcript.txt, events.json)."
 
-  if ($Matches -gt 0 -and $match -ge $Matches) { break }
+  if ($Matches -gt 0 -and $match -ge $Matches) {
+    Write-Host "Done. Play again with the same command;"
+    Write-Host "add -Matches 0 if you want a continuous coaching loop."
+    break
+  }
+  Write-Host "next match in 3s - close this window to stop."
   Start-Sleep -Seconds 3
 }
+
+# bots exit on their own "final" message, but never leave strays behind
+Get-Process baseline -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process server -ErrorAction SilentlyContinue |
+  Where-Object { $_.Path -eq $server } | Stop-Process -Force
+Write-Host "all Zero Sum processes stopped."
