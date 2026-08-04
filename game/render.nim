@@ -568,24 +568,44 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
   for dx in -2 .. 2:                   # bright core so it reads when tiny
     result.put(BodyWR, 8 + dx, 20, shade(tunic, 30))
 
+const
+  CorpseW = 24              # native render scale (12x6 logical)
+  CorpseH = 12
+
 proc corpsePixels(team, parity: int): seq[uint8] =
-  ## 12x6 decommissioned carrier: shadow pool, toppled cold chassis,
-  ## team-tinted diamond gone dark.
-  result = newSeq[uint8](12 * 6 * 4)
-  let tunic = shade(TeamColors[team], -50)
-  template P(x, y: int, c: (uint8, uint8, uint8)) =
-    result.put(12, x, y, c)
-  for x in 1 .. 10:
-    P(x, 5, (24'u8, 30'u8, 36'u8))                 # shadow pool
-  for x in 3 .. 8:
-    P(x, 2, EtchDim)
-    P(x, 3, EtchDim)
-  P(2, 2, EtchDim)
-  P(9, 3, EtchDim)
-  P(5, 1, tunic)                                    # cold diamond tip
-  P(6, 1, tunic)
+  ## Decommissioned carrier, authored natively: the hull has toppled onto
+  ## its side, so it reads as the same object that was standing a moment
+  ## ago — cold, unlit, lying in its own shadow pool.
+  result = newSeq[uint8](CorpseW * CorpseH * 4)
+  let tunic = shade(TeamColors[team], -60)
+  let cold = shade(Phosphor, -96)
+  template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
+    result.put(CorpseW, x, y, c, a)
+  # shadow pool: a squashed ellipse the wreck sits in
+  for y in 8 .. 11:
+    let hw = (if y == 8 or y == 11: 8 else: 10)
+    for x in (12 - hw) ..< (12 + hw):
+      P(x, y, StoneInk, (if y >= 10: 150'u8 else: 110'u8))
+  # toppled hull, long axis horizontal
+  for y in 3 .. 9:
+    let hh = (if y <= 4 or y >= 9: 5 elif y <= 5 or y >= 8: 7 else: 8)
+    for x in (11 - hh) ..< (11 + hh):
+      var c = cold
+      if y <= 4: c = shade(cold, 20)            # residual light, upper flank
+      elif y >= 8: c = shade(cold, -22)
+      P(x, y, c)
+  for x in 3 .. 18:                             # ink outline along the top
+    P(x, 2, StoneInk, 200)
+  # dead visor, now facing sideways
+  for x in 6 .. 11:
+    P(x, 5, StoneInk)
   if parity == 1:
-    P(3, 2, (200'u8, 205'u8, 210'u8))
+    P(14, 4, (170'u8, 180'u8, 190'u8))
+  # team diamond gone dark, spilled clear of the hull
+  for dy in 0 .. 3:
+    let wdt = (if dy <= 1: dy + 1 else: 4 - dy)
+    for dx in -wdt .. wdt:
+      P(19 + dx, 6 + dy, tunic)
 
 proc weaponGlyph(id: ItemId): seq[uint8] =
   ## 5x5 held-item glyph.
@@ -684,18 +704,25 @@ proc stormPixels(phase: int): seq[uint8] =
                    uint8(90 + (n mod 5) * 12))
 
 proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
-  ## Crate keyed to contents: the strap carries the item color so a
-  ## contested drop stays identified after touchdown.
-  result = newSeq[uint8](TileSize * TileSize * 4)
+  ## Crate keyed to contents, authored natively: plank grain, a lit top
+  ## face, and the contents strap crossing it so a contested drop stays
+  ## identified after touchdown.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
   let wood = (150'u8, 105'u8, 55'u8)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let edge = x == 0 or y == 0 or x == TileSize - 1 or y == TileSize - 1
-      result.put(TileSize, x, y, (if edge: shade(wood, -40) else: wood))
-  for x in 0 ..< TileSize:
-    result.put(TileSize, x, TileSize div 2, band)
-  result.put(TileSize, 1, 1, band)
-  result.addBacklight(TileSize, TileSize, GoldTone, 80)
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let edge = x < RS or y < RS or x >= TilePxR - RS or y >= TilePxR - RS
+      var c = wood
+      if edge: c = shade(wood, -46)
+      elif y < TilePxR div 3: c = shade(wood, 26)        # lit top face
+      elif (y div RS) mod 2 == 0: c = shade(wood, -12)   # plank grain
+      result.put(TilePxR, x, y, c)
+  for y in (TilePxR div 2 - RS) ..< (TilePxR div 2 + RS):
+    for x in 0 ..< TilePxR:
+      result.put(TilePxR, x, y, band)
+  for i in 0 ..< RS * 2:                                 # corner seal
+    result.put(TilePxR, RS + i, RS, band)
+  result.addBacklight(TilePxR, TilePxR, GoldTone, 80)
 
 proc podChutePixels(): seq[uint8] =
   ## 10x12: canopy + lines + crate.
@@ -717,32 +744,51 @@ proc podChutePixels(): seq[uint8] =
   P(4, 8, (220'u8, 40'u8, 40'u8)); P(5, 8, (220'u8, 40'u8, 40'u8))
 
 proc bushPixels(berries: int): seq[uint8] =
-  result = newSeq[uint8](TileSize * TileSize * 4)
+  ## Foliage clump, native: lit crown, shaded underside, frayed rim, and
+  ## berries big enough to count at a glance (charges are gameplay).
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
   let leaf = (46'u8, 108'u8, 50'u8)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let dx = x * 2 + 1 - TileSize
-      let dy = y * 2 + 1 - TileSize
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let dx = x * 2 + 1 - TilePxR
+      let dy = y * 2 + 1 - TilePxR
       let d2 = dx * dx + dy * dy
-      let r2 = (TileSize - 1) * (TileSize - 1)
-      # dithered rim: foliage frays instead of ending on a hard circle
+      let r2 = (TilePxR - 1) * (TilePxR - 1)
       let n = pixHash(x * 13 + 5, y * 17 + 3) mod 100
       if d2 <= r2 - r2 div 3 or (d2 <= r2 and n < 62):
-        result.put(TileSize, x, y,
-          (if n mod 3 == 0: shade(leaf, 16) else: leaf))
-  const spots = [(1, 2), (4, 1), (3, 4)]
+        var c = leaf
+        if dy < -RS: c = shade(leaf, 26)          # crown to the light
+        elif dy > RS * 2: c = shade(leaf, -22)    # underside
+        if n mod 3 == 0: c = shade(c, 14)
+        result.put(TilePxR, x, y, c)
+  const spots = [(2, 4), (7, 2), (5, 8)]
   for i in 0 ..< min(berries, 3):
-    result.put(TileSize, spots[i][0], spots[i][1], (215'u8, 45'u8, 60'u8))
+    let bx = spots[i][0] * RS div 2
+    let by = spots[i][1] * RS div 2
+    for oy in 0 ..< RS:
+      for ox in 0 ..< RS:
+        result.put(TilePxR, bx + ox, by + oy, (215'u8, 45'u8, 60'u8))
+    result.put(TilePxR, bx, by, (245'u8, 120'u8, 130'u8))
+
+proc hullHalfWidth(y: int): int =
+  ## The carrier's silhouette profile, shared by every body-sized overlay
+  ## so camo, glitch and hit flash trace the same shape the hull does.
+  if y < 5 or y > 17: 0
+  elif y <= 6: 3
+  elif y <= 8: 5
+  elif y <= 14: 6
+  elif y == 15: 5
+  else: 4
 
 proc glassBodyPixels(): seq[uint8] =
-  ## Camo: refractive carrier silhouette — faint outline, near-clear fill.
-  result = newSeq[uint8](BodyW * BodyH * 4)
-  for y in 3 .. 7:
-    for x in 1 .. 6:
-      if (y >= 4 and y <= 6) or (x >= 2 and x <= 5):
-        let edge = x == 1 or x == 6 or y == 3 or y == 7
-        result.put(BodyW, x, y, (200'u8, 235'u8, 255'u8),
-                   (if edge: 90'u8 else: 34'u8))
+  ## Camo: refractive carrier silhouette — faint rim, near-clear fill.
+  result = newSeq[uint8](BodyWR * BodyHR * 4)
+  for y in 5 .. 17:
+    let hw = hullHalfWidth(y)
+    for x in (8 - hw) ..< (8 + hw):
+      let edge = x < 8 - hw + 1 or x >= 8 + hw - 1 or y == 5 or y == 17
+      result.put(BodyWR, x, y, (200'u8, 235'u8, 255'u8),
+                 (if edge: 96'u8 else: 30'u8))
 
 proc netMeshPixels(): seq[uint8] =
   ## Etch-bright restraint mesh — structure pinning a signal down.
@@ -787,14 +833,22 @@ proc goldBeamPixels(): seq[uint8] =
         result.put(8, x, y, shade(GoldTone, 40), 90)
 
 proc glitchPixels(): seq[uint8] =
-  ## Camo-reveal digital artifact burst.
-  result = newSeq[uint8](BodyW * BodyH * 4)
-  for y in 0 ..< BodyH:
-    for x in 0 ..< BodyW:
-      let n = tileHash(x * 3 + 1, y * 5 + 2)
-      if n mod 3 == 0:
-        result.put(BodyW, x, y,
-          (if n mod 2 == 0: Klaxon else: PhosphorPeak), 220)
+  ## Camo-reveal artifact: horizontal tear bands across the hull, which
+  ## reads as a decode failure rather than confetti.
+  result = newSeq[uint8](BodyWR * BodyHR * 4)
+  for y in 0 ..< BodyHR:
+    let hw = hullHalfWidth(y)
+    if hw == 0:
+      continue
+    let band = pixHash(y * 13, 7) mod 100
+    if band < 45:
+      continue                       # untorn scanline
+    let shift = (pixHash(y * 7, 3) mod (RS * 3)) - RS
+    for x in (8 - hw + shift) ..< (8 + hw + shift):
+      let n = pixHash(x * 3 + 1, y * 5 + 2)
+      result.put(BodyWR, x, y,
+        (if n mod 3 == 0: Klaxon else: PhosphorPeak),
+        (if n mod 2 == 0: 235'u8 else: 160'u8))
 
 proc mouthLightPixels(phase: int): seq[uint8] =
   ## Volumetric golden light pooling in the Fortress mouths.
@@ -834,18 +888,31 @@ proc itemColor(id: ItemId): (uint8, uint8, uint8) =
   of iNone: (255, 0, 255)
 
 proc itemPixels(id: ItemId): seq[uint8] =
-  ## ground chip: outlined diamond in item color.
-  result = newSeq[uint8](TileSize * TileSize * 4)
+  ## Ground chip, native: a bevelled gem rather than a flat lozenge — lit
+  ## upper-left facet, darker lower-right facet, ink rim, specular dot.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
   let c = itemColor(id)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let d = abs(x * 2 + 1 - TileSize) + abs(y * 2 + 1 - TileSize)
-      if d <= TileSize - 1:
-        result.put(TileSize, x, y,
-          (if d >= TileSize - 2: shade(c, -60) else: c))
-  result.put(TileSize, 2, 2, (255'u8, 255'u8, 255'u8))
+  let r = TilePxR - 1 - RS
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let ex = x * 2 + 1 - TilePxR
+      let ey = y * 2 + 1 - TilePxR
+      let d = abs(ex) + abs(ey)
+      if d > r * 2:
+        continue
+      var col =
+        if ex + ey < -RS: shade(c, 34)        # upper-left facet catches light
+        elif ex + ey > RS * 2: shade(c, -34)  # lower-right facet in shadow
+        else: c
+      if d >= r * 2 - RS * 2:
+        col = shade(c, -66)                   # ink rim
+      result.put(TilePxR, x, y, col)
+  for oy in 0 ..< RS:                         # specular highlight
+    for ox in 0 ..< RS:
+      result.put(TilePxR, TilePxR div 3 + ox, TilePxR div 3 + oy,
+                 (255'u8, 255'u8, 255'u8))
   # amber backlight: matter glows, so loot separates from the plate
-  result.addBacklight(TileSize, TileSize, GoldTone, 70)
+  result.addBacklight(TilePxR, TilePxR, GoldTone, 70)
 
 proc projPixels(id: ItemId): seq[uint8] =
   result = newSeq[uint8](4 * 4 * 4)
@@ -927,34 +994,47 @@ proc reticlePixels(): seq[uint8] =
 proc cratePartPixels(rows: int): seq[uint8] =
   ## Crate rastering in top-to-bottom under the beam — a print, not a
   ## landing. The print head is an amber line at the current row.
-  result = newSeq[uint8](TileSize * TileSize * 4)
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
   let wood = (150'u8, 105'u8, 55'u8)
-  for y in 0 ..< min(rows, TileSize):
-    for x in 0 ..< TileSize:
-      let edge = x == 0 or y == 0 or x == TileSize - 1
-      result.put(TileSize, x, y, (if edge: shade(wood, -40) else: wood))
-  if rows < TileSize:
-    for x in 0 ..< TileSize:
-      result.put(TileSize, x, min(rows, TileSize - 1), GoldTone, 230)
+  let done = min(rows * RS, TilePxR)
+  for y in 0 ..< done:
+    for x in 0 ..< TilePxR:
+      let edge = x < RS or y < RS or x >= TilePxR - RS
+      var c = wood
+      if edge: c = shade(wood, -46)
+      elif y < TilePxR div 3: c = shade(wood, 26)
+      elif (y div RS) mod 2 == 0: c = shade(wood, -12)
+      result.put(TilePxR, x, y, c)
+  if done < TilePxR:
+    for i in 0 ..< RS:                     # print head, RS px thick
+      for x in 0 ..< TilePxR:
+        result.put(TilePxR, x, min(done + i, TilePxR - 1), GoldTone, 235)
 
 proc pingPixels(big: bool): seq[uint8] =
-  ## Expanding contested-crate ping (two-phase pulse).
-  result = newSeq[uint8](12 * 12 * 4)
-  let rr = (if big: 10 else: 6)
-  for y in 0 ..< 12:
-    for x in 0 ..< 12:
-      let dx = x * 2 + 1 - 12
-      let dy = y * 2 + 1 - 12
+  ## Expanding contested-crate ping. Authored natively so the ring is a
+  ## smooth circle with an antialiased rim instead of a jagged annulus.
+  const Sz = 12 * RS
+  result = newSeq[uint8](Sz * Sz * 4)
+  let rr = (if big: 10 * RS else: 6 * RS)
+  let inner = rr - 2 * RS
+  for y in 0 ..< Sz:
+    for x in 0 ..< Sz:
+      let dx = x * 2 + 1 - Sz
+      let dy = y * 2 + 1 - Sz
       let d2 = dx * dx + dy * dy
-      if d2 > (rr - 2) * (rr - 2) and d2 <= rr * rr:
-        result.put(12, x, y, GoldTone, (if big: 90'u8 else: 150'u8))
+      if d2 > inner * inner and d2 <= rr * rr:
+        # feather the outermost band so the curve reads round
+        let outer = d2 > (rr - RS) * (rr - RS)
+        let a = (if big: 90 else: 150) div (if outer: 2 else: 1)
+        result.put(Sz, x, y, GoldTone, uint8(a))
 
 proc hitFlashPixels(): seq[uint8] =
   ## 1-frame peak-white carrier silhouette on any damage taken.
-  result = newSeq[uint8](BodyW * BodyH * 4)
-  for y in 3 .. 7:
-    for x in 1 .. 6:
-      result.put(BodyW, x, y, PhosphorPeak, 170)
+  result = newSeq[uint8](BodyWR * BodyHR * 4)
+  for y in 5 .. 17:
+    let hw = hullHalfWidth(y)
+    for x in (8 - hw - 1) ..< (8 + hw + 1):
+      result.put(BodyWR, x, y, PhosphorPeak, 185)
 
 # --- 3x5 pixel font ---
 const Glyphs = {
@@ -1204,8 +1284,8 @@ proc spriteDefs(s: Sim): seq[uint8] =
         result.addSprite(SpBodyBase + slot * 10 + facing * 2 + frame,
           BodyWR, BodyHR, bodyPixels(slot div 2, slot mod 2, facing, frame),
           "body" & $slot, native = true)
-    result.addSprite(SpCorpseBase + slot, 12, 6,
-      corpsePixels(slot div 2, slot mod 2), "corpse" & $slot)
+    result.addSprite(SpCorpseBase + slot, CorpseW, CorpseH,
+      corpsePixels(slot div 2, slot mod 2), "corpse" & $slot, native = true)
   for id in [iSword, iSpear, iBow, iKnives, iBlowgun, iNet]:
     result.addSprite(SpWeaponBase + ord(id), 5, 5, weaponGlyph(id), "held_" & $id)
   # death burst in bone: the old (25,25,30)-on-Faraday burst measured
@@ -1217,7 +1297,8 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpZoneFireB, TileSize, TileSize, plasmaPixels(1, false), "plasmaB")
   result.addSprite(SpPlasmaCritA, TileSize, TileSize, plasmaPixels(0, true), "plasmaCritA")
   result.addSprite(SpPlasmaCritB, TileSize, TileSize, plasmaPixels(1, true), "plasmaCritB")
-  result.addSprite(SpGlassBody, BodyW, BodyH, glassBodyPixels(), "camo_glass")
+  result.addSprite(SpGlassBody, BodyWR, BodyHR, glassBodyPixels(),
+                   "camo_glass", native = true)
   result.addSprite(SpNetMesh, TileSize, TileSize, netMeshPixels(), "net_mesh")
   result.addSprite(SpPoisonHaloA, 10, 10, poisonHaloPixels(0), "haloA")
   result.addSprite(SpPoisonHaloB, 10, 10, poisonHaloPixels(1), "haloB")
@@ -1234,7 +1315,8 @@ proc spriteDefs(s: Sim): seq[uint8] =
     result.addSprite(SpFadeVoid + k, 6, 48,
                      dimmed(voidBeamPixels(), m), "fade_void")
   result.addSprite(SpGoldBeam, 8, 54, goldBeamPixels(), "gold_beam")
-  result.addSprite(SpGlitch, BodyW, BodyH, glitchPixels(), "glitch")
+  result.addSprite(SpGlitch, BodyWR, BodyHR, glitchPixels(), "glitch",
+                   native = true)
   result.addSprite(SpMouthA, TileSize, TileSize, mouthLightPixels(0), "mouthA")
   result.addSprite(SpMouthB, TileSize, TileSize, mouthLightPixels(1), "mouthB")
   for id in [iArrows, iDarts, iKnives]:
@@ -1245,18 +1327,20 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpFloodB, TileSize, TileSize, floodPixels(1), "floodB")
   for id in ItemId:
     if id != iNone:
-      result.addSprite(SpPodCrateBase + ord(id), TileSize, TileSize,
-                       podCratePixels(itemColor(id)), "pod_" & $id)
+      result.addSprite(SpPodCrateBase + ord(id), TilePxR, TilePxR,
+                       podCratePixels(itemColor(id)), "pod_" & $id,
+                       native = true)
   result.addSprite(SpPodChute, 10, 12, podChutePixels(), "chute")
   result.addSprite(SpChannelA, 10, 10, channelHaloPixels(0), "chanA")
   result.addSprite(SpChannelB, 10, 10, channelHaloPixels(1), "chanB")
   result.addSprite(SpRevealMark, 5, 5, revealMarkPixels(), "revealed")
   for n in 0 .. 3:
-    result.addSprite(SpBushBase + n, TileSize, TileSize, bushPixels(n), "bush" & $n)
+    result.addSprite(SpBushBase + n, TilePxR, TilePxR, bushPixels(n),
+                     "bush" & $n, native = true)
   for id in ItemId:
     if id != iNone:
-      result.addSprite(SpItemBase + ord(id), TileSize, TileSize,
-                       itemPixels(id), "item_" & $id)
+      result.addSprite(SpItemBase + ord(id), TilePxR, TilePxR,
+                       itemPixels(id), "item_" & $id, native = true)
   for id in [iArrows, iDarts, iKnives, iNet]:
     result.addSprite(SpProjBase + ord(id), 4, 4, projPixels(id), "proj_" & $id)
   for slot in 0 .. 15:
@@ -1268,11 +1352,15 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpSettleLine, WorldPx, 3, settleLinePixels(), "settle")
   result.addSprite(SpReticle, TileSize, TileSize, reticlePixels(), "reticle")
   for ph in 0 .. 2:
-    result.addSprite(SpCratePartBase + ph, TileSize, TileSize,
-                     cratePartPixels(2 + ph * 2), "crate_p" & $ph)
-  result.addSprite(SpPingA, 12, 12, pingPixels(false), "pingA")
-  result.addSprite(SpPingB, 12, 12, pingPixels(true), "pingB")
-  result.addSprite(SpHitFlash, BodyW, BodyH, hitFlashPixels(), "hit")
+    result.addSprite(SpCratePartBase + ph, TilePxR, TilePxR,
+                     cratePartPixels(2 + ph * 2), "crate_p" & $ph,
+                     native = true)
+  result.addSprite(SpPingA, 12 * RS, 12 * RS, pingPixels(false), "pingA",
+                   native = true)
+  result.addSprite(SpPingB, 12 * RS, 12 * RS, pingPixels(true), "pingB",
+                   native = true)
+  result.addSprite(SpHitFlash, BodyWR, BodyHR, hitFlashPixels(), "hit",
+                   native = true)
 
 proc bodySprite(r: Renderer, s: Sim, slot: int): int =
   let moving = s.tick - r.lastMoveTick[slot] < 12
