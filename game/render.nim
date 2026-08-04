@@ -791,46 +791,71 @@ proc glassBodyPixels(): seq[uint8] =
                  (if edge: 96'u8 else: 30'u8))
 
 proc netMeshPixels(): seq[uint8] =
-  ## Etch-bright restraint mesh — structure pinning a signal down.
-  result = newSeq[uint8](TileSize * TileSize * 4)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      if (x + y) mod 2 == 0 and (x == 0 or y == 0 or x == TileSize - 1 or
-                                  y == TileSize - 1 or x == y):
-        result.put(TileSize, x, y, (150'u8, 170'u8, 185'u8), 210)
+  ## Restraint mesh, native: a woven grid with knots at the crossings, so
+  ## it reads as rope over the carrier rather than a diagonal hatch.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  let cord = (150'u8, 170'u8, 185'u8)
+  let step = TilePxR div 3
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let onV = x mod step < RS div 2 + 1
+      let onH = y mod step < RS div 2 + 1
+      if onV or onH:
+        let knot = onV and onH
+        result.put(TilePxR, x, y,
+                   (if knot: shade(cord, 34) else: cord),
+                   (if knot: 235'u8 else: 190'u8))
 
 proc poisonHaloPixels(phase: int): seq[uint8] =
-  result = newSeq[uint8](10 * 10 * 4)
-  for y in 0 ..< 10:
-    for x in 0 ..< 10:
-      let dx = x * 2 + 1 - 10
-      let dy = y * 2 + 1 - 10
+  ## Airborne toxin, native: a dithered mist annulus that drifts with the
+  ## pulse phase instead of a hard dashed ring.
+  const Sz = 10 * RS
+  result = newSeq[uint8](Sz * Sz * 4)
+  let outer = 9 * RS
+  let inner = 6 * RS
+  for y in 0 ..< Sz:
+    for x in 0 ..< Sz:
+      let dx = x * 2 + 1 - Sz
+      let dy = y * 2 + 1 - Sz
       let d2 = dx * dx + dy * dy
-      # poison is airborne, not a signal ring: dither it into mist
-      if d2 > 36 and d2 <= 81 and
+      if d2 > inner * inner and d2 <= outer * outer and
          pixHash(x * 9 + phase * 31, y * 7 + phase * 19) mod 100 < 55:
-        result.put(10, x, y, Klaxon, 130)
+        # thin out toward the rim so the cloud has an edge, not a cut
+        let far = d2 > (outer - RS * 2) * (outer - RS * 2)
+        result.put(Sz, x, y, Klaxon, (if far: 84'u8 else: 140'u8))
 
 proc voidBeamPixels(): seq[uint8] =
-  ## Vertical dark energy beam (death marker).
-  result = newSeq[uint8](6 * 48 * 4)
-  for y in 0 ..< 48:
-    for x in 0 ..< 6:
-      let a = uint8(200 - (y * 3))
-      if x in [0, 5]:
-        result.put(6, x, y, (110'u8, 30'u8, 140'u8), a div 2)
+  ## Vertical dark energy beam (death marker), native: a bright core with
+  ## violet flanks that both taper as the column rises.
+  const W = 6 * RS
+  const H = 48 * RS
+  result = newSeq[uint8](W * H * 4)
+  for y in 0 ..< H:
+    let a = 200 - (y * 300) div H
+    if a <= 0:
+      continue
+    for x in 0 ..< W:
+      let fromEdge = min(x, W - 1 - x)
+      if fromEdge < RS:
+        result.put(W, x, y, (110'u8, 30'u8, 140'u8), uint8(a div 2))
       else:
-        result.put(6, x, y, (8'u8, 4'u8, 12'u8), a)
+        result.put(W, x, y, (8'u8, 4'u8, 12'u8), uint8(a))
 
 proc goldBeamPixels(): seq[uint8] =
-  ## Holographic gold drop cylinder.
-  result = newSeq[uint8](8 * 54 * 4)
-  for y in 0 ..< 54:
-    for x in 0 ..< 8:
-      if x in [0, 7]:
-        result.put(8, x, y, GoldTone, 170)
-      elif (y + x) mod 6 == 0:
-        result.put(8, x, y, shade(GoldTone, 40), 90)
+  ## Delivery beam, native: twin bright rails with downward-scrolling
+  ## hatch between them — a printer feed, not a spotlight.
+  const W = 8 * RS
+  const H = 54 * RS
+  result = newSeq[uint8](W * H * 4)
+  for y in 0 ..< H:
+    for x in 0 ..< W:
+      let fromEdge = min(x, W - 1 - x)
+      if fromEdge < RS:
+        result.put(W, x, y, GoldTone, 180)
+      elif fromEdge < RS * 2:
+        result.put(W, x, y, shade(GoldTone, 20), 70)
+      elif (y + x) mod (6 * RS) < RS:
+        result.put(W, x, y, shade(GoldTone, 40), 95)
 
 proc glitchPixels(): seq[uint8] =
   ## Camo-reveal artifact: horizontal tear bands across the hull, which
@@ -851,25 +876,39 @@ proc glitchPixels(): seq[uint8] =
         (if n mod 2 == 0: 235'u8 else: 160'u8))
 
 proc mouthLightPixels(phase: int): seq[uint8] =
-  ## Volumetric golden light pooling in the Fortress mouths.
-  result = newSeq[uint8](TileSize * TileSize * 4)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      if (x + y + phase) mod 3 != 0:
-        result.put(TileSize, x, y, shade(GoldTone, 30), 90)
+  ## Light pooling in a Fortress mouth, native: brightest at the tile
+  ## centre and falling off to the edges, so the four gates glow rather
+  ## than flicker as flat patches.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  let mid = TilePxR div 2
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let d = abs(x - mid) + abs(y - mid)
+      if (x + y + phase) mod 3 == 0:
+        continue                       # dither keeps it volumetric
+      let a = max(0, 120 - d * 70 div TilePxR)
+      result.put(TilePxR, x, y, shade(GoldTone, 30), uint8(a))
 
 proc trailPixels(id: ItemId): seq[uint8] =
-  ## Fading combat vector trail: white kinetic / green vapor / silver blur.
-  result = newSeq[uint8](TileSize * TileSize * 4)
+  ## Fading combat vector trail, native: a tapered streak, brightest at
+  ## the head, rather than a flat one-pixel line.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
   let c =
     case id
     of iArrows: (255'u8, 255'u8, 255'u8)
     of iDarts: Klaxon
     else: (200'u8, 200'u8, 215'u8)
-  for x in 0 ..< TileSize:
-    result.put(TileSize, x, TileSize div 2, c, 110)
-    if id == iDarts:
-      result.put(TileSize, x, TileSize div 2 + 1, c, 60)
+  let mid = TilePxR div 2
+  for x in 0 ..< TilePxR:
+    let a = 60 + x * 90 div TilePxR    # brightens toward the head
+    for o in 0 ..< RS:
+      result.put(TilePxR, x, mid + o - RS div 2, c, uint8(a))
+    if x > TilePxR div 3:              # feathered edges near the head
+      result.put(TilePxR, x, mid - RS, c, uint8(a div 3))
+      result.put(TilePxR, x, mid + RS, c, uint8(a div 3))
+  if id == iDarts:                     # poison vapor drags a second line
+    for x in 0 ..< TilePxR:
+      result.put(TilePxR, x, mid + RS + RS div 2, c, 70)
 
 proc itemColor(id: ItemId): (uint8, uint8, uint8) =
   case id
@@ -1299,10 +1338,14 @@ proc spriteDefs(s: Sim): seq[uint8] =
   result.addSprite(SpPlasmaCritB, TileSize, TileSize, plasmaPixels(1, true), "plasmaCritB")
   result.addSprite(SpGlassBody, BodyWR, BodyHR, glassBodyPixels(),
                    "camo_glass", native = true)
-  result.addSprite(SpNetMesh, TileSize, TileSize, netMeshPixels(), "net_mesh")
-  result.addSprite(SpPoisonHaloA, 10, 10, poisonHaloPixels(0), "haloA")
-  result.addSprite(SpPoisonHaloB, 10, 10, poisonHaloPixels(1), "haloB")
-  result.addSprite(SpVoidBeam, 6, 48, voidBeamPixels(), "void_beam")
+  result.addSprite(SpNetMesh, TilePxR, TilePxR, netMeshPixels(), "net_mesh",
+                   native = true)
+  result.addSprite(SpPoisonHaloA, 10 * RS, 10 * RS, poisonHaloPixels(0),
+                   "haloA", native = true)
+  result.addSprite(SpPoisonHaloB, 10 * RS, 10 * RS, poisonHaloPixels(1),
+                   "haloB", native = true)
+  result.addSprite(SpVoidBeam, 6 * RS, 48 * RS, voidBeamPixels(),
+                   "void_beam", native = true)
   # baked fade ramps: stage 0 is full strength, later stages pre-dimmed
   for k in 0 ..< FadeStages:
     let m = (FadeStages - k) * 255 div FadeStages
@@ -1312,15 +1355,19 @@ proc spriteDefs(s: Sim): seq[uint8] =
                      dimmed(burstPixels(18, 255, 210, 110), m), "fade_ignite")
     result.addSprite(SpFadeMine + k, 12, 12,
                      dimmed(burstPixels(12, 255, 74, 54), m), "fade_mine")
-    result.addSprite(SpFadeVoid + k, 6, 48,
-                     dimmed(voidBeamPixels(), m), "fade_void")
-  result.addSprite(SpGoldBeam, 8, 54, goldBeamPixels(), "gold_beam")
+    result.addSprite(SpFadeVoid + k, 6 * RS, 48 * RS,
+                     dimmed(voidBeamPixels(), m), "fade_void", native = true)
+  result.addSprite(SpGoldBeam, 8 * RS, 54 * RS, goldBeamPixels(),
+                   "gold_beam", native = true)
   result.addSprite(SpGlitch, BodyWR, BodyHR, glitchPixels(), "glitch",
                    native = true)
-  result.addSprite(SpMouthA, TileSize, TileSize, mouthLightPixels(0), "mouthA")
-  result.addSprite(SpMouthB, TileSize, TileSize, mouthLightPixels(1), "mouthB")
+  result.addSprite(SpMouthA, TilePxR, TilePxR, mouthLightPixels(0), "mouthA",
+                   native = true)
+  result.addSprite(SpMouthB, TilePxR, TilePxR, mouthLightPixels(1), "mouthB",
+                   native = true)
   for id in [iArrows, iDarts, iKnives]:
-    result.addSprite(SpTrailBase + ord(id), TileSize, TileSize, trailPixels(id), "trail_" & $id)
+    result.addSprite(SpTrailBase + ord(id), TilePxR, TilePxR, trailPixels(id),
+                     "trail_" & $id, native = true)
   result.addSprite(SpFirestormA, TileSize, TileSize, stormPixels(0), "stormA")
   result.addSprite(SpFirestormB, TileSize, TileSize, stormPixels(1), "stormB")
   result.addSprite(SpFloodA, TileSize, TileSize, floodPixels(0), "floodA")
