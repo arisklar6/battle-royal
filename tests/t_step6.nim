@@ -1,8 +1,8 @@
 ## Step-6 tests: talk validation/rate-limit/sanitize, channel delivery,
 ## dead silence, input-JSON round trip, determinism with talk.
 
-import std/[json, strutils]
-import zero_sum/[prng, types, arena, sim]
+import std/json
+import zero_sum/[types, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 
@@ -32,23 +32,23 @@ block talk_validation:
 
 block delivery_sets:
   var s = mkSim()
-  doAssert s.submitTalk(AgentId(4), tcTeam, -1, "team ho") == tkAccepted   # team C = slots 4,5
+  doAssert s.submitTalk(AgentId(4), tcTeam, -1, "team ho") == tkAccepted # team C = slots 4,5
   doAssert s.submitTalk(AgentId(6), tcDm, 9, "psst") == tkAccepted
   doAssert s.submitTalk(AgentId(8), tcBroadcast, -1, "everyone") == tkAccepted
-  s.step()   # delivery happens next tick
+  s.step() # delivery happens next tick
   s.step()
   # inbox contents at the delivery tick were consumed; use a fresh exchange
   var s2 = mkSim()
   discard s2.submitTalk(AgentId(4), tcTeam, -1, "team ho")
   discard s2.submitTalk(AgentId(6), tcDm, 9, "psst")
   discard s2.submitTalk(AgentId(8), tcBroadcast, -1, "everyone")
-  s2.step()   # tick 0 executes; delivery happens inside the NEXT step
-  s2.step()   # tick 1: inboxes now hold tick-0 messages
-  doAssert s2.inbox[5].len == 2      # teammate: team msg + broadcast
-  doAssert s2.inbox[4].len == 2      # sender echo + broadcast
-  doAssert s2.inbox[9].len == 2      # dm + broadcast
-  doAssert s2.inbox[6].len == 2      # dm sender echo + broadcast
-  doAssert s2.inbox[0].len == 1      # broadcast only
+  s2.step() # tick 0 executes; delivery happens inside the NEXT step
+  s2.step() # tick 1: inboxes now hold tick-0 messages
+  doAssert s2.inbox[5].len == 2 # teammate: team msg + broadcast
+  doAssert s2.inbox[4].len == 2 # sender echo + broadcast
+  doAssert s2.inbox[9].len == 2 # dm + broadcast
+  doAssert s2.inbox[6].len == 2 # dm sender echo + broadcast
+  doAssert s2.inbox[0].len == 1 # broadcast only
   var texts0: seq[string] = @[]
   for m in s2.inbox[0]: texts0.add(m.text)
   doAssert texts0 == @["everyone"]
@@ -65,16 +65,20 @@ block dead_silence:
 
 block input_json_roundtrip:
   var s = mkSim()
-  s.applyInputJson(AgentId(0), parseJson("""{"talk":{"channel":"dm","to":3,"text":"via json"}}"""))
+  s.applyInputJson(AgentId(0), parseJson(
+    """{"type":"talk","channel":"dm","to":3,"text":"via json"}"""))
   doAssert s.talkLog.len == 1 and s.talkLog[0].to == 3
-  s.applyInputJson(AgentId(1), parseJson("""{"allocate_stats":{"speed":7,"strength":5,"intelligence":4,"athleticism":4}}"""))
+  s.applyInputJson(AgentId(1), parseJson(
+    """{"type":"allocate_stats","speed":7,"strength":5,"intelligence":4,"athleticism":4}"""))
   doAssert s.agents[1].statsLocked and s.agents[1].stats.speed == 7
-  s.applyInputJson(AgentId(2), parseJson("""{"do":"move","dir":"SW"}"""))
+  s.applyInputJson(AgentId(2), parseJson(
+    """{"type":"action","do":"move","dir":"SW"}"""))
   # move pends: step during countdown moves off pedestal -> mine (proves applied)
   s.step()
   doAssert not s.agents[2].alive
   # malformed payloads are inert
-  s.applyInputJson(AgentId(3), parseJson("""{"do":"fly"}"""))
+  s.applyInputJson(AgentId(3), parseJson(
+    """{"type":"action","do":"fly"}"""))
   s.applyInputJson(AgentId(3), parseJson(""""just a string""""))
   s.applyInputJson(AgentId(3), nil)
 

@@ -46,7 +46,7 @@ The bones of Zero Sum are excellent: a deterministic sim with real strategic geo
 
 14. **Finale and victory are anticlimaxes.** The signature teammates-must-fight moment is a 4-second 3×5-caps banner (and a possibly-never-firing off-center "CIVIL WAR" at hardcoded left:240/top:260 on the player view). Victory: a 4s gold firework and a tiny banner over an anonymous sprite; on the analyst desk the WINNER overlay parks *on top of* the final scoreboard at the exact moment viewers want to study it. A 6-minute match resolves in under 5 seconds of acknowledgment.
 
-15. **Replay is a tape you can only play at 1×.** No seek, no speed, no pause; `/watch` and `/player` are dead in replay mode (runReplay services only viewers + analyst); `eventHistory` is accumulated in the sim and never exported. No timeline, no highlights, no shareable clips — the growth loop of every spectator game, absent.
+15. **Replay controls belong in the static viewer.** The presentation recording supports seek, speed, pause, and loop without starting a game server.
 
 16. **Motion quality: teleporting board pieces.** No interpolation anywhere (spectator objects and player tokens snap per packet); every flicker effect shares one 6-tick metronome, so ring, halos, and hazards pulse in eerie lockstep. Chases — a whole stat's worth of gameplay — read as flicker, not motion.
 
@@ -236,7 +236,7 @@ Omniscient and cinematic — cinematic like mission control. The green-meadow pa
 
 ### 5.1 The frame
 
-Letterboxed in true-black bars (the only pure #000). Full arena on Faraday; all sixteen traces weaving; team hues alive on carrier diamonds; bloom permitted here only. Registration corner marks instead of window chrome. Match clock huge in the data face, top-left, beside the **16-lamp row** — the alive count as light: lit phosphor lamps, a one-frame flare then cold Etch at each settlement. A red LIVE dot when live; a REPLAY tag when re-simulated.
+Letterboxed in true-black bars (the only pure #000). Full arena on Faraday; all sixteen traces weaving; team hues alive on carrier diamonds; bloom permitted here only. Registration corner marks instead of window chrome. Match clock huge in the data face, top-left, beside the **16-lamp row** — the alive count as light: lit phosphor lamps, a one-frame flare then cold Etch at each settlement. A red LIVE dot when live; a REPLAY tag when playing a recording.
 
 ### 5.2 Identity & health on the field (the two critical fixes)
 
@@ -269,7 +269,7 @@ Replays are bit-exact, so the camera directs itself deterministically from the e
 
 ### 5.8 Replay & analyst desk
 
-- **Scrubber:** full-width timeline strip: ring stages as magenta segments, 16 settlement ticks, amber airdrop diamonds, hazard bands, finale mark. Click-to-seek (re-simulate from nearest snapshot or from t=0 — determinism makes seek cheap to implement offline), speed steps ×¼–×8, pause.
+- **Scrubber:** full-width timeline strip: ring stages as magenta segments, 16 settlement ticks, amber airdrop diamonds, hazard bands, finale mark. Click-to-seek by replaying differential presentation packets from frame zero, speed steps ×¼–×8, pause.
 - **Analyst desk:** becomes the paddock — broadcast palette at instrument density. Adds: minimap (from the positions field), phase + next-shrink countdown in the topbar, per-agent hand column (already in feed, unused), chat transcript pane, and the stat matrix as-is. The WINNER overlay moves to a lower-third so it stops covering the final scoreboard. Heatmaps (position density, death locations) computed from exported event history — the burned-in trace map *is* the heatmap, shown literally.
 - **Stream test law:** all of the above is verified on a compressed 1080p60 capture in week one; energized lines thicken to 2px on broadcast output if they shimmer.
 

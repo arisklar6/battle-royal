@@ -1754,12 +1754,14 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for stale in ghostIdx ..< r.nextRingDrawn:
     result.addDeleteObject(ObNextRingBase + stale)
   r.nextRingDrawn = ghostIdx
-  # phosphor persistence: decay + re-upload the overlay at 2 Hz
-  if r.traceActive and s.tick mod 12 == 0:
+  # Phosphor persistence is the only full-world dynamic sprite. Refresh it at
+  # 0.5 Hz so the live stream and static presentation recording stay compact;
+  # object motion and combat effects continue at the full 24 Hz tick rate.
+  if r.traceActive and s.tick mod 48 == 0:
     for i in 0 ..< r.trace.len:
       let a = r.trace[i] and 0xFF
       if a > 0:
-        let na = (a * 4) div 5
+        let na = (a * 2) div 5
         r.trace[i] = (r.trace[i] and 0xFFFFFF00'u32) or
                      (if na < 6: 0'u32 else: na)
     result.addSprite(SpTraceLayer, WorldPx, WorldPx, r.traceSpritePixels(s),

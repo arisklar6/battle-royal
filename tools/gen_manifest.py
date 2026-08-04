@@ -185,6 +185,7 @@ MANIFEST = {
     "tags": ["battle-royale", "multi-agent", "real-time", "social", "sponsor-economy"],
     "game": {
         "name": "zero-sum",
+        "replay_viewer": {"bundle": "build/static-replay-viewer"},
         "description": "Battle royale for 16 agents in 8 teams of 2: a "
                        "loot-stocked central Fortress, a shrinking ring of "
                        "fire, open talk channels, sponsor softcoin airdrops "

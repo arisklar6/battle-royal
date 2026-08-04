@@ -35,7 +35,7 @@ All times in ticks at 24 Hz. `t=0` is episode start.
 - Observations are delivered every tick during freeze (`phase: "countdown"`).
 
 ### 1.2 Per-tick resolution order (deterministic; this order is part of the spec)
-1. Ingest queued client inputs (actions, talk) and accepted sponsor gifts for this tick; append all to the input log. Canonicalization: exactly one action entry per slot per tick — the first action message received in the window wins, later ones are dropped before logging; illegal/ignored actions are logged as received and the ignore rule is deterministic sim logic (replay reproduces the ignore).
+1. Ingest queued client inputs (actions, talk) and accepted sponsor gifts for this tick; append player inputs to the fairness log. Canonicalization: exactly one action entry per slot per tick — the first action message received in the window wins, later ones are dropped before logging; illegal/ignored actions are logged as received and the ignore rule is deterministic sim logic.
 2. Phase transitions (ignition, zone stage changes + radius update per §7.1 formula, scripted events, shop open).
 3. Movement — complete algorithm:
    a. Collect intended target tiles of all movers (off-cooldown, legal terrain).
@@ -194,7 +194,7 @@ Both emit a warning event 120 ticks prior with the region geometry (arena-wide).
 
 ## 8. Death, finale, win (LOCKED)
 
-- Permadeath. Death → black-fireworks visual + boom, arena-wide, in renderer + observations + replay. Inventory drops on death tile. Dead agents: no actions, no talk; they receive a terminal `final` message (§10.5); their policy container should then exit 0.
+- Permadeath. Death → black-fireworks visual + boom, arena-wide, in renderer + observations + static presentation replay. Inventory drops on death tile. Dead agents: no actions, no talk; they receive a terminal `final` message (§10.5); their policy container should then exit 0.
 - **FFA finale**: the tick only one team has living members AND ≥2 of them are alive, a `finale` event fires arena-wide (distinct fireworks + banner). Nothing mechanical changes (friendly fire was always on) — the event is dramatic framing telling teammates the alliance is over.
 - Win: last agent alive = winner (placement 1). Match ends immediately; `final` sent to all; artifacts written; process exits 0 per runnable contract.
 
@@ -202,7 +202,7 @@ Both emit a warning event 120 ticks prior with the region geometry (arena-wide).
 
 ## 9. Sponsor system (softcoin)
 
-LOCKED frame: no platform economy exists — softcoin is a per-team budget fully accounted inside the game. Own-team gifts only in v1. Every gift = logged external-input event; replays reproduce gifts from the log. Certification never depends on a live human. No real-money integration, ever.
+LOCKED frame: no platform economy exists — softcoin is a per-team budget fully accounted inside the game. Own-team gifts only in v1. Every gift is recorded in the sponsor log and public presentation replay. Certification never depends on a live human. No real-money integration, ever.
 
 ### 9.1 Accounting
 - Budget: `sponsor.budget_per_team` softcoin per team per match (DECIDED: **300**). v1: one sponsor token per team.
@@ -224,7 +224,7 @@ LOCKED frame: no platform economy exists — softcoin is a per-team budget fully
 
 ### 9.3 Gift path (both ingress modes → identical pipeline, LOCKED)
 1. Request arrives: live (`/sponsor` WS, §11) or scripted (`sponsor.scripted_gifts` config list, §17.1) — same struct: `{recipient_slot, item_id}` + sponsor identity (token owner or `"script"`).
-2. Validated per §9.1 at the current tick T. Accept → deduct, log, append to the recorded input log (replay-identical, §15).
+2. Validated per §9.1 at the current tick T. Accept → deduct and append to the sponsor log; the public result appears in the presentation replay (§14).
 3. **Landing tile (pinned algorithm)**: fixed at T from the recipient's position P: enumerate Chebyshev rings r = 0, 1, 2, 3 around P; within each ring start at (P.x, P.y − r) and walk the full ring clockwise; the first **free** tile wins. Free = not wall/rock/Fortress wall, not occupied by an agent, landed pod, or a landing tile already reserved by an in-flight pod (reservations are made in gift-acceptance log order). If no free tile within r ≤ 3: fall back to the tile minimizing dx²+dy² from P among free tiles, tie-broken by the same ring enumeration order. Announced arena-wide immediately (`gift_incoming` with landing tile, **item id**, recipient, ETA).
 4. Pod lands at **T+120** (5 s): parachute/pod sprite descends on the spectator view; `gift_landed` event.
 5. Landed pod is a ground container with **public contents**: any agent (any team) may `pickup` it (DECIDED: free-for-all interception — drops are contested objectives). Persists until looted or match end.
@@ -240,7 +240,7 @@ LOCKED frame: no platform economy exists — softcoin is a per-team budget fully
 - Sponsors **adopt a team** (A–H) and spend that team's budget (300, §9.1 unchanged).
 - Purchases are **tile-targeted**: the sponsor picks any tile; landing = nearest free tile by the pinned spiral (same spiral as §9.3 step 3, origin = the chosen tile instead of the recipient's position).
 - **One purchase at a time per team**: 60 s lockout (`GiftLockoutTicks = 1440`; new reject reason `lockout`).
-- The lockout applies ONLY to tile-mode purchases, so v0.1 recipient-mode replay logs re-simulate unchanged. Recipient mode remains in the wire + input-log grammar as a legacy/replay path under its old rules (incl. `recipient_dead`, `not_own_team`) and with NO lockout.
+- The lockout applies ONLY to tile-mode purchases. Recipient-mode scripted gifts remain under their original rules (including `recipient_dead` and `not_own_team`) with no lockout.
 - Wire deltas (§11): `gift_request` gains `target: [x,y]`; `sponsor_welcome` now carries `static_map` + `lockout_ticks`; `sponsor_state` carries `lockout_remaining`.
 - Artifact deltas (§14): `GiftRecord` and `sponsor_log.json` gain `target`; `recipient_slot` is `-1` for tile gifts.
 - New **read-only WS `/watch?slot=N`**: `player_config` + that slot's observation stream + `final`. No token, no inputs — leaks nothing `/global` does not already show. `/client/player` is now the read-only **Agent Cam** built on it.
@@ -320,7 +320,7 @@ Reconnects: a second connection with a valid token for an occupied slot **replac
 
 - WS `/sponsor?team=B&token=...` — token must match `sponsor.sponsor_tokens[team]` from runtime config (secrets never in manifest). Bad token → connection rejected at upgrade. `sponsor.live: false` → 403.
 - `GET /client/sponsor?team=B&token=...` — browser console: embeds the global spectator view + shop panel + budget + gift log. WS URL per the client-page contract below. The sponsor console URL is documented alongside the printed links.
-- **Client-page WS contract (all our HTML clients — player, global, admin, replay, sponsor)**: honor an optional `?address=` query param when present (the contract for pages served through an HTTP proxy, e.g. hosted play — verified KUBERNETES_RUNNER_README.md:147–149), else derive the WS URL from `window.location` with a pathname rewrite — the Paint Arena `websocketAddress()` fallback pattern (verified player.html:175–187). Locally printed `coworld play` links carry only `slot`+`token` (verified play.py:385–399); both facts coexist.
+- **Client-page WS contract (player, global, admin, sponsor)**: honor an optional `?address=` query param when present (the contract for pages served through an HTTP proxy, e.g. hosted play — verified KUBERNETES_RUNNER_README.md:147–149), else derive the WS URL from `window.location` with a pathname rewrite — the Paint Arena `websocketAddress()` fallback pattern (verified player.html:175–187). The static replay viewer instead receives an opaque replay URL in `?replay=` and makes no WebSocket connection.
 - Messages:
 ```json
 S→C {"type":"sponsor_welcome","team":"B","budget":300,"catalog":{"sword":120},"shop_opens_tick":1680,"tick":312}
@@ -365,35 +365,37 @@ S→C {"type":"gift_result","request_id":"r2","accepted":false,"reason":"insuffi
 - `chat_transcript.txt` (human): `[t=01234] [team] P03 (B): push the mouth` / `[t=02350] [dm→P09] P02 (A): truce until zone 3?` / system lines: `[t=00240] * IGNITION *`, `[t=05500] * P07 (D) DOWN — 9 remain *`, `[t=02520] * SPONSOR DROP for P03 (B): sword, landed (20,30) *`.
 - `chat_transcript.json` (machine): `[{"tick":1234,"slot":3,"team":"B","channel":"team","to":null,"text":"..."}]` + system events with `"slot":null,"kind":"death|gift|ignition|finale|zone"`.
 - Echoed live to stdout with `CHAT ` prefix → lands in the public game-logs artifact (platform adaptation, LOCKED). Local runs also write both files next to results for convenience.
-- **stdout hygiene (verified: game stdout/stderr are public)**: chat/sponsor/death lines are public by design; the seed, loot layout, and any hidden state are NEVER printed to live logs — the seed surfaces only in post-episode artifacts (results.json, match_summary.json, replay header).
+- **stdout hygiene (verified: game stdout/stderr are public)**: chat/sponsor/death lines are public by design; the seed, loot layout, and any hidden state are NEVER printed to live logs — the seed surfaces only in post-episode results and the platform's episode config.
 
-## 14. Replay & artifact bundle (LOCKED adaptation: platform carries results.json + one replay blob + logs; our replay artifact is a zip)
+## 14. Static presentation replay (LOCKED adaptation: platform carries results.json + one replay blob + logs)
 
-`replay.zip` bytes written to `COGAME_SAVE_REPLAY_URI` (at certification the artifact is literally `{workspace}/replay`, no extension — never assume a filename):
-```
-replay.zsr              # engine replay stream (bitreplay-v3 format), tick-hash + chat + client-input records
-input_log.json          # every applied input: actions, talk, sponsor gifts (tick, source, payload) — the determinism log
-chat_transcript.txt / chat_transcript.json
-sponsor_log.json        # [{tick_requested, tick_landed, sponsor, team, recipient_slot, item, cost, status, reason?, balance_after}]
-match_summary.json      # results.json mirror + zone timeline + death log + seed actually used
-```
-- Replay mode (verified certify probe): certifier relaunches the game image with `COGAME_LOAD_REPLAY_URI=file:///coworld-replay/<name>` (read-only mount), then requires `/healthz` 200, `GET /client/replay` 2xx/3xx, and **one non-empty frame on WS `/replay` within min(timeout, 10)s**. Our replay server unzips (zippy — upstream dependency), streams frames on `/replay`, serves `/client/replay` with autoplay + loop. Both accept an optional `?uri=` override, defaulting to the env URI.
-- ReplaySpec (verified fields): `magic: "ZERO_SUM"` (8 ASCII bytes), `formatVersion: 3`, `gameName: "zero_sum"`, `gameVersion: <manifest version>`, `joinKind: rjkNameSlotToken`, `allowChat: true`, `allowCompressed: true`, `hashOrder: rhoError`.
-- **Effective-config rule (owner directive)**: the configJson stored in the replay header is the COMPLETE EFFECTIVE config — when the incoming config was seedless, the minted seed is written into it before `openReplayWriter` (engine replay spec: "A writer should store the complete effective config"). A seedless run's replay is therefore self-reproducing. Tokens are stripped from the stored config (auth material never lands in the replay artifact).
-- Sponsor gifts + actions + talk ride the 0x07 client-input records (arbitrary bytes, u32-prefixed — verified in code; the engine's spec doc predates 0x07) → "deterministic given seed + recorded input log" is native (LOCKED).
+The opaque bytes written to `COGAME_SAVE_REPLAY_URI` are a deterministic,
+zlib-compressed sequence of timestamped `sprite_v1` packets. These are the
+same public presentation packets generated for `/global`; no mechanics or
+private player observations are duplicated into browser code.
+
+The manifest declares `game.replay_viewer.bundle`. Observatory opens the
+game-owned static `index.html` with the replay URL in `?replay=`. The viewer
+fetches and validates the bytes, feeds packets into the shared global renderer,
+and provides autoplay, pause, speed, seek, and loop controls without starting
+the game image. Corrupt, incompatible, or missing artifacts fail visibly.
+
+Human-readable chat transcripts, sponsor logs, event history, and fairness
+reports remain separate local match artifacts. Auth tokens and hidden state
+never enter the public presentation recording.
 
 ## 15. Determinism (LOCKED invariant; certify does NOT machine-check it — we enforce it ourselves)
 
 1. Initial state = pure function of the seed (loot, bushes, rocks, crate rolls — single PRNG, fixed consumption order: rocks → crates positions → crate contents → bushes → tier-1 → tier-2 assignments).
 2. Evolution = pure function of (state, applied inputs). All in-match randomness (movement contests, dodge, forage) draws from the same match PRNG in §1.2 step order. No wall clock, no ambient randomness, no hash-map iteration in sim, no floats (all centi-HP integer arithmetic, §5.2).
-3. Applied-input log is the source of truth: whatever the server applied each tick (including `none` for late/silent policies, including accepted gifts) is recorded; replay re-applies the log byte-for-byte.
+3. The applied-input log supports fairness reporting. Replay presentation is recorded directly from the public renderer and does not reconstruct the simulation from this log.
 4. Live-play nondeterminism (network timing changes which inputs arrive by the tick boundary) exists ONLY upstream of the log — documented intentional boundary. Verified engine norm: fixed 24 Hz frame limiter, no wait-for-actions, no per-player action deadline.
-5. Tick-hash record every tick; **repeat-run determinism test**: same seed + same scripted inputs twice → identical hash streams (`--mismatch-quit` style). Unit-tested in CI (Phase C) along with stat validation, scoring table, softcoin accounting. Platform rung-1 contract (verified, AUTHORING.md): same seed twice → identical initial state AND trajectory under a scripted policy; NO seed → differing states across runs; a new episode mints a fresh seed. **Plus the minted-seed round-trip test (owner directive): seedless run → re-run from the replay's recorded effective config → identical tick-hash streams** (guards against seedless runs silently becoming irreproducible).
+5. Tick-hash record every tick; **repeat-run determinism test**: same seed + same scripted inputs twice → identical hash streams. Unit-tested in CI along with stat validation, scoring, softcoin accounting, and byte-exact presentation replay round trips. Platform rung-1 contract (verified, AUTHORING.md): same seed twice → identical initial state AND trajectory under a scripted policy; NO seed → differing states across runs; a new episode mints a fresh seed.
 6. Never launch reproducible episodes via upstream multiruns/tournament_server (verified: they clobber config seeds with wall-clock values).
 
 ## 16. Renderer & spectacle (LOCKED: reuse sprite_v1 + vendored global client; spectacle is a design goal)
 
-- `/global` + `/replay` speak sprite_v1 → vendored global client reskinned for Zero Sum. `/client/player` = custom HTML client (JSON obs → canvas, action buttons/keys, talk box) — WS URL per the §11 client-page contract (`?address=` when present, else same-origin fallback). `/client/admin` + WS `/admin` = ops console (pause/resume/tick-rate — the Paint Arena admin idiom); sponsor ingress stays separate (D2).
+- `/global` speaks sprite_v1 to the shared global client. Static replay records and replays the same packets in-browser. `/client/player` = custom HTML client (JSON obs → canvas, action buttons/keys, talk box) — WS URL per the §11 client-page contract (`?address=` when present, else same-origin fallback). `/client/admin` + WS `/admin` = ops console; sponsor ingress stays separate (D2).
 - Spectator composition (verified constraints): 128×128-px canonical screen; arena on the zoomable map layer (288×288 world px, 6-px tiles, i16 coords); HUD on anchored UI layers: alive count, zone stage + countdown, per-team color chips, softcoin balances, kill feed line. 16-color palette per sprite is the house convention — and ALL 16 indices are drawable: transparency is the engine's out-of-band sentinel 255, no palette slot is sacrificed (crosscheck-corrected; README's "15 visible" is unenforced convention). No text-drawing message exists — HUD text via upstream `pixelfonts.nim` (verified present).
 - **No audio exists in sprite_v1** (verified absence). All "audible" cues are observation events for agents + visual effects for spectators: the boom is a screen-edge ring + black firework, not a sound.
 - Set pieces: ignition fireworks (t=240, white/gold burst over Fortress); death = **black firework** burst at death tile + boom ring; zone front = animated fire/gas wall on the boundary ring; drop pods = parachute sprite descending 5 s + landing flash; flood/firestorm = tinted region + warning flash; finale = double gold burst + "FINALE" banner; win = crown fireworks on the survivor.
@@ -402,7 +404,7 @@ match_summary.json      # results.json mirror + zone timeline + death log + seed
 ## 17. Config, fixture, variants
 
 ### 17.1 Game config (schema sketch — `COGAME_CONFIG_URI` JSON; platform requires string-array `tokens`)
-Verified platform rules baked in: `tokens` is runner-injected (authored configs MUST omit it; schema requires it, `minItems: 16, maxItems: 16` → seat count inferred). **`seed` is OPTIONAL** — absent means the game mints a fresh random seed at episode start, recorded in `results.json` + `match_summary.json` AND written into the complete effective config stored in the replay header (§14 effective-config rule; the hosted platform separately archives the per-episode config). Never default it to a constant. Fog = hidden information, so per-episode random seeds are a security property. Optional `players` array (16 items, each requiring string `name`) lets hosted runs inject display names (they flow into transcript + HUD).
+Verified platform rules baked in: `tokens` is runner-injected (authored configs MUST omit it; schema requires it, `minItems: 16, maxItems: 16` → seat count inferred). **`seed` is OPTIONAL** — absent means the game mints a fresh random seed at episode start and records it in `results.json`; the hosted platform separately archives the per-episode config. Never default it to a constant. Fog = hidden information, so per-episode random seeds are a security property. Optional `players` array (16 items, each requiring string `name`) lets hosted runs inject display names (they flow into transcript + HUD).
 ```json
 {
   "tokens": ["<injected by runner — never authored>"],
@@ -422,8 +424,7 @@ Verified platform rules baked in: `tokens` is runner-injected (authored configs 
 ### 17.2 Manifest & runnable-contract musts (verified against certifier/validator source)
 - Manifest: `game` + ≥1 `player` + ≥1 variant + `certification`; **≥3 tags** (hard-required by certify); config_schema requires `tokens` (16/16); results_schema declares 16-slot `scores` + our extra arrays; docs `readme` + `protocols.player` + `protocols.global` as inline `{type:"text", value}` objects (verified allowed, types.py:220); `protocols.engine_runtime: "bitworld"` (platform enum value, not our naming); template must NOT set `game.version` (build stamps it); no `source_url` in v1 (absent → source-resolves skips); `episode_timeout_minutes` omitted → platform default 20 min.
 - Compose: service `zero-sum` → placeholder `{{ZERO_SUM_IMAGE}}` (uppercase, dash→underscore — verified rule), `platform: linux/amd64` on every service. Paint Arena precedent: ONE shared Dockerfile/image for game + player, roles differentiated by manifest `run` argv — we follow it (game binary + baseline-player binary in one image).
-- Certify smoke probes (exact, verified — coworld PLATFORM certifier, the one that gates upload): `/healthz` 200 → `GET /client/player?slot=0&token=<t0>` 2xx → WS `/player?slot=0&token=bad` MUST be rejected (close/handshake-fail/401/403) → `GET /client/global` OK → ≥1 frame on WS `/global` within min(timeout,10) s → game exits 0 within 60 s default timeout → results/replay checked after exit → player containers exit 0 within 30 s. Every declared player must hold ≥1 certification slot.
-- Two certifiers exist (crosscheck finding): bitworld's own local validator additionally gates `/admin` (HTTP+WS), probes replay endpoints with `?uri=`, and gives players only **10 s** to exit. `/admin` is NOT required by `coworld certify` — we serve it anyway (ops value + bitworld-tooling compat), honor optional `?uri=`, and target **player exit < 10 s** so both harnesses pass.
+- Certify smoke probes (exact, verified — coworld PLATFORM certifier, the one that gates upload): `/healthz` 200 → `GET /client/player?slot=0&token=<t0>` 2xx → WS `/player?slot=0&token=bad` MUST be rejected (close/handshake-fail/401/403) → `GET /client/global` OK → ≥1 frame on WS `/global` within min(timeout,10) s → game exits → results/replay checked after exit → player containers exit. When `game.replay_viewer.bundle` is declared, certification does not launch the legacy replay container; the bundle's browser proof is the replay gate.
 - Player-failure channel (typed, platform): `COGAME_PLAYER_FAILURE_URI` → `{message: 1–2000 chars, failed_policy_index ≥ 0}`, atomic write (temp+rename). **Eliminations are normal gameplay and NEVER use it** — only unrecoverable protocol failures (e.g., a slot that never completes the WS handshake before ignition + grace).
 - Fixture wall-clock budget: 600 ticks = 25 s sim + container start/stop fits the 60 s certifier timeout; the fixture schedule is pure config and shrinks further if tight.
 
@@ -525,4 +526,3 @@ pixel-art equivalents (alpha supported; no 3D/shaders/camera motion).
   not change): all 16 seats prompt-driven; unclaimed seats get a default
   prompt + 5/5/5/5. Competition/casual-live variants are untouched; keyboard
   play remains available in casual-live only.
-

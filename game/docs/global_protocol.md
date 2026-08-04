@@ -9,8 +9,6 @@ parse this yourself — open the client pages.
 
 - `GET /client/global` — live spectator page (pan/zoom the arena).
 - `WS /global` — the sprite_v1 stream behind it.
-- `GET /client/replay` + `WS /replay` — replay mode (server started with
-  `COGAME_LOAD_REPLAY_URI`); plays automatically and loops.
 - `GET /client/admin` + `WS /admin` — read-only ops view of the same stream.
 - `GET /healthz` — liveness.
 
@@ -34,18 +32,14 @@ crate with red stripe once landed), and fireworks: gold bursts for ignition
 and the winner, black bursts + shock ring for every death, orange flash for
 pedestal mines.
 
-## Replay artifact
+## Static replay artifact
 
-The replay blob written to `COGAME_SAVE_REPLAY_URI` is a zip:
+The replay written to `COGAME_SAVE_REPLAY_URI` is a zlib-compressed sequence
+of timestamped `sprite_v1` packets. It records the exact public presentation
+stream generated for the live global viewer. The game-owned static bundle
+fetches those bytes through its `?replay=` parameter and provides autoplay,
+pause, speed, seek, and looping without starting the game image.
 
-| file | contents |
-|---|---|
-| `replay.zsr` | engine replay stream: complete effective config (seed included, all auth tokens stripped), joins, every applied input as client-input records, per-tick state hashes |
-| `input_log.json` | human-readable applied-input log (actions, talk, sponsor gifts) |
-| `effective_config.json` | the complete effective config (convenience copy) |
-| `chat_transcript.txt` / `.json` | full talk transcript with system events |
-| `sponsor_log.json` | every gift request, accepted AND rejected, with costs and balances |
-| `match_summary.json` | results mirror + death log |
-
-The match is deterministic given that config + input log; replay mode
-re-simulates and verifies the recorded per-tick hashes.
+Human-readable transcripts, sponsor logs, event history, and fairness reports
+remain separate match artifacts. The replay intentionally contains no auth
+tokens or private player observations.
