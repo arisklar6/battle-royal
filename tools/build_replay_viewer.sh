@@ -8,6 +8,20 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 requested_output="$1"
+
+# A Windows caller hands us its native path (C:\... or C:/...), which every
+# check below would reject as non-absolute. Normalize to POSIX first so the
+# same validation applies. Under WSL or a real Unix the paths already start
+# with / and this is a no-op.
+if [[ "${requested_output}" =~ ^[A-Za-z]:[\\/] ]]; then
+  if command -v cygpath >/dev/null 2>&1; then
+    requested_output="$(cygpath -u "${requested_output}")"
+  else
+    drive="$(printf '%s' "${requested_output:0:1}" | tr '[:upper:]' '[:lower:]')"
+    requested_output="/${drive}$(printf '%s' "${requested_output:2}" | tr '\\' '/')"
+  fi
+fi
+
 if [[ "${requested_output}" != /* || "$(basename "${requested_output}")" != "static-replay-viewer" ]]; then
   echo "unsafe bundle output: ${requested_output}" >&2
   exit 1
