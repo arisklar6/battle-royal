@@ -129,16 +129,10 @@ type
     sponsorLog*: seq[GiftRecord]
     pods*: seq[Pod]
     finaleEmitted*: bool
-    suppressScriptedGifts*: bool   # replay mode: gifts come from the input log
-                                   # ONLY (mission invariant); config-driven
-                                   # scripted processing is disabled
-    allowLoggedGifts*: bool        # ONLY the replay path may apply {"gift":..}
-                                   # payloads; live player sockets must never
-                                   # mint sponsor gifts (security)
     lastActionResult*: array[16, string]
     inStep: bool
-    pendingEvents: seq[Event]      # emitted between ticks (live/replay gift
-                                   # intake); spliced into the next tick
+    pendingEvents: seq[Event]      # emitted between ticks by live gift intake;
+                                   # spliced into the next tick
     pendingActions: array[16, Action]
     pendingSet: array[16, bool]
 
@@ -477,20 +471,6 @@ proc initSim*(cfg: SimConfig): Sim =
     result.teamBudget[t] = cfg.sponsor.budgetPerTeam
     result.lastGiftTick[t] = -GiftLockoutTicks
   result.generateLoot()
-
-proc initReplaySim*(cfg: SimConfig): Sim =
-  ## THE entry point for log-driven re-simulation (replay mode). Gifts enter
-  ## ONLY from the recorded input log (mission invariant): config-driven
-  ## scripted-gift processing is suppressed and logged {"gift":..} payloads
-  ## are allowed, so ALL sponsor bookkeeping (budget, pods, sponsorLog rows,
-  ## transcript events, gifts_received counters) flows through the same
-  ## requestGift path as the live run. Rejected-request rows are live-only
-  ## audit records (documented asymmetry — rejects are never input-logged).
-  ## A re-sim built on bare initSim() without these arms silently drops every
-  ## logged gift; use THIS proc.
-  result = initSim(cfg)
-  result.suppressScriptedGifts = true
-  result.allowLoggedGifts = true
 
 # ---------------------------------------------------------------- actions
 
@@ -1064,7 +1044,7 @@ proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
   ##    spiral finds the nearest free tile. One purchase per team per
   ##    GiftLockoutTicks. recipientSlot is recorded as -1.
   ##  - recipient (v0.1 legacy, target.x < 0): pod lands near the recipient.
-  ##    NO lockout — pre-pivot replay logs must re-simulate unchanged.
+  ##    NO lockout — scripted recipient gifts keep their original semantics.
   let tileMode = target.x >= 0
   var rec = GiftRecord(tickRequested: s.tick, tickLanded: -1, sponsor: sponsor,
                        team: teamIdx,
@@ -1111,14 +1091,6 @@ proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
   rec.cost = gift.price
   rec.balanceAfter = s.teamBudget[teamIdx]
   s.sponsorLog.add(rec)
-  let targeting =
-    if tileMode: ""","target":[""" & $target.x & "," & $target.y & "]"
-    else: ""","recipient_slot":""" & $recipientSlot
-  s.inputLog.add(AppliedInput(tick: s.tick,
-    slot: (if tileMode: 0 else: recipientSlot),
-    payload: """{"gift":{"sponsor":""" & escapeJson(sponsor) &
-             ""","team":""" & $teamIdx & targeting &
-             ""","item_id":""" & escapeJson(itemId) & "}}"))
   s.emit(evGiftIncoming, rec.recipientSlot, landing,
     """{"item":"""" & itemId & """","lands_tick":""" & $landsTick &
     ""","recipient":""" & $rec.recipientSlot & "}")
@@ -1154,8 +1126,6 @@ proc resolvePods(s: var Sim) =
 
 proc processScriptedGifts(s: var Sim) =
   ## Scripted gifts pass the IDENTICAL validation pipeline (DESIGN §9.3.1).
-  if s.suppressScriptedGifts:
-    return
   for g in s.cfg.sponsor.scriptedGifts:
     if g.tick == s.tick:
       discard s.requestGift("script", g.team, g.recipientSlot, g.itemId,
@@ -1427,10 +1397,7 @@ proc parseDir(v: string): (bool, Dir8) =
   (false, dN)
 
 proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
-  ## Canonical application of one input payload. Accepts BOTH the wire shapes
-  ## (zero_sum.player.v1: {"type":"talk",...} / {"type":"allocate_stats",...}
-  ## flat messages) and the internal log shapes ({"talk":{...}} etc.) — the
-  ## replay path and the live server go through here, one mapping, no drift.
+  ## Canonical application of one zero_sum.player.v1 wire payload.
   if j == nil or j.kind != JObject:
     return
   let wireType = j{"type"}.getStr("")
@@ -1448,40 +1415,7 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
       intelligence: j{"intelligence"}.getInt(),
       athleticism: j{"athleticism"}.getInt()))
     return
-  if j.hasKey("gift"):
-    # SECURITY: only the replay path may re-apply logged gifts. A live player
-    # socket sending {"gift":...} must never mint sponsor spend.
-    if not s.allowLoggedGifts:
-      s.lastActionResult[slot] = "malformed"
-      return
-    let g = j["gift"]
-    if g.kind == JObject:
-      var tgt = Pos(x: -1, y: -1)
-      if g.hasKey("target") and g["target"].kind == JArray and
-         g["target"].len == 2:
-        tgt = Pos(x: g["target"][0].getInt(-1), y: g["target"][1].getInt(-1))
-      discard s.requestGift(g{"sponsor"}.getStr("script"), g{"team"}.getInt(-1),
-                            g{"recipient_slot"}.getInt(-1),
-                            g{"item_id"}.getStr(""), tgt)
-  elif j.hasKey("talk"):
-    let t = j["talk"]
-    if t.kind != JObject:
-      return
-    let chStr = t{"channel"}.getStr("")
-    var ch = tcBroadcast
-    if chStr == $tcTeam: ch = tcTeam
-    elif chStr == $tcDm: ch = tcDm
-    elif chStr != $tcBroadcast: return
-    discard s.submitTalk(slot, ch, t{"to"}.getInt(-1), t{"text"}.getStr(""))
-  elif j.hasKey("allocate_stats"):
-    let a = j["allocate_stats"]
-    if a.kind == JObject:
-      discard s.submitAllocation(slot, Stats(
-        speed: a{"speed"}.getInt(), strength: a{"strength"}.getInt(),
-        intelligence: a{"intelligence"}.getInt(),
-        athleticism: a{"athleticism"}.getInt()))
-    # the "defaulted" string marker is server-emitted, never re-applied
-  elif j.hasKey("do"):
+  if wireType == "action" and j.hasKey("do"):
     let verb = j["do"].getStr("")
     case verb
     of "move", "attack":
@@ -1501,5 +1435,3 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
 proc noteMalformedInput*(s: var Sim, slot: AgentId) =
   ## Server-side hook for unparseable payloads (never a disconnect, §10).
   s.lastActionResult[slot] = "malformed"
-
-

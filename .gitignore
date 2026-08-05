@@ -43,6 +43,7 @@ nimbledeps
 /windy/
 /ws/
 /zippy/
+/build/
 libcurl.dll
 nim.cfg.local
 _to_delete/

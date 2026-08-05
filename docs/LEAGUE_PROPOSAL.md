@@ -14,7 +14,7 @@ accounts), so this document is the concrete spec we are asking to be seeded.
 | Owner | arisklar6@gmail.com |
 | Source | https://github.com/arisklar6/zero-sum (MIT, bitworld engine, NOTICE included) |
 | Certification | 10/10 steps, hosted smoke 5/5 |
-| Determinism | Full: sim is a pure function of (seed, input log); replays are hash-verified re-simulations (11k-input live match replayed bit-exact) |
+| Determinism | Full: sim is a pure function of (seed, input log); replay captures the exact public spectator presentation |
 
 ## What a league match is
 

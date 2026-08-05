@@ -152,6 +152,31 @@ body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   pointer-events:none;
 }
 #directorChip.hidden{display:none}
+#replayControls{
+  position:fixed;
+  left:50%;
+  bottom:16px;
+  transform:translateX(-50%);
+  width:min(760px,calc(100vw - 32px));
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  color:#e8e8e8;
+  background:rgba(7,10,16,.92);
+  border:1px solid rgba(255,255,255,.3);
+  box-sizing:border-box;
+  font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+#replayControls.hidden{display:none}
+#replaySeek{flex:1;min-width:100px}
+#replayPlay,#replaySpeed{
+  color:#e8e8e8;
+  background:#18212c;
+  border:1px solid rgba(255,255,255,.3);
+  padding:5px 8px;
+}
+#replayTime{min-width:92px;text-align:right}
 </style>
 </head>
 <body>
@@ -173,7 +198,21 @@ body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   <div id="debugSprites"></div>
 </div>
 <div id="directorChip" class="hidden">DIRECTOR</div>
+<div id="replayControls" class="hidden">
+  <button id="replayPlay" type="button">Pause</button>
+  <input id="replaySeek" type="range" min="0" max="0" value="0" step="1">
+  <span id="replayTime">0:00 / 0:00</span>
+  <select id="replaySpeed" aria-label="Replay speed">
+    <option value="0.25">0.25x</option>
+    <option value="0.5">0.5x</option>
+    <option value="1" selected>1x</option>
+    <option value="2">2x</option>
+    <option value="4">4x</option>
+    <option value="8">8x</option>
+  </select>
+</div>
 <script src="snappyjs.min.js"></script>
+<script src="replay_viewer.js"></script>
 <script>
 const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
 const status=document.getElementById("status");
@@ -182,12 +221,17 @@ const debugPanel=document.getElementById("debugPanel");
 const debugDown=document.getElementById("debugDown");
 const debugUp=document.getElementById("debugUp");
 const debugSprites=document.getElementById("debugSprites");
+const replayControls=document.getElementById("replayControls");
+const replayPlay=document.getElementById("replayPlay");
+const replaySeek=document.getElementById("replaySeek");
+const replayTime=document.getElementById("replayTime");
+const replaySpeed=document.getElementById("replaySpeed");
 const textDecoder=new TextDecoder("utf-8");
 const url=new URL(location.href);
+const replayUrl=url.searchParams.get("replay");
 function websocketPathForClientPage(path){
   const mappings=[
     ["/client/global","/global"],
-    ["/client/replay","/replay"],
     ["/client/player","/player"],
     ["/client/rewards","/reward"],
     ["/client/admin","/admin"],
@@ -932,7 +976,7 @@ function layerScreenPos(layer){
 }
 
 function draw(){
-  if(!socket||socket.readyState===WebSocket.CLOSED)return;
+  if(!staticReplay&&(!socket||socket.readyState===WebSocket.CLOSED))return;
   let anyLerping=false;
   ctx.imageSmoothingEnabled=false;
   clearBlack();
@@ -1072,8 +1116,11 @@ function parse(bytes){
       // don't act on it; skip its 2 payload bytes and keep parsing.
       offset+=2;
     }else{
-      socket.close();
-      break;
+      if(socket){
+        socket.close();
+        break;
+      }
+      throw new Error("unknown sprite protocol packet "+type);
     }
   }
   scheduleDraw();
@@ -1123,7 +1170,100 @@ function connect(){
   };
 }
 
-connect();
+let staticReplay=null,replayFrame=0,replayTick=0,replayPlaying=true;
+let replayLastMs=0,replayPlaybackSpeed=1;
+
+function resetPresentation(){
+  layers.clear();
+  sprites.clear();
+  objects.clear();
+  entry.textContent="";
+  entry.classList.add("hidden");
+  autoFit=true;
+  debugBytesDown=0;
+  updateDebugCounters();
+  clearBlack();
+}
+
+function timeLabel(ticks,tickRate){
+  const seconds=Math.floor(ticks/tickRate);
+  return Math.floor(seconds/60)+":"+String(seconds%60).padStart(2,"0");
+}
+
+function refreshReplayControls(){
+  const duration=staticReplay.durationTicks;
+  const displayTick=Math.min(duration,replayTick);
+  replaySeek.value=String(Math.floor(displayTick));
+  replayTime.textContent=timeLabel(displayTick,staticReplay.tickRate)+" / "+
+    timeLabel(duration,staticReplay.tickRate);
+  replayPlay.textContent=replayPlaying?"Pause":"Play";
+}
+
+function seekReplay(tick){
+  replayTick=Math.max(0,Math.min(staticReplay.durationTicks,tick));
+  replayFrame=0;
+  resetPresentation();
+  while(replayFrame<staticReplay.frames.length&&
+        staticReplay.frames[replayFrame].tick<=replayTick){
+    const packet=staticReplay.frames[replayFrame].packet;
+    debugBytesDown+=packet.byteLength;
+    parse(packet);
+    replayFrame++;
+  }
+  updateDebugCounters();
+  refreshReplayControls();
+}
+
+function replayAnimation(now){
+  if(!replayLastMs)replayLastMs=now;
+  if(replayPlaying){
+    replayTick+=(now-replayLastMs)*staticReplay.tickRate*
+      replayPlaybackSpeed/1000;
+    while(replayFrame<staticReplay.frames.length&&
+          staticReplay.frames[replayFrame].tick<=replayTick){
+      const packet=staticReplay.frames[replayFrame].packet;
+      debugBytesDown+=packet.byteLength;
+      parse(packet);
+      replayFrame++;
+    }
+    if(replayTick>=staticReplay.durationTicks+staticReplay.tickRate*2){
+      seekReplay(0);
+    }
+    updateDebugCounters();
+    refreshReplayControls();
+  }
+  replayLastMs=now;
+  requestAnimationFrame(replayAnimation);
+}
+
+function startStaticReplay(replay){
+  staticReplay=replay;
+  replaySeek.max=String(replay.durationTicks);
+  replayControls.classList.remove("hidden");
+  seekReplay(0);
+  setStatus("");
+  requestAnimationFrame(replayAnimation);
+}
+
+replayPlay.addEventListener("click",()=>{
+  replayPlaying=!replayPlaying;
+  refreshReplayControls();
+});
+replaySpeed.addEventListener("change",()=>{
+  replayPlaybackSpeed=Number(replaySpeed.value);
+});
+replaySeek.addEventListener("change",()=>seekReplay(Number(replaySeek.value)));
+
+if(replayUrl){
+  setStatus("loading replay...");
+  ZeroSumPresentationReplay.load(replayUrl).then(
+    startStaticReplay,
+    error=>setStatus("Replay failed: "+error.message)
+  );
+  addEventListener("error",event=>setStatus("Replay failed: "+event.message));
+}else{
+  connect();
+}
 
 addEventListener("resize",()=>{
   maybeFit();
@@ -1170,8 +1310,12 @@ addEventListener("dblclick",event=>{
 });
 for(const eventName of ["pointerdown","pointermove","pointerup","dblclick"]){
   debugPanel.addEventListener(eventName,event=>event.stopPropagation());
+  replayControls.addEventListener(eventName,event=>event.stopPropagation());
 }
 debugPanel.addEventListener("wheel",event=>event.stopPropagation(),{
+  passive:true
+});
+replayControls.addEventListener("wheel",event=>event.stopPropagation(),{
   passive:true
 });
 addEventListener("keydown",event=>{

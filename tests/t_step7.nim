@@ -1,9 +1,8 @@
 ## Step-7 tests: softcoin accounting, gift validation matrix, landing spiral,
-## pod landing/looting, scripted pipeline, replay single-application guard,
-## determinism.
+## pod landing/looting, scripted pipeline, and determinism.
 
 import std/json
-import zero_sum/[prng, types, arena, sim]
+import zero_sum/[types, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 
@@ -110,31 +109,6 @@ block scripted_pipeline_and_events:
     if e.kind == evGiftIncoming: sawIncoming = true
     if e.kind == evGiftLanded: sawLanded = true
   doAssert sawIncoming and sawLanded
-
-block replay_single_application:
-  # replay guard: suppressScriptedGifts on -> config gifts skipped; the log
-  # entry re-applies via applyInputJson -> exactly one acceptance
-  let gifts = %*[{"tick": 150, "team": "C", "recipient_slot": 5,
-                  "item_id": "sword"}]
-  var live = mkSim(gifts)
-  live.runTo(400)
-  doAssert live.teamBudget[2] == 180
-  var rep = initReplaySim(parseSimConfig(%*{
-    "seed": 42, "max_ticks": 2000, "freeze_ticks": 48,
-    "sponsor": {"live": false, "budget_per_team": 300,
-                 "shop_opens_tick": 96, "scripted_gifts": gifts}},
-    fixedSeed))
-  # re-apply from the live input log
-  var gi = 0
-  while rep.tick < 400:
-    for inp in live.inputLog:
-      if inp.tick == rep.tick:
-        let j = parseJson(inp.payload)
-        if j.hasKey("gift"):
-          rep.applyInputJson(AgentId(0), j)
-    rep.step()
-  doAssert rep.teamBudget[2] == 180                        # once, not twice
-  doAssert rep.hashes == live.hashes
 
 block determinism_with_gifts:
   let gifts = %*[{"tick": 100, "team": "A", "recipient_slot": 1,

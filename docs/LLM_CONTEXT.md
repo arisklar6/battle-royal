@@ -14,8 +14,9 @@ separate policy programs connected over WebSocket (JSON protocol
 grid. The last contestant alive wins. When only one TEAM remains, teammates
 must fight each other (the "finale") — there is exactly one winner, always.
 
-The simulation is a pure function of (seed, recorded inputs): replays are
-bit-exact re-simulations. Agents act under fog of war; the full match
+The simulation is a pure function of (seed, recorded inputs). Replays record
+the exact public spectator presentation and play in a static browser bundle,
+without restarting the simulation. Agents act under fog of war; the full match
 (including every chat message) becomes a public replay + transcript artifact.
 
 ## The arena

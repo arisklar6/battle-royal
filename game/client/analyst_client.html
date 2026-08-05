@@ -57,12 +57,6 @@
             letter-spacing: 2px; padding: 2px 8px; border-radius: 2px; cursor: pointer; }
   #sndbtn.on { color: var(--teal); border-color: var(--teal); }
   #sndbtn.armed { border-style: dashed; }
-  #transport { align-self: center; display: flex; gap: 4px; }
-  #transport button { background: none; border: 1px solid #36444F;
-    color: #8a95a3; font: inherit; font-size: 10px; letter-spacing: 1px;
-    padding: 2px 8px; border-radius: 2px; cursor: pointer; }
-  #transport button:hover { color: var(--teal); border-color: var(--teal); }
-  #timeline { cursor: pointer; }
   /* CVD redundancy: every team chip carries a distinct fill pattern in
      addition to its hue (letter glyph remains the guaranteed channel) */
   .chip-B { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.4) 0 2px, transparent 2px 4px); }
@@ -81,13 +75,8 @@
   <span id="zonebox"></span>
   <span id="status" style="color:#8a95a3">connecting&hellip;</span>
   <button id="sndbtn" title="toggle event sounds">SND OFF</button>
-  <span id="transport" title="replay transport (live matches ignore these)">
-    <button data-c="pause">&#10074;&#10074;</button>
-    <button data-c="play">&#9654;</button>
-    <button id="spdbtn">&times;1</button>
-  </span>
 </div>
-<canvas id="timeline" width="1200" height="16" title="click to seek (replay)"></canvas>
+<canvas id="timeline" width="1200" height="16" title="match event timeline"></canvas>
 <div id="grid">
   <div class="panel">
     <h2>LIVE PROJECTED SCOREBOARD</h2>
@@ -245,25 +234,6 @@ const sfxFinale = () => { sndTone(98, 0.18, 'sine', 0.9, undefined, 0.3);       
 const sfxWinner = () => sndTone(523, 1.5, 'triangle', 0.55);                    // sustained, fading
 el('sndbtn').addEventListener('click', sndToggle);
 sndRenderBtn();
-// replay transport (VISUAL_REDESIGN §5.8): /control is only honored by the
-// replay server; on live matches these calls are no-ops
-let lastMax = 9120;
-const SPEEDS = [0.5, 1, 2, 4];
-let spdIx = 1;
-const ctl = q => fetch('/control?' + q).catch(() => {});
-for (const b of document.querySelectorAll('#transport button[data-c]'))
-  b.onclick = () => ctl('cmd=' + b.dataset.c);
-el('spdbtn').onclick = () => {
-  spdIx = (spdIx + 1) % SPEEDS.length;
-  el('spdbtn').innerHTML = '&times;' + SPEEDS[spdIx];
-  ctl('cmd=speed&value=' + SPEEDS[spdIx]);
-};
-el('timeline').addEventListener('click', (e) => {
-  const r = el('timeline').getBoundingClientRect();
-  ctl('cmd=seek&tick=' +
-      Math.max(0, Math.floor((e.clientX - r.left) / r.width * lastMax)));
-});
-
 const ws = new WebSocket(websocketAddress('/analyst'));
 ws.onopen = () => { el('status').textContent = 'LIVE'; el('status').style.color = '#A5E3EE'; };
 ws.onclose = () => { el('status').textContent = 'FEED CLOSED'; el('status').style.color = '#FF4A36'; };
@@ -286,7 +256,6 @@ ws.onmessage = (ev) => {
   {
     const tl = el('timeline'), tctx = tl.getContext('2d');
     const span = Math.max(m.max_ticks || 9120, m.tick + 1);
-    lastMax = span;
     const X = t => Math.floor(t / span * tl.width);
     tctx.fillStyle = '#10171E'; tctx.fillRect(0, 0, tl.width, tl.height);
     tctx.fillStyle = 'rgba(255,79,163,0.45)';

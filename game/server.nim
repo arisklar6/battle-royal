@@ -1,23 +1,19 @@
-## Zero Sum game server — step-1 scope.
-## Live mode: runs the scripted demo episode at 24 Hz, streams sprite_v1 to
-## /global viewers, writes the replay bundle on match end, exits 0.
-## Replay mode (COGAME_LOAD_REPLAY_URI / --load-replay): re-simulates from the
-## recorded effective config + input log, streams to /replay, autoplay + loop.
-## Note: /replay?uri= overrides are accepted but the stream source is the
-## loaded replay (same file in both certifier flows); full per-uri loading is
-## Phase D polish.
+## Zero Sum game server: runs matches at 24 Hz, streams sprite_v1 to live
+## viewers, records the same presentation packets for the static replay
+## viewer, writes match artifacts, and exits.
 
 import std/[json, locks, monotimes, os, strutils, sysrand, tables, times, uri]
 when defined(posix):
   import std/posix
 import mummy
-import bitworld/[replays, runtime, spriteprotocol]
-import zero_sum/[prng, types, arena, sim, obs]
-import render, bundle, demo_script, transcript, analyst
+import bitworld/[runtime, spriteprotocol]
+import zero_sum/[types, arena, sim, obs]
+import render, bundle, demo_script, transcript, analyst, presentation_replay
 
 const
   GlobalClientHtml = staticRead("client/global_client.html")
   SnappyJs = staticRead("client/snappyjs.min.js")
+  ReplayViewerJs = staticRead("client/replay_viewer.js")
   TargetFps = 24.0
 
 const SponsorClientHtml = staticRead("client/sponsor_client.html")
@@ -53,10 +49,6 @@ type
     analysts: Table[WebSocket, bool]     # /analyst JSON telemetry feed
     watchers: Table[WebSocket, int]      # /watch read-only agent views (ws->slot)
     watcherJoined: seq[WebSocket]        # need player_config on next tick
-    # replay transport (VISUAL_REDESIGN §5.8) — only the replay loop reads
-    ctlPaused: bool
-    ctlSpeed: float                      # 0.25..8.0 playback multiplier
-    ctlSeek: int                         # target tick, -1 = none
 
 var appState: AppState
 
@@ -100,8 +92,8 @@ proc queryParam(uri, key: string): string =
     if kv.len == 2 and kv[0] == key:
       return decodeUrl(kv[1])
 
-# ops-endpoint gate (review §1.4): /coach and /control are local-play and
-# replay-ops surfaces. Default CLOSED: enabled only with ZERO_SUM_LOCAL=1
+# ops-endpoint gate (review §1.4): /coach is a local-play surface. Default
+# CLOSED: enabled only with ZERO_SUM_LOCAL=1
 # (the launcher sets it) or a matching ?token= against ZERO_SUM_OPS_TOKEN.
 # Env is read per-call: handler threads must stay GC-safe.
 proc opsAllowed(uri: string): bool =
@@ -131,7 +123,7 @@ proc httpHandler(request: Request) =
   let path = request.uri.split('?')[0]
   var headers: HttpHeaders
   if request.httpMethod == "GET" and
-     path in ["/global", "/replay", "/admin", "/analyst"] and
+     path in ["/global", "/admin", "/analyst"] and
      not request.isWsHandshake():
     headers["Content-Type"] = "text/plain"
     request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
@@ -216,39 +208,7 @@ proc httpHandler(request: Request) =
       request.respond(if ok: 200 else: 400, headers,
                       """{"ok":""" & $ok & "}")
       return
-  if request.httpMethod == "GET" and path == "/control":
-    # Replay transport control (VISUAL_REDESIGN §5.8): pause/play/speed/seek.
-    # Live matches never read these; only runReplay's loop consumes them.
-    if not opsAllowed(request.uri):
-      headers["Content-Type"] = "text/plain"
-      request.respond(403, headers, "ops endpoint disabled")
-      return
-    let cmd = queryParam(request.uri, "cmd")
-    var ok = true
-    {.gcsafe.}:
-      withLock appState.lock:
-        case cmd
-        of "pause": appState.ctlPaused = true
-        of "play": appState.ctlPaused = false
-        of "speed":
-          try:
-            appState.ctlSpeed = clamp(
-              parseFloat(queryParam(request.uri, "value")), 0.25, 8.0)
-          except CatchableError:
-            ok = false
-        of "seek":
-          try:
-            appState.ctlSeek = clamp(
-              parseInt(queryParam(request.uri, "tick")), 0, 100_000)
-          except CatchableError:
-            ok = false
-        else:
-          ok = false
-    headers["Content-Type"] = "application/json"
-    request.respond(if ok: 200 else: 400, headers,
-                    """{"ok":""" & $ok & "}")
-    return
-  if request.httpMethod == "GET" and path in ["/global", "/replay", "/admin"]:
+  if request.httpMethod == "GET" and path in ["/global", "/admin"]:
     var full = false
     {.gcsafe.}:
       withLock appState.lock:
@@ -345,7 +305,7 @@ proc httpHandler(request: Request) =
   of "/healthz":
     headers["Content-Type"] = "text/plain"
     request.respond(200, headers, "ok")
-  of "/client/global", "/client/replay", "/client/admin":
+  of "/client/global", "/client/admin":
     headers["Content-Type"] = "text/html; charset=utf-8"
     request.respond(200, headers, GlobalClientHtml)
   of "/client/player":
@@ -369,6 +329,9 @@ proc httpHandler(request: Request) =
   of "/client/snappyjs.min.js":
     headers["Content-Type"] = "application/javascript"
     request.respond(200, headers, SnappyJs)
+  of "/client/replay_viewer.js":
+    headers["Content-Type"] = "application/javascript"
+    request.respond(200, headers, ReplayViewerJs)
   else:
     headers["Content-Type"] = "text/plain"
     request.respond(404, headers, "not found")
@@ -420,15 +383,6 @@ proc serverThreadProc(args: ServerThreadArgs) {.thread.} =
 
 proc runFrameLimiter(previous: var MonoTime) =
   let frameDuration = initDuration(milliseconds = int(1000.0 / TargetFps))
-  let elapsed = getMonoTime() - previous
-  if elapsed < frameDuration:
-    sleep(int((frameDuration - elapsed).inMilliseconds))
-  previous = getMonoTime()
-
-proc runFrameLimiter(previous: var MonoTime, speed: float) =
-  ## Replay transport: pace at TargetFps * speed.
-  let frameDuration = initDuration(
-    milliseconds = max(1, int(1000.0 / (TargetFps * max(0.1, speed)))))
   let elapsed = getMonoTime() - previous
   if elapsed < frameDuration:
     sleep(int((frameDuration - elapsed).inMilliseconds))
@@ -499,8 +453,6 @@ proc initAppState() =
   appState.viewers = initTable[WebSocket, ViewerState]()
   appState.analysts = initTable[WebSocket, bool]()
   appState.watchers = initTable[WebSocket, int]()
-  appState.ctlSpeed = 1.0
-  appState.ctlSeek = -1
 
 proc startServer(rc: RuntimeConfig) =
   # tightened ingress limits (review §1.6): the biggest legal client
@@ -547,13 +499,11 @@ proc serviceWatchers(s: Sim) =
         withLock appState.lock:
           appState.watchers.del(ws)
 
-proc writeMatchArtifacts(rc: RuntimeConfig, cfg: SimConfig,
-                         original: JsonNode, s: Sim) =
+proc writeMatchArtifacts(rc: RuntimeConfig, s: Sim,
+                         replay: PresentationReplay) =
   ## One artifact path for every exit: normal end, stop signal, and the
   ## tick-loop crash guard all land here (review §1.9/§1.10).
-  let effective = effectiveConfigJson(cfg, original)
-  let work = getTempDir() / "zero-sum-bundle"
-  let zipBytes = buildReplayZip(work, effective, s)
+  let replayBytes = encodePresentationReplay(replay)
   let results = resultsJson(s)
   if rc.resultsUri.len > 0:
     writeResults(rc, results)
@@ -561,11 +511,11 @@ proc writeMatchArtifacts(rc: RuntimeConfig, cfg: SimConfig,
   createDir("results")
   writeFile("results" / "results.json", results)
   if rc.replayUri.len > 0:
-    writeReplay(rc, zipBytes)
-    echo "replay bundle -> ", redactUri(rc.replayUri)
+    writeReplay(rc, replayBytes)
+    echo "static replay -> ", redactUri(rc.replayUri)
   else:
-    writeFile("results" / "replay.zip", zipBytes)
-    echo "replay bundle -> results/replay.zip"
+    writeFile("results" / "replay.replay", replayBytes)
+    echo "static replay -> results/replay.replay"
   # local convenience copies next to results (DESIGN §13/§14)
   writeFile("results" / "chat_transcript.txt", buildTranscriptText(s))
   writeFile("results" / "chat_transcript.json", buildTranscriptJson(s))
@@ -605,6 +555,8 @@ proc runLive(rc: RuntimeConfig) =
       quit(1)
   var s = initSim(cfg)
   var r: Renderer
+  var replay: PresentationReplay
+  replay.addFrame(s.tick, r.initPacket(s))
   var tracker: AnalystTracker
   installStopHandlers()
   # auth material lands before the listener comes up (startup-race fix)
@@ -795,7 +747,7 @@ proc runLive(rc: RuntimeConfig) =
       # crash guard (review §1.10): losing a match is survivable, losing
       # its artifacts is not
       echo "SIM FATAL tick=", s.tick, ": ", e.name, ": ", e.msg
-      writeMatchArtifacts(rc, cfg, original, s)
+      writeMatchArtifacts(rc, s, replay)
       quit(1)
     # per-tick observations to connected, living players; final on death
     for i in 0 .. 15:
@@ -841,8 +793,8 @@ proc runLive(rc: RuntimeConfig) =
             # own-team positions only; /global is public anyway, so this
             # leaks nothing the sponsor could not already watch
             let band = (if s.agents[i].hpCenti > 6600: "healthy"
-                        elif s.agents[i].hpCenti >= 3300: "hurt"
-                        else: "critical")
+              elif s.agents[i].hpCenti >= 3300: "hurt"
+              else: "critical")
             if mates.len > 0: mates.add(",")
             mates.add("""{"slot":""" & $i & ""","pos":[""" &
                       $s.agents[i].pos.x & "," & $s.agents[i].pos.y &
@@ -879,10 +831,12 @@ proc runLive(rc: RuntimeConfig) =
     if s.tick mod 6 == 0 or s.phase == phEnded:
       broadcastAnalyst(s, tracker)
     try:
-      r.broadcast(s, r.updatePacket(s))
+      let packet = r.updatePacket(s)
+      replay.addFrame(s.tick, packet)
+      r.broadcast(s, packet)
     except CatchableError as e:
       echo "RENDER FATAL tick=", s.tick, ": ", e.name, ": ", e.msg
-      writeMatchArtifacts(rc, cfg, original, s)
+      writeMatchArtifacts(rc, s, replay)
       quit(1)
     runFrameLimiter(last)
 
@@ -903,122 +857,12 @@ proc runLive(rc: RuntimeConfig) =
     r.broadcast(s, @[])
     runFrameLimiter(last)
 
-  writeMatchArtifacts(rc, cfg, original, s)
+  writeMatchArtifacts(rc, s, replay)
   echo "match over: winner=", s.winnerSlot, " ticks=", s.tick
   quit(0)
 
-proc runReplay(rc: RuntimeConfig) =
-  let work = getTempDir() / "zero-sum-replay"
-  let loaded = loadReplayZip(rc.replay, work)
-  echo "replay loaded: game=", loaded.data.gameName,
-       " inputs=", loaded.data.clientInputs.len,
-       " hashes=", loaded.data.hashes.len
-  installStopHandlers()
-  initAppState()
-  startServer(rc)
-
-  # inputs grouped by tick once
-  var inputsByTick = initTable[int, seq[(int, string)]]()
-  for ci in loaded.data.clientInputs:
-    var payload = newString(ci.packet.len)
-    for i, b in ci.packet:
-      payload[i] = char(b)
-    inputsByTick.mgetOrPut(timeTick(ci.time, 24), @[]).add((int(ci.player), payload))
-
-  var storedHash = initTable[int, uint64]()
-  for h in loaded.data.hashes:
-    storedHash[int(h.tick)] = h.hash
-
-  var last = getMonoTime()
-  var pendingSeek = -1
-  while true:                                   # autoplay + LOOP
-    let cfg = parseSimConfig(loaded.effectiveConfig, mintSeedFromOs)
-    doAssert not cfg.seedWasMinted, "effective config must carry the seed"
-    var s = initReplaySim(cfg)
-    var r: Renderer
-    var tracker: AnalystTracker
-    tracker.reset()
-    r.resetForLoop()
-    var target = pendingSeek
-    pendingSeek = -1
-    {.gcsafe.}:
-      withLock appState.lock:
-        var keys: seq[WebSocket] = @[]
-        for ws in appState.viewers.keys:
-          keys.add(ws)
-        for ws in keys:
-          appState.viewers[ws] = ViewerState(initialized: false)
-        # replay POV: connected watchers get a fresh player_config each loop
-        appState.watcherJoined.setLen(0)
-        for ws in appState.watchers.keys:
-          appState.watcherJoined.add(ws)
-    while s.phase != phEnded:
-      if stopRequested:
-        echo "stop signal received - replay server exiting"
-        quit(0)
-      # transport control (§5.8): pause / speed / seek. Backward seek
-      # restarts the episode (deterministic re-sim is the seek mechanism);
-      # forward seek fast-forwards without broadcasting.
-      var paused = false
-      var speed = 1.0
-      {.gcsafe.}:
-        withLock appState.lock:
-          paused = appState.ctlPaused
-          speed = appState.ctlSpeed
-          if appState.ctlSeek >= 0:
-            if appState.ctlSeek >= s.tick:
-              target = appState.ctlSeek
-            else:
-              pendingSeek = appState.ctlSeek
-            appState.ctlSeek = -1
-      if pendingSeek >= 0:
-        break
-      if paused and target < 0:
-        r.broadcast(s, @[])
-        runFrameLimiter(last)
-        continue
-      if s.tick in inputsByTick:
-        for (slot, payload) in inputsByTick[s.tick]:
-          let j =
-            try: parseJson(payload)
-            except CatchableError: nil
-          if slot in 0 .. 15:
-            s.applyInputJson(AgentId(slot), j)
-      s.step()
-      let expect = storedHash.getOrDefault(s.tick - 1, 0'u64)
-      if expect != 0'u64 and expect != s.hashes[^1][1]:
-        echo "HASH MISMATCH at tick ", s.tick - 1
-        if rc.mismatchQuit:
-          quit(1)
-      tracker.track(s)
-      if target >= 0:
-        if s.tick < target:
-          continue                        # fast-forward: no frames, no pacing
-        target = -1
-        # renderer diffs diverged during the skip: rebuild the full scene
-        r.resetForLoop()
-        {.gcsafe.}:
-          withLock appState.lock:
-            var keys: seq[WebSocket] = @[]
-            for ws in appState.viewers.keys:
-              keys.add(ws)
-            for ws in keys:
-              appState.viewers[ws] = ViewerState(initialized: false)
-            appState.watcherJoined.setLen(0)
-            for ws in appState.watchers.keys:
-              appState.watcherJoined.add(ws)
-      if s.tick mod 6 == 0 or s.phase == phEnded:
-        broadcastAnalyst(s, tracker)
-      serviceWatchers(s)
-      r.broadcast(s, r.updatePacket(s))
-      runFrameLimiter(last, speed)
-    for _ in 0 ..< 48:                          # end-of-loop beat
-      r.broadcast(s, @[])
-      runFrameLimiter(last)
-
 when isMainModule:
   let rc = readRuntimeConfig()
-  if rc.replayMode:
-    runReplay(rc)
-  else:
-    runLive(rc)
+  doAssert not rc.replayMode,
+    "Zero Sum replays are served by the static viewer bundle"
+  runLive(rc)

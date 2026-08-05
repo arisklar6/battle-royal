@@ -1,11 +1,10 @@
 ## v0.2 audience pivot (DECIDED 2026-07-31): sponsors buy one package at a
 ## time and drop it on a CHOSEN TILE. Covers: tile landing via the pinned
 ## spiral, the 60 s per-team lockout (tile mode only), atomic rejects, legacy
-## recipient gifts staying lockout-free, and log-driven replay parity for
-## tile-gift payloads.
+## recipient gifts staying lockout-free.
 
 import std/json
-import zero_sum/[prng, types, arena, items, sim]
+import zero_sum/[types, items, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 
@@ -50,32 +49,10 @@ doAssert not o6.accepted and o6.reason == "malformed"
 let o7 = s.requestGift("live:C", 2, -1, "rations", Pos(x: 5, y: 5))
 doAssert o7.accepted, "reject must not arm the lockout: " & o7.reason
 
-# ---- legacy recipient gifts: NO lockout (v0.1 replay logs must re-sim as-is)
+# ---- recipient gifts retain their distinct no-lockout behavior
 let l1 = s.requestGift("script", 3, 6, "rations")
 let l2 = s.requestGift("script", 3, 6, "rations")
 doAssert l1.accepted and l2.accepted,
   "legacy recipient gifts must stay lockout-free: " & l1.reason & "/" & l2.reason
-
-# ---- run to completion, then replay the input log: identical hash stream
-while s.phase != phEnded:
-  s.step()
-var rep = initReplaySim(parseSimConfig(cfgNode, fixedSeed))
-var idx = 0
-while rep.phase != phEnded:
-  while idx < s.inputLog.len and s.inputLog[idx].tick == rep.tick:
-    let j = parseJson(s.inputLog[idx].payload)
-    let slot = s.inputLog[idx].slot
-    if slot in 0 .. 15:
-      rep.applyInputJson(AgentId(slot), j)
-    inc idx
-  rep.step()
-doAssert s.hashes == rep.hashes, "tile-gift replay diverged"
-var liveAccepted, repAccepted = 0
-for r in s.sponsorLog:
-  if r.status == gsAccepted: inc liveAccepted
-for r in rep.sponsorLog:
-  if r.status == gsAccepted: inc repAccepted
-doAssert liveAccepted == repAccepted and liveAccepted == 6,
-  "accepted rows: live=" & $liveAccepted & " replay=" & $repAccepted
 
 echo "t_gift_targeting ok"
