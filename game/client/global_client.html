@@ -1186,11 +1186,23 @@ function connect(){
 let staticReplay=null,replayFrame=0,replayTick=0,replayPlaying=true;
 let replayLastMs=0,replayPlaybackSpeed=1,replayError=false;
 
-// Cross-origin replay sources are permitted (artifacts live in object
-// storage, not next to the bundle), but the URL arrives from the query
-// string, so it is validated and any non-same-origin host is shown in the
-// transport bar. Pin this list once the platform's artifact host is fixed.
-const ReplayOriginAllowlist=[];
+// Artifacts live in object storage rather than next to the bundle, so the
+// replay URL is cross-origin by design — but it arrives from the query
+// string, so the origin is pinned rather than trusted. Verified 2026-08-05:
+// Observatory episode records carry
+//   replay_url = https://softmax-public.s3.amazonaws.com/replays/<uuid>.replay
+// on a public bucket (no presigned query auth) that answers cross-origin
+// GETs with CORS.
+const ReplayOriginAllowlist=["https://softmax-public.s3.amazonaws.com"];
+// Same bucket in its region-qualified virtual-host form. Anchored on the
+// bucket name so no other S3 bucket can match.
+const ReplayOriginPattern=/^softmax-public\.s3(\.[a-z0-9-]+)?\.amazonaws\.com$/;
+
+function isAllowedReplayOrigin(parsed){
+  if(parsed.origin===location.origin)return true;
+  if(ReplayOriginAllowlist.includes(parsed.origin))return true;
+  return parsed.protocol==="https:"&&ReplayOriginPattern.test(parsed.hostname);
+}
 
 function resolveReplayUrl(raw){
   let parsed;
@@ -1206,8 +1218,7 @@ function resolveReplayUrl(raw){
     throw new Error("must not carry credentials");
   }
   if(parsed.origin!==location.origin){
-    if(ReplayOriginAllowlist.length&&
-       !ReplayOriginAllowlist.includes(parsed.origin)){
+    if(!isAllowedReplayOrigin(parsed)){
       throw new Error("origin not allowed: "+parsed.origin);
     }
     if(location.protocol==="https:"&&parsed.protocol!=="https:"){
@@ -1325,7 +1336,10 @@ if(replayUrl){
   }
   if(resolvedReplay){
     setStatus("loading replay...");
-    if(resolvedReplay.origin!==location.origin){
+    // The pinned artifact host is the normal case and needs no callout;
+    // anything else cross-origin is named so it cannot read as first-party.
+    if(resolvedReplay.origin!==location.origin&&
+       !ReplayOriginPattern.test(resolvedReplay.hostname)){
       replaySource.textContent="source "+resolvedReplay.host;
       replaySource.classList.remove("hidden");
     }
