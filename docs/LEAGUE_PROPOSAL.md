@@ -81,11 +81,59 @@ mode below states exactly how its seats collapse into that single number.
 
 ### Both leagues
 
-- Cadence: rolling episodes as entrants queue.
-- Under-subscription: please enable `filler_policy_version_ids` with our
-  baseline player so rounds still run before the entrant pool is deep. This
-  matters most at launch — Solo needs 16 live entrants to fill unaided.
+- Cadence: continuous rounds, as Paintbot runs today.
+- **Fillers are the launch requirement.** Set
+  `filler_policy_version_ids: ["092ffb35-671e-4497-aadf-a7baa4244897"]` — our
+  baseline, already on the platform as `coworld-smoke/cow_36202b83-…` v1 from
+  the 0.1.8 upload. Paintbot demonstrates the pattern: it runs continuously
+  with one filler policy and `insufficient_players: "do_not_run"`, because
+  fillers satisfy the seat count. Zero Sum needs 16 seats, so without this a
+  single real entrant can never start a round.
 - Disqualification: platform default (3 consecutive failures) is fine.
+
+### Concrete seed, modeled on the live Paintbot league
+
+Shared:
+
+```json
+{
+  "filler_policy_version_ids": ["092ffb35-671e-4497-aadf-a7baa4244897"],
+  "settings": {
+    "ladder": {
+      "enabled": true,
+      "ranking": { "algorithm": "elo", "k_factor": 16,
+                   "initial_rating": 1500, "round_scoring_rule": "mean" },
+      "divisions": [{ "name": "Competition",
+                      "disqualify_after_consecutive_failures": 3 }],
+      "fulfillment": { "retry_times": 2, "allowed_failures": 0.05 }
+    }
+  }
+}
+```
+
+Per league, the scheduler differs. Zero Sum is always structurally 8 teams of
+2; the modes differ only in whether one entrant holds both seats of a team:
+
+- **Duos** — 8 entrants, each holding one whole team:
+  `{"strategy": "team_n", "team_count": 8, "insufficient_players": "do_not_run"}`
+- **Solo** — 16 entrants, one seat each, teammates drawn from different
+  entrants and re-randomized per episode, never the same player twice on one
+  team. Same `team_count: 8`, higher `num_episodes` than Duos.
+
+No `allied_teams`: unlike Paintbot, all 8 Zero Sum teams are mutually hostile.
+
+### Open questions for whoever seeds this
+
+1. Can `team_n` express "one entrant fills both seats of a team" (Duos) versus
+   "two different entrants share a team" (Solo)? That distinction is the whole
+   difference between the two leagues and we cannot verify it from outside.
+2. Solo additionally needs per-episode randomized pairing and a no-self-pairing
+   constraint. Is either expressible in the scheduler today?
+3. Both live leagues we inspected rank by
+   `rules.division_leaderboard.source_score: "mean_round_score"`, and Paintbot
+   has `ladder.enabled: false`. If we set `ladder.enabled: true` with Elo, does
+   the visible leaderboard show the Elo rating, or still the mean round score?
+   We are asking for Elo and want to know which number entrants will see.
 - Player interface: JSON WebSocket protocol `zero_sum.player.v1`
   (documented in the repo: DESIGN.md §10-§11, docs/LLM_CONTEXT.md is a
   model-ready context pack for LLM agents).
