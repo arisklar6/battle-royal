@@ -69,6 +69,11 @@ mode below states exactly how its seats collapse into that single number.
   episode seed so entrants do not get a fixed partner across a round.
 - **Per-episode score = that entrant's own seat only.** Round score is the mean
   of its episode scores. A partner's kills never score for you.
+- **No self-pairing.** A player may hold several policy versions, so pairing
+  must never place the same player on both seats of a team. Otherwise that
+  player gets Duos-grade coordination inside a Solo league — a strictly
+  dominant position, since the two halves can agree a finale outcome that a
+  stranger pairing never would.
 - Higher variance, since some of your result depends on a partner you did not
   choose. **Please schedule more episodes per round here than in Duos** so
   ratings converge; partner luck should average out within a round rather than
