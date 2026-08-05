@@ -111,29 +111,42 @@ Shared:
 }
 ```
 
-Per league, the scheduler differs. Zero Sum is always structurally 8 teams of
-2; the modes differ only in whether one entrant holds both seats of a team:
+### Seating: please use the container commissioner, not `team_n`
 
-- **Duos** — 8 entrants, each holding one whole team:
-  `{"strategy": "team_n", "team_count": 8, "insufficient_players": "do_not_run"}`
-- **Solo** — 16 entrants, one seat each, teammates drawn from different
-  entrants and re-randomized per episode, never the same player twice on one
-  team. Same `team_count: 8`, higher `num_episodes` than Duos.
+**The platform ladder's `team_n` strategy cannot seat this game correctly.**
+Zero Sum defines a team as a *contiguous* seat pair
+(`src/zero_sum/types.nim:128` — `proc team*(slot: AgentId): int = slot div 2`),
+but `team_n` deals seat groups *interleaved*, by `slot mod team_count`. At
+`team_count: 8` over 16 seats, entrant *i* receives slots `{i, i+8}`, which
+under `slot div 2` land in teams `i/2` and `i/2 + 4` — every entrant split
+across two teams and every team split between two entrants. That is neither
+mode; it silently corrupts both. Please do not seed either league with
+`strategy: team_n`.
+
+The reusable **container commissioner** (`commissioner_key: "container"`, as
+Proxywar and Traverse Wow already use) expresses both modes exactly:
+
+- **Duos** — `{"seating": "team_blocks", "team_count": 8, "policies_per_team": 1}`
+  → slot→entrant `[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]`, i.e. entrant *i* on slots
+  (2i, 2i+1). Exactly one entrant per team.
+- **Solo** — `{"seating": "team_interleaved", "team_count": 8, "policies_per_team": 2}`
+  → slot→entrant `[0,1,2,…,15]`, so Zero Sum team *i* is entrants `{2i, 2i+1}`.
+  Two different entrants per team.
 
 No `allied_teams`: unlike Paintbot, all 8 Zero Sum teams are mutually hostile.
 
-### Open questions for whoever seeds this
+### Remaining gaps we could not close from outside
 
-1. Can `team_n` express "one entrant fills both seats of a team" (Duos) versus
-   "two different entrants share a team" (Solo)? That distinction is the whole
-   difference between the two leagues and we cannot verify it from outside.
-2. Solo additionally needs per-episode randomized pairing and a no-self-pairing
-   constraint. Is either expressible in the scheduler today?
-3. Both live leagues we inspected rank by
-   `rules.division_leaderboard.source_score: "mean_round_score"`, and Paintbot
-   has `ladder.enabled: false`. If we set `ladder.enabled: true` with Elo, does
-   the visible leaderboard show the Elo rating, or still the mean round score?
-   We are asking for Elo and want to know which number entrants will see.
+1. **Solo's two fairness rules are not expressible in any scheduler we could
+   find**: partner re-randomized per episode, and never the same player on both
+   seats of a team. With static seating, entrant 0 is always paired with
+   entrant 1. If the commissioner cannot randomize per episode, Solo still
+   works but partner assignment is fixed within a round — please tell us which,
+   because it changes how many episodes a round needs.
+2. The platform ladder's scheduler source is closed (`app_backend`, private
+   `Metta-AI/metta`), so the `team_n` behaviour above is inferred from observed
+   episodes rather than read from code. Worth a sanity check by someone who can
+   see it.
 - Player interface: JSON WebSocket protocol `zero_sum.player.v1`
   (documented in the repo: DESIGN.md §10-§11, docs/LLM_CONTEXT.md is a
   model-ready context pack for LLM agents).
