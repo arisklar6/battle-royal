@@ -3,6 +3,12 @@
 
 const MAGIC="ZERO_SUM_FRAMES",VERSION=1;
 
+// Decompression bounds. A measured full-length match (9120 ticks, the hard
+// cap) is 5.26 MiB compressed and 38.3 MiB raw, so these leave ~12x and ~5x
+// headroom while still refusing a zip bomb before it takes the tab down.
+const MAX_COMPRESSED_BYTES=64*1024*1024;
+const MAX_INFLATED_BYTES=192*1024*1024;
+
 function u16(view,offset){return view.getUint16(offset,true)}
 function u32(view,offset){return view.getUint32(offset,true)}
 
@@ -29,7 +35,9 @@ function parse(raw){
     const length=u32(view,offset);offset+=4;
     if(i>0&&tick<previousTick)throw new Error("out-of-order Zero Sum replay frame");
     if(offset+length>bytes.length)throw new Error("truncated Zero Sum replay packet");
-    frames.push({tick,packet:bytes.slice(offset,offset+length)});
+    // subarray, not slice: a view costs nothing and the frames keep the
+    // inflated buffer alive anyway, so copying would double peak memory.
+    frames.push({tick,packet:bytes.subarray(offset,offset+length)});
     previousTick=tick;
     offset+=length;
   }
@@ -39,11 +47,36 @@ function parse(raw){
 
 async function inflate(artifact){
   const bytes=artifact instanceof Uint8Array?artifact:new Uint8Array(artifact);
+  if(bytes.length>MAX_COMPRESSED_BYTES){
+    throw new Error("Zero Sum replay is too large: "+bytes.length+" bytes");
+  }
   if(bytes.length<2||(bytes[0]&15)!==8||((bytes[0]<<8)+bytes[1])%31!==0){
     throw new Error("Zero Sum replay is not zlib-compressed");
   }
-  const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  // Read the inflated stream chunk by chunk so a crafted artifact cannot
+  // expand without bound before we ever look at its contents.
+  const reader=new Blob([bytes]).stream()
+    .pipeThrough(new DecompressionStream("deflate")).getReader();
+  const chunks=[];
+  let total=0;
+  for(;;){
+    const {done,value}=await reader.read();
+    if(done)break;
+    total+=value.byteLength;
+    if(total>MAX_INFLATED_BYTES){
+      await reader.cancel();
+      throw new Error("Zero Sum replay expands past the "+MAX_INFLATED_BYTES+
+        " byte limit");
+    }
+    chunks.push(value);
+  }
+  const inflated=new Uint8Array(total);
+  let offset=0;
+  for(const chunk of chunks){
+    inflated.set(chunk,offset);
+    offset+=chunk.byteLength;
+  }
+  return inflated;
 }
 
 async function decode(artifact){return parse(await inflate(artifact))}
@@ -51,10 +84,15 @@ async function decode(artifact){return parse(await inflate(artifact))}
 async function load(url){
   const response=await fetch(url,{credentials:"omit",mode:"cors"});
   if(!response.ok)throw new Error("replay download failed: HTTP "+response.status);
+  const declared=Number(response.headers.get("content-length"));
+  if(Number.isFinite(declared)&&declared>MAX_COMPRESSED_BYTES){
+    throw new Error("Zero Sum replay is too large: "+declared+" bytes");
+  }
   return decode(await response.arrayBuffer());
 }
 
-const api={MAGIC,VERSION,parse,inflate,decode,load};
+const api={MAGIC,VERSION,MAX_COMPRESSED_BYTES,MAX_INFLATED_BYTES,
+  parse,inflate,decode,load};
 root.ZeroSumPresentationReplay=api;
 if(typeof module!=="undefined"&&module.exports)module.exports=api;
 })(typeof globalThis!=="undefined"?globalThis:this);

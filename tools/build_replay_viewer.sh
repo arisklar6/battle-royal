@@ -17,6 +17,15 @@ if [[ "${requested_output}" != "${repo_dir}"/* ]]; then
   echo "unsafe bundle output: ${requested_output}" >&2
   exit 1
 fi
+
+# Reject traversal before creating anything: the resolved-path checks below
+# only run after mkdir, so without this a path like <repo>/../../tmp/... would
+# create directories outside the repo and only then be refused.
+if [[ "${requested_output}" == *"/../"* || "${requested_output}" == *"/.." ]]; then
+  echo "unsafe bundle output: ${requested_output}" >&2
+  exit 1
+fi
+
 mkdir -p "$(dirname "${requested_output}")"
 output_parent="$(cd "$(dirname "${requested_output}")" && pwd -P)"
 output_dir="${output_parent}/static-replay-viewer"

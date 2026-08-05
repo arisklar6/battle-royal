@@ -177,6 +177,8 @@ body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   padding:5px 8px;
 }
 #replayTime{min-width:92px;text-align:right}
+#replaySource{color:#ffb347;white-space:nowrap}
+#replaySource.hidden{display:none}
 </style>
 </head>
 <body>
@@ -202,6 +204,7 @@ body{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
   <button id="replayPlay" type="button">Pause</button>
   <input id="replaySeek" type="range" min="0" max="0" value="0" step="1">
   <span id="replayTime">0:00 / 0:00</span>
+  <span id="replaySource" class="hidden"></span>
   <select id="replaySpeed" aria-label="Replay speed">
     <option value="0.25">0.25x</option>
     <option value="0.5">0.5x</option>
@@ -225,6 +228,7 @@ const replayControls=document.getElementById("replayControls");
 const replayPlay=document.getElementById("replayPlay");
 const replaySeek=document.getElementById("replaySeek");
 const replayTime=document.getElementById("replayTime");
+const replaySource=document.getElementById("replaySource");
 const replaySpeed=document.getElementById("replaySpeed");
 const textDecoder=new TextDecoder("utf-8");
 const url=new URL(location.href);
@@ -283,6 +287,8 @@ const MaxUiZoomFitPadding=1.5;
 const ButtonUp=1,ButtonDown=2,ButtonLeft=4,ButtonRight=8;
 const ButtonSelect=16,ButtonA=32,ButtonB=64;
 const DebugUpdateFlashMs=900;
+const MaxSpriteDimension=2048;
+const MaxReplayStepMs=500;
 let layers=new Map(),sprites=new Map(),objects=new Map();
 let socket=null,reconnectTimer=0;
 let zoom=1,panX=0,panY=0,autoFit=true,activeMouseLayer=null;
@@ -1050,6 +1056,13 @@ function parse(bytes){
       const width=readU16(bytes,offset+2);
       const height=readU16(bytes,offset+4);
       offset+=6;
+      // Dimensions are u16, so an untrusted stream could ask for a 65535^2
+      // allocation. The widest sprite we ever emit is the arena overlay at
+      // WorldPx*RS = 576, so this leaves a wide margin and still bounds it.
+      if(width>MaxSpriteDimension||height>MaxSpriteDimension){
+        throw new Error("sprite "+id+" exceeds the "+MaxSpriteDimension+
+          "px limit ("+width+"x"+height+")");
+      }
       const remaining=bytes.length-offset;
       const snappySprite=tryDecodeSpritePixelsSnappy(
         bytes,
@@ -1171,7 +1184,38 @@ function connect(){
 }
 
 let staticReplay=null,replayFrame=0,replayTick=0,replayPlaying=true;
-let replayLastMs=0,replayPlaybackSpeed=1;
+let replayLastMs=0,replayPlaybackSpeed=1,replayError=false;
+
+// Cross-origin replay sources are permitted (artifacts live in object
+// storage, not next to the bundle), but the URL arrives from the query
+// string, so it is validated and any non-same-origin host is shown in the
+// transport bar. Pin this list once the platform's artifact host is fixed.
+const ReplayOriginAllowlist=[];
+
+function resolveReplayUrl(raw){
+  let parsed;
+  try{
+    parsed=new URL(raw,location.href);
+  }catch(error){
+    throw new Error("not a valid URL");
+  }
+  if(parsed.protocol!=="https:"&&parsed.protocol!=="http:"){
+    throw new Error("must be http(s), got "+parsed.protocol);
+  }
+  if(parsed.username||parsed.password){
+    throw new Error("must not carry credentials");
+  }
+  if(parsed.origin!==location.origin){
+    if(ReplayOriginAllowlist.length&&
+       !ReplayOriginAllowlist.includes(parsed.origin)){
+      throw new Error("origin not allowed: "+parsed.origin);
+    }
+    if(location.protocol==="https:"&&parsed.protocol!=="https:"){
+      throw new Error("refusing an insecure cross-origin replay");
+    }
+  }
+  return parsed;
+}
 
 function resetPresentation(){
   layers.clear();
@@ -1186,54 +1230,71 @@ function resetPresentation(){
 }
 
 function timeLabel(ticks,tickRate){
-  const seconds=Math.floor(ticks/tickRate);
+  const seconds=Math.max(0,Math.floor(ticks/tickRate));
   return Math.floor(seconds/60)+":"+String(seconds%60).padStart(2,"0");
 }
 
 function refreshReplayControls(){
   const duration=staticReplay.durationTicks;
-  const displayTick=Math.min(duration,replayTick);
+  const displayTick=Math.max(0,Math.min(duration,replayTick));
   replaySeek.value=String(Math.floor(displayTick));
   replayTime.textContent=timeLabel(displayTick,staticReplay.tickRate)+" / "+
     timeLabel(duration,staticReplay.tickRate);
   replayPlay.textContent=replayPlaying?"Pause":"Play";
 }
 
+// Feeds every frame due at replayTick into the renderer. A corrupt packet
+// stops playback with a visible reason instead of throwing out of the
+// animation loop, which would silently end it for good.
+function feedReplayFrames(){
+  while(replayFrame<staticReplay.frames.length&&
+        staticReplay.frames[replayFrame].tick<=replayTick){
+    const frame=staticReplay.frames[replayFrame];
+    debugBytesDown+=frame.packet.byteLength;
+    try{
+      parse(frame.packet);
+    }catch(error){
+      replayError=true;
+      replayPlaying=false;
+      setStatus("Replay stopped at tick "+frame.tick+": "+error.message);
+      return;
+    }
+    replayFrame++;
+  }
+}
+
 function seekReplay(tick){
   replayTick=Math.max(0,Math.min(staticReplay.durationTicks,tick));
   replayFrame=0;
+  replayError=false;   // seeking is the way out of a bad frame
   resetPresentation();
-  while(replayFrame<staticReplay.frames.length&&
-        staticReplay.frames[replayFrame].tick<=replayTick){
-    const packet=staticReplay.frames[replayFrame].packet;
-    debugBytesDown+=packet.byteLength;
-    parse(packet);
-    replayFrame++;
-  }
+  feedReplayFrames();
   updateDebugCounters();
   refreshReplayControls();
 }
 
 function replayAnimation(now){
   if(!replayLastMs)replayLastMs=now;
-  if(replayPlaying){
-    replayTick+=(now-replayLastMs)*staticReplay.tickRate*
-      replayPlaybackSpeed/1000;
-    while(replayFrame<staticReplay.frames.length&&
-          staticReplay.frames[replayFrame].tick<=replayTick){
-      const packet=staticReplay.frames[replayFrame].packet;
-      debugBytesDown+=packet.byteLength;
-      parse(packet);
-      replayFrame++;
+  try{
+    if(replayPlaying&&!replayError){
+      // Clamp the step: rAF is suspended while the tab is hidden, so the
+      // first frame back would otherwise carry a multi-second delta and
+      // fast-forward through thousands of packets in one synchronous burst.
+      const deltaMs=Math.max(0,Math.min(now-replayLastMs,MaxReplayStepMs));
+      replayTick+=deltaMs*staticReplay.tickRate*replayPlaybackSpeed/1000;
+      feedReplayFrames();
+      if(!replayError&&
+         replayTick>=staticReplay.durationTicks+staticReplay.tickRate*2){
+        seekReplay(0);
+      }
+      updateDebugCounters();
+      refreshReplayControls();
     }
-    if(replayTick>=staticReplay.durationTicks+staticReplay.tickRate*2){
-      seekReplay(0);
-    }
-    updateDebugCounters();
-    refreshReplayControls();
+  }finally{
+    // the loop must outlive any single frame's failure
+    replayLastMs=now;
+    requestAnimationFrame(replayAnimation);
   }
-  replayLastMs=now;
-  requestAnimationFrame(replayAnimation);
 }
 
 function startStaticReplay(replay){
@@ -1246,6 +1307,7 @@ function startStaticReplay(replay){
 }
 
 replayPlay.addEventListener("click",()=>{
+  if(replayError)return;   // the status line explains; seek to recover
   replayPlaying=!replayPlaying;
   refreshReplayControls();
 });
@@ -1255,12 +1317,24 @@ replaySpeed.addEventListener("change",()=>{
 replaySeek.addEventListener("change",()=>seekReplay(Number(replaySeek.value)));
 
 if(replayUrl){
-  setStatus("loading replay...");
-  ZeroSumPresentationReplay.load(replayUrl).then(
-    startStaticReplay,
-    error=>setStatus("Replay failed: "+error.message)
-  );
-  addEventListener("error",event=>setStatus("Replay failed: "+event.message));
+  let resolvedReplay=null;
+  try{
+    resolvedReplay=resolveReplayUrl(replayUrl);
+  }catch(error){
+    setStatus("Replay URL rejected: "+error.message);
+  }
+  if(resolvedReplay){
+    setStatus("loading replay...");
+    if(resolvedReplay.origin!==location.origin){
+      replaySource.textContent="source "+resolvedReplay.host;
+      replaySource.classList.remove("hidden");
+    }
+    ZeroSumPresentationReplay.load(resolvedReplay.href).then(
+      startStaticReplay,
+      error=>setStatus("Replay failed: "+error.message)
+    );
+    addEventListener("error",event=>setStatus("Replay failed: "+event.message));
+  }
 }else{
   connect();
 }

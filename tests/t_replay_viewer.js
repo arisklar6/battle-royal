@@ -31,6 +31,21 @@ async function main(){
   assert.deepEqual([...decoded.frames[1].packet],[...packets[1]]);
   assert.throws(()=>replay.parse(raw.subarray(0,raw.length-1)),/truncated/);
   await assert.rejects(replay.decode(Buffer.from("not zlib")),/not zlib/);
+
+  // frames are views into one inflated buffer, never per-frame copies
+  assert.equal(decoded.frames[0].packet.buffer,
+               decoded.frames[1].packet.buffer);
+
+  // an oversized artifact is refused before any decompression work
+  await assert.rejects(
+    replay.inflate(new Uint8Array(replay.MAX_COMPRESSED_BYTES+1)),
+    /too large/);
+
+  // a zip bomb is cut off at the inflated ceiling rather than taking the tab
+  const bomb=zlib.deflateSync(Buffer.alloc(replay.MAX_INFLATED_BYTES+1024));
+  assert.ok(bomb.length<1024*1024,"bomb fixture should be tiny compressed");
+  await assert.rejects(replay.inflate(bomb),/expands past/);
+
   console.log("t_replay_viewer ok");
 }
 

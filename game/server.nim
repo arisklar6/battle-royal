@@ -863,6 +863,11 @@ proc runLive(rc: RuntimeConfig) =
 
 when isMainModule:
   let rc = readRuntimeConfig()
-  doAssert not rc.replayMode,
-    "Zero Sum replays are served by the static viewer bundle"
+  if rc.replayMode:
+    # A stray COGAME_LOAD_REPLAY_URI should not surface as an AssertionDefect
+    # and a stack trace; say what changed and exit non-zero cleanly.
+    stderr.writeLine "zero_sum: replay mode is no longer served by the game " &
+      "image. Replays are played by the static viewer bundle declared at " &
+      "game.replay_viewer.bundle; point the viewer at the artifact instead."
+    quit(1)
   runLive(rc)
