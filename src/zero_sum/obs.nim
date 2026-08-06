@@ -271,7 +271,7 @@ proc finalJson*(s: Sim, slot: int): string =
   let places = s.computePlacements()
   let me = s.agents[slot]
   $(%*{"type": "final", "placement": places[slot], "kills": me.kills,
-       "score": scoreFor(places[slot], me.kills),
+       "score": s.episodeScore(places, AgentId(slot)),
        "winner_slot": s.winnerSlot, "match_ticks": s.tick,
        "reason": (if me.alive and s.winnerSlot == slot: "winner"
                   elif s.phase == phEnded: "match_over"

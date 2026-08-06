@@ -3,6 +3,7 @@
 Run from anywhere:  python tools/gen_manifest.py
 """
 import json
+from copy import deepcopy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,6 +24,13 @@ CONFIG_SCHEMA = {
         "tokens": {
             "type": "array", "minItems": 16, "maxItems": 16,
             "items": {"type": "string", "minLength": 1},
+        },
+        "league_mode": {
+            "enum": ["solo", "duos"],
+            "description": "Policy seating and result attribution. solo maps one "
+                           "external seat to one contestant. duos remaps platform "
+                           "team_n seats i/i+8 onto adjacent teammates and reports "
+                           "their shared team-total score to both seats.",
         },
         "seed": {
             "type": "integer",
@@ -150,7 +158,8 @@ for t, team in enumerate("ABCDEFGH"):
                          "recipient_slot": 2 * t + 1, "item_id": "first_aid"})
 
 COMPETITION = {
-    "max_ticks": 9120, "freeze_ticks": 240, "stat_budget": 20,
+    "league_mode": "solo", "max_ticks": 9120, "freeze_ticks": 240,
+    "stat_budget": 20,
     "zone": {"schedule": FULL_ZONE},
     "events": [{"kind": "flood", "rect": [10, 22, 14, 26],
                 "from_tick": 4400, "duration": 720}],
@@ -160,7 +169,8 @@ COMPETITION = {
 }
 
 CASUAL = {
-    "max_ticks": 9120, "freeze_ticks": 240, "stat_budget": 20,
+    "league_mode": "solo", "max_ticks": 9120, "freeze_ticks": 240,
+    "stat_budget": 20,
     "zone": {"schedule": FULL_ZONE},
     "events": [],
     "sponsor": {"live": True, "budget_per_team": 300,
@@ -169,7 +179,8 @@ CASUAL = {
 }
 
 FIXTURE = {
-    "seed": 42, "max_ticks": 480, "freeze_ticks": 48, "stat_budget": 20,
+    "league_mode": "solo", "seed": 42, "max_ticks": 480,
+    "freeze_ticks": 48, "stat_budget": 20,
     "zone": {"schedule": [[96, 120, 288, 24, 12, 4], [336, 360, 384, 12, 0, 40]]},
     "events": [],
     "sponsor": {"live": False, "budget_per_team": 300, "shop_opens_tick": 96,
@@ -179,6 +190,11 @@ FIXTURE = {
                 ]},
     "players": DEFAULT_NAMES,
 }
+
+DUOS_COMPETITION = deepcopy(COMPETITION)
+DUOS_COMPETITION["league_mode"] = "duos"
+DUOS_FIXTURE = deepcopy(FIXTURE)
+DUOS_FIXTURE["league_mode"] = "duos"
 
 MANIFEST = {
     "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
@@ -244,6 +260,28 @@ MANIFEST = {
     },
 }
 
-out = ROOT / "coworld_manifest_template.json"
-out.write_text(json.dumps(MANIFEST, indent=2) + "\n", encoding="utf-8")
-print(f"wrote {out} ({out.stat().st_size} bytes)")
+DUOS_MANIFEST = deepcopy(MANIFEST)
+DUOS_MANIFEST["game"]["name"] = "zero-sum-duos"
+DUOS_MANIFEST["game"]["description"] = (
+    "Self-paired Zero Sum for 8 policies controlling adjacent teams of 2. "
+    "The game remaps the platform team_n seat pattern onto the canonical "
+    "arena layout and attributes each policy its two contestants' team-total "
+    "score."
+)
+DUOS_MANIFEST["variants"] = [{
+    "id": "competition-duos",
+    "name": "Competition Duos",
+    "game_config": DUOS_COMPETITION,
+    "description": "League standard for 8 self-paired entrants. Use platform "
+                   "team_n seating with team_count 8; external seats i and "
+                   "i+8 become adjacent teammates inside the game.",
+}]
+DUOS_MANIFEST["certification"]["game_config"] = DUOS_FIXTURE
+
+for filename, manifest in [
+    ("coworld_manifest_template.json", MANIFEST),
+    ("coworld_manifest_duos_template.json", DUOS_MANIFEST),
+]:
+    out = ROOT / filename
+    out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {out} ({out.stat().st_size} bytes)")

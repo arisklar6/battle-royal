@@ -41,6 +41,7 @@ type
     sponsorLive: bool
     sponsorTokens: Table[string, string] # team name -> token (runtime config only)
     playerTokens: seq[string]            # per-slot, runner-injected
+    leagueMode: LeagueMode
     players: Table[WebSocket, int]       # ws -> slot
     playerBySlot: array[16, WebSocket]   # valid only when slotConnected
     slotConnected: array[16, bool]
@@ -257,13 +258,14 @@ proc httpHandler(request: Request) =
       withLock appState.lock:
         let slotStr = queryParam(request.uri, "slot")
         let token = queryParam(request.uri, "token")
-        var slot = -1
+        var externalSlot = -1
         try:
-          slot = parseInt(slotStr)
+          externalSlot = parseInt(slotStr)
         except CatchableError:
           discard
-        if slot notin 0 .. 15 or slot >= appState.playerTokens.len or
-           token.len == 0 or appState.playerTokens[slot] != token:
+        if externalSlot notin 0 .. 15 or
+           externalSlot >= appState.playerTokens.len or token.len == 0 or
+           appState.playerTokens[externalSlot] != token:
           headers["Content-Type"] = "text/plain"
           request.respond(401, headers, "bad slot/token")
           return
@@ -272,6 +274,7 @@ proc httpHandler(request: Request) =
           request.respond(200, headers, "zero_sum player websocket endpoint")
           return
         let websocket = request.upgradeToWebSocket()
+        let slot = int(internalSlot(appState.leagueMode, AgentId(externalSlot)))
         # reconnect policy (DESIGN §10): a valid second connection replaces
         # the seat; the old socket is queued for closure
         if appState.slotConnected[slot]:
@@ -564,6 +567,7 @@ proc runLive(rc: RuntimeConfig) =
   {.gcsafe.}:
     withLock appState.lock:
       appState.sponsorLive = cfg.sponsor.live
+      appState.leagueMode = cfg.leagueMode
       if original.hasKey("sponsor") and
          original["sponsor"].hasKey("sponsor_tokens"):
         for teamName, tok in original["sponsor"]["sponsor_tokens"].pairs:

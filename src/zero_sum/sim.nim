@@ -52,6 +52,7 @@ type
   SimConfig* = object
     seed*: uint64
     seedWasMinted*: bool
+    leagueMode*: LeagueMode
     maxTicks*: int
     freezeTicks*: int
     zone*: seq[ZoneStage]
@@ -162,6 +163,11 @@ const DefaultZone*: array[7, ZoneStage] = [
   ZoneStage(warnT: 6912, shrinkT: 7104, doneT: 7536, rStart: 3, rEnd: 0, dmgPerS: 24)]
 
 proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
+  case node{"league_mode"}.getStr("solo")
+  of "solo": result.leagueMode = lmSolo
+  of "duos": result.leagueMode = lmDuos
+  else:
+    raise newException(ValueError, "config: league_mode must be solo or duos")
   result.maxTicks = node{"max_ticks"}.getInt(9120)
   result.freezeTicks = node{"freeze_ticks"}.getInt(240)
   if node.hasKey("seed"):
@@ -237,7 +243,8 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   if node.hasKey("players"):
     for i, p in node["players"].elems:
       if i < 16 and p.kind == JObject and p{"name"}.getStr("").len > 0:
-        result.playerNames[i] = p["name"].getStr()
+        let slot = internalSlot(result.leagueMode, AgentId(i))
+        result.playerNames[slot] = p["name"].getStr()
   if node.hasKey("events"):
     for e in node["events"]:
       var ev = ScriptedEvent(fromTick: e{"from_tick"}.getInt(),
@@ -1202,6 +1209,12 @@ proc computePlacements*(s: Sim): array[16, int] =
 
 proc scoreFor*(placement, kills: int): int =
   PlacementPoints[placement - 1] + kills
+
+proc episodeScore*(s: Sim, placements: array[16, int], slot: AgentId): int =
+  result = scoreFor(placements[slot], s.agents[slot].kills)
+  if s.cfg.leagueMode == lmDuos:
+    let mate = teammate(slot)
+    result += scoreFor(placements[mate], s.agents[mate].kills)
 
 # ---------------------------------------------------------------- hash
 

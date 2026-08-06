@@ -8,11 +8,11 @@
     "sponsor-economy"
   ],
   "game": {
-    "name": "zero-sum",
+    "name": "zero-sum-duos",
     "replay_viewer": {
       "bundle": "build/static-replay-viewer"
     },
-    "description": "Battle royale for 16 agents in 8 teams of 2: a loot-stocked central Fortress, a shrinking ring of fire, open talk channels, sponsor softcoin airdrops anyone can steal, and a finale that turns the last team against itself. Every death is a black firework.",
+    "description": "Self-paired Zero Sum for 8 policies controlling adjacent teams of 2. The game remaps the platform team_n seat pattern onto the canonical arena layout and attributes each policy its two contestants' team-total score.",
     "owner": "arisklar6@gmail.com",
     "runnable": {
       "type": "game",
@@ -340,10 +340,10 @@
   ],
   "variants": [
     {
-      "id": "competition",
-      "name": "Competition",
+      "id": "competition-duos",
+      "name": "Competition Duos",
       "game_config": {
-        "league_mode": "solo",
+        "league_mode": "duos",
         "max_ticks": 9120,
         "freeze_ticks": 240,
         "stat_budget": 20,
@@ -574,140 +574,12 @@
           }
         ]
       },
-      "description": "League standard: full 9120-tick match, fast 5-minute ring, one scripted flood, equal per-team softcoin budgets delivered as an identical scripted gift schedule (no live sponsorship in hosted play)."
-    },
-    {
-      "id": "casual-live",
-      "name": "Casual (live sponsors)",
-      "game_config": {
-        "league_mode": "solo",
-        "max_ticks": 9120,
-        "freeze_ticks": 240,
-        "stat_budget": 20,
-        "zone": {
-          "schedule": [
-            [
-              1440,
-              1632,
-              2064,
-              24,
-              19,
-              1
-            ],
-            [
-              2352,
-              2544,
-              2976,
-              19,
-              15,
-              2
-            ],
-            [
-              3264,
-              3456,
-              3888,
-              15,
-              11,
-              4
-            ],
-            [
-              4176,
-              4368,
-              4800,
-              11,
-              8,
-              6
-            ],
-            [
-              5088,
-              5280,
-              5712,
-              8,
-              5,
-              8
-            ],
-            [
-              6000,
-              6192,
-              6624,
-              5,
-              3,
-              16
-            ],
-            [
-              6912,
-              7104,
-              7536,
-              3,
-              0,
-              24
-            ]
-          ]
-        },
-        "events": [],
-        "sponsor": {
-          "live": true,
-          "budget_per_team": 300,
-          "shop_opens_tick": 1680,
-          "scripted_gifts": []
-        },
-        "players": [
-          {
-            "name": "P00"
-          },
-          {
-            "name": "P01"
-          },
-          {
-            "name": "P02"
-          },
-          {
-            "name": "P03"
-          },
-          {
-            "name": "P04"
-          },
-          {
-            "name": "P05"
-          },
-          {
-            "name": "P06"
-          },
-          {
-            "name": "P07"
-          },
-          {
-            "name": "P08"
-          },
-          {
-            "name": "P09"
-          },
-          {
-            "name": "P10"
-          },
-          {
-            "name": "P11"
-          },
-          {
-            "name": "P12"
-          },
-          {
-            "name": "P13"
-          },
-          {
-            "name": "P14"
-          },
-          {
-            "name": "P15"
-          }
-        ]
-      },
-      "description": "Local play with the live sponsor console enabled: supply per-team sponsor tokens via runtime config (sponsor.sponsor_tokens) and open /client/sponsor. Not intended for hosted runs."
+      "description": "League standard for 8 self-paired entrants. Use platform team_n seating with team_count 8; external seats i and i+8 become adjacent teammates inside the game."
     }
   ],
   "certification": {
     "game_config": {
-      "league_mode": "solo",
+      "league_mode": "duos",
       "seed": 42,
       "max_ticks": 480,
       "freeze_ticks": 48,

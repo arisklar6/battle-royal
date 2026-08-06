@@ -30,6 +30,10 @@ type
 
   AgentId* = range[0 .. 15]
 
+  LeagueMode* = enum
+    lmSolo = "solo"
+    lmDuos = "duos"
+
   PackSlot* = object
     item*: ItemId              # iNone = empty
     n*: int                    # stack count
@@ -125,6 +129,21 @@ const
     Pos(x: 8, y: 24), Pos(x: 9, y: 18), Pos(x: 13, y: 13), Pos(x: 18, y: 9),
     Pos(x: 24, y: 8), Pos(x: 30, y: 9), Pos(x: 35, y: 13), Pos(x: 39, y: 18)]
 
+proc internalSlot*(mode: LeagueMode, externalSlot: AgentId): AgentId =
+  ## The platform's team_n scheduler seats one policy at i and i+8 for an
+  ## eight-team match. Keep Zero Sum's canonical adjacent internal teams by
+  ## translating that external seating at the game boundary.
+  case mode
+  of lmSolo: externalSlot
+  of lmDuos:
+    AgentId(2 * (int(externalSlot) mod 8) + int(externalSlot) div 8)
+
+proc externalSlot*(mode: LeagueMode, internalSlot: AgentId): AgentId =
+  case mode
+  of lmSolo: internalSlot
+  of lmDuos:
+    AgentId(int(internalSlot) div 2 + 8 * (int(internalSlot) mod 2))
+
 proc team*(slot: AgentId): int = slot div 2
 proc teamName*(slot: AgentId): string = TeamNames[team(slot)]
 proc teammate*(slot: AgentId): AgentId = AgentId(slot xor 1)
@@ -138,5 +157,4 @@ proc `==`*(a, b: Pos): bool = a.x == b.x and a.y == b.y
 
 proc packSlots*(a: Agent): int =
   if a.body == iBackpack: 4 else: 2
-
 

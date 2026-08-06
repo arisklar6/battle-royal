@@ -14,4 +14,27 @@ Built in Nim on the [bitworld](https://github.com/Metta-AI/bitworld) engine libr
 
 Match: 24 Hz, hard cap 9,120 ticks (6:20). Protocol: `zero_sum.player.v1` (JSON over WS). Live and static replay presentation: sprite_v1.
 
+## League profiles
+
+`python tools/gen_manifest.py` generates two publishable templates from the
+same game image:
+
+- `coworld_manifest_template.json` (`zero-sum`) is the Solo profile. Each
+  external seat owns one contestant and receives that contestant's score.
+- `coworld_manifest_duos_template.json` (`zero-sum-duos`) is the self-paired
+  Duos profile. Use platform `team_n` seating with `team_count: 8`; external
+  seats `i` and `i+8` are remapped onto the adjacent internal team
+  `(2i, 2i+1)`, and both seats receive that team's combined score. The
+  platform's per-policy mean therefore equals the requested team total.
+
+The two names are separate because a Coworld league seed is unique by Coworld
+name. Build the Duos package with explicit paths so it does not overwrite the
+Solo artifact:
+
+```bash
+uv run coworld build --project . --version <version> \
+  --template coworld_manifest_duos_template.json \
+  --output dist/duos/coworld_manifest.json
+```
+
 Status: Phase C (implementation) in progress.

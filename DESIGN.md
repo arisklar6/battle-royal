@@ -67,6 +67,12 @@ Renderer mapping (verified): sprite_v1 canonical screen is **128×128 px**, tile
 - 16 pedestals, adjacent ones 22.5° apart (≈6 tiles). Positions are **pinned literal constants** (no runtime trig): slot k at:
   `(40,24) (39,30) (35,35) (30,39) (24,40) (18,39) (13,35) (9,30) (8,24) (9,18) (13,13) (18,9) (24,8) (30,9) (35,13) (39,18)` for k = 0..15.
 - Slot k spawns on pedestal k. Teams: slots (0,1)=team A, (2,3)=B, … (14,15)=H — teammates are adjacent on the ring, so partners start near each other. Team assignment is fixed, not seed-dependent.
+- `league_mode` is the external platform boundary, not a second set of game
+  rules. `solo` maps external seat k directly to internal slot k and reports
+  individual scores. `duos` maps the platform `team_n` pair `(i, i+8)` to
+  internal adjacent slots `(2i, 2i+1)` and reports the combined team score to
+  both external seats. All simulation, protocol, replay, team chat, sponsor,
+  and rendering logic continues to use the canonical internal slots above.
 
 ### 2.3 Loot tiers & placement (seeded from the match seed)
 | Tier | Where | Contents pool (draw without replacement) |
