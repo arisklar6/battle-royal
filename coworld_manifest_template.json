@@ -16,6 +16,7 @@
     "owner": "arisklar6@gmail.com",
     "runnable": {
       "type": "game",
+      "source_url": "https://github.com/arisklar6/zero-sum",
       "image": "{{ZERO_SUM_IMAGE}}",
       "run": [
         "/app/zero_sum_server"
@@ -331,6 +332,7 @@
       "id": "zero-sum-baseline",
       "name": "Zero Sum Baseline",
       "type": "player",
+      "source_url": "https://github.com/arisklar6/zero-sum",
       "image": "{{ZERO_SUM_IMAGE}}",
       "run": [
         "/app/zero_sum_baseline"
