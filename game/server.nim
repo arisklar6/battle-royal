@@ -345,6 +345,19 @@ proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
   of OpenEvent:
     discard
   of MessageEvent:
+    # mummy surfaces RFC 6455 control frames as ordinary MessageEvents and does
+    # not answer them itself, so the keepalive contract is ours to honour. A
+    # client on its library's default keepalive (Python websockets:
+    # ping_interval=20, ping_timeout=20) tears the connection down ~40s in if
+    # its Pings go unanswered. Reply with a matching-payload Pong, and swallow
+    # incoming Pongs, before any game-data routing — control frames are never
+    # game data, whatever role this socket holds (player, sponsor, viewer,
+    # analyst, watch).
+    if message.kind == Ping:
+      websocket.send(message.data, Pong)
+      return
+    if message.kind == Pong:
+      return
     {.gcsafe.}:
       withLock appState.lock:
         if websocket in appState.sponsors:
