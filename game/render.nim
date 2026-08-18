@@ -62,7 +62,8 @@ const
   SpSlotLabelBase = 800    # 800 + slot: "P<n>" identity tags
   SpHpBandBase = 830       # 830 + band: hp semaphore bar (0 healthy/1 hurt/2 crit)
   SpRingGhost = 834        # dashed next-radius preview tile
-  SpKillBase = 840         # 840..845: kill-feed lines (3 lines x 2 buffers)
+  SpKillBase = 840         # 840..847: kill-feed lines (KillRows x 2 buffers)
+  KillRows = 4             # VISUAL_REDESIGN 6.1: last 4 settlement rows
   SpChannelA = 850         # phosphor channel halo (heal/eat window)
   SpChannelB = 851
   SpRevealMark = 852       # red "camo blown" mark
@@ -108,6 +109,10 @@ const
   SpDerezWire = 1201       # stage 1: art decays to an Etch wireframe
   SpDerezWireSolid = 1202  # stage 1, structural tile (masonry border)
   SpDerezDitherBase = 1210 # stage 2: raw substrate + dropped-pixel dither
+  ## Talk chips (VISUAL_REDESIGN 5.7): chat is public by design, and the
+  ## broadcast finally shows it. Double-buffered per speaker like every
+  ## other dynamic text sprite.
+  SpTalkBase = 1400        # 1400 + slot*2 + flip -> 1400..1431
 
   # object ids
   ObBackground = 1
@@ -146,6 +151,7 @@ const
   ObPodPingBase = 44700     # contested-crate ping per pod index
   ObSlotLabelBase = 45000   # + slot: identity tag under each agent
   ObHpBandBase = 45100      # + slot: hp semaphore over each agent
+  ObTalkBase = 45200        # + slot: talk chip above the speaker
   ObCorpseBase = 46000      # + slot: persistent corpse (lives to match end)
   ObKillLineBase = 50020    # + 0..2: kill-feed lines, newest first
   ObLampRow = 50030         # alive lamps in the TL HUD
@@ -273,10 +279,16 @@ type
     mouthPhase: int
     podBeamsDrawn: int
     labelFlip: int
-    killFeed: seq[string]     # newest first, max 3
+    killFeed: seq[string]     # newest first, max KillRows
     killDirty: bool
     killFlip: int
     killLinesDrawn: int
+    talkSeen: int             # talkLog high-water mark
+    talkOn: array[16, bool]
+    talkUntil: array[16, int]
+    talkFlip: array[16, int]
+    talkW: array[16, int]     # chip width in 1x space, for the edge clamp
+    lastCause: array[16, string]  # cause watermark for settlement chyrons
     nextRingDrawn: int
     lastBgRadius: int         # last (safe radius, de-rez stage) key applied
     derezTile: seq[int]       # per tile: overlay sprite id placed, 0 = none
@@ -324,7 +336,7 @@ proc upscaled(px: openArray[uint8], w, h: int): seq[uint8] =
 const UiSpriteIds = {
   uint16(SpHudBase) .. uint16(SpHudBase + 3),      # hud1/hud2 -> LayerHudTL/BL
   uint16(SpBanner) .. uint16(SpBanner + 1),        # banner    -> LayerBanner
-  uint16(SpKillBase) .. uint16(SpKillBase + 5),    # kill feed -> LayerHudTL
+  uint16(SpKillBase) .. uint16(SpKillBase + KillRows * 2 - 1),  # kill feed -> LayerHudTL
   uint16(SpLampRow)                                # lamp row  -> LayerHudTL
 }
 
@@ -1387,6 +1399,28 @@ proc upperLabel(s: string): string =
     elif ch >= 'a' and ch <= 'z': result.add(chr(ord(ch) - 32))
     else: result.add(ch)
 
+const
+  TalkChipTtl = 60     # 2.5 s at 24 Hz
+  TalkChipMax = 24     # chars of message after the speaker tag
+
+proc talkSafe(text: string): string =
+  ## 3x5-font-safe chip text: uppercase, unsupported glyphs become spaces,
+  ## space runs collapse, hard cap so a monologue can't span the arena.
+  var prevSpace = true
+  for ch in text:
+    if result.len >= TalkChipMax:
+      break
+    let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
+    if (up >= '0' and up <= '9') or (up >= 'A' and up <= 'Z') or
+       up in {':', '-', '>', '.'}:
+      result.add(up)
+      prevSpace = false
+    elif not prevSpace:
+      result.add(' ')
+      prevSpace = true
+  while result.len > 0 and result[^1] == ' ':
+    result.setLen(result.len - 1)
+
 proc reticlePixels(): seq[uint8] =
   ## Amber drop-targeting reticle: corner brackets + center mark — the
   ## sponsor console's grammar stamped into the arena itself. Native at RS:
@@ -1984,6 +2018,28 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if r.lastHp[slot] > a.hpCenti:
         r.spawnEffect(result, s, SpHitFlash,
           a.pos.x * TileSize + 3, a.pos.y * TileSize, 8, 2)
+        # cause watermark for the settlement chyron: damageSources is
+        # cleared before the death event becomes visible next tick, so
+        # the cause is recorded the tick the damage actually lands
+        if a.damageSources.len > 0:
+          let label = a.damageSources[^1][0]
+          r.lastCause[slot] =
+            (if label.len > 0 and label[0] == 'P' and a.lastDamager >= 0:
+               (if s.agents[a.lastDamager].hand == iNone: "FISTS"
+                else: upperLabel($s.agents[a.lastDamager].hand))
+             elif label == "environment": ""
+             else: upperLabel(label))
+        # attack facing (VISUAL_REDESIGN 5.2): the attacker turns toward
+        # the victim the tick the hit lands, so duels stop reading as two
+        # agents stabbing sideways
+        if a.lastDamager >= 0 and a.lastDamager != slot and
+           s.agents[a.lastDamager].alive:
+          let ddx = a.pos.x - s.agents[a.lastDamager].pos.x
+          let ddy = a.pos.y - s.agents[a.lastDamager].pos.y
+          if ddx != 0 or ddy != 0:
+            r.facing[a.lastDamager] =
+              (if abs(ddx) >= abs(ddy): (if ddx > 0: 2 else: 3)
+               else: (if ddy > 0: 0 else: 1))
         let dmg = (r.lastHp[slot] - a.hpCenti + 50) div 100
         # numerals for combat/hazard hits only — steady zone burn would
         # carpet the endgame in floating digits (HP bars carry that)
@@ -2087,6 +2143,51 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     elif r.weaponDrawn[slot]:
       result.addDeleteObject(ObWeaponBase + slot)
       r.weaponDrawn[slot] = false
+  # talk chips (VISUAL_REDESIGN 5.7): the diplomacy layer, on air. Talk is
+  # permanently public by design; the broadcast shows it live. One chip per
+  # speaker, newest message wins, TalkChipTtl and gone. Late joiners can
+  # miss an active chip's sprite for its remaining life -- same convention
+  # as the kill feed's dynamic text.
+  for idx in r.talkSeen ..< s.talkLog.len:
+    let msg = s.talkLog[idx]
+    if msg.slot < 0 or msg.slot > 15 or not s.agents[msg.slot].alive:
+      continue
+    let body = talkSafe(msg.text)
+    if body.len == 0:
+      continue
+    let tag =
+      case msg.channel
+      of tcBroadcast: "P" & $msg.slot & ":"
+      of tcTeam: "P" & $msg.slot & "+"
+      of tcDm: "P" & $msg.slot & ">P" & $msg.to
+    let chipColor =
+      case msg.channel
+      of tcBroadcast: Bone
+      of tcTeam: Phosphor
+      of tcDm: GoldTone
+    inc r.talkFlip[msg.slot]
+    let spId = SpTalkBase + msg.slot * 2 + (r.talkFlip[msg.slot] mod 2)
+    let (w, h, px) = textPixels(tag & " " & body,
+                                chipColor[0], chipColor[1], chipColor[2])
+    result.addSprite(spId, w, h, px, "talk" & $msg.slot)
+    r.talkW[msg.slot] = w
+    r.talkOn[msg.slot] = true
+    r.talkUntil[msg.slot] = s.tick + TalkChipTtl
+  r.talkSeen = s.talkLog.len
+  for slot in 0 .. 15:
+    if not r.talkOn[slot]:
+      continue
+    if s.tick >= r.talkUntil[slot] or not s.agents[slot].alive:
+      result.addDeleteObject(ObTalkBase + slot)
+      r.talkOn[slot] = false
+    else:
+      # re-pin to the speaker every tick so the chip follows them; clamp
+      # into the arena so edge speakers don't push their text off-world
+      let p = s.agents[slot].pos
+      let cx = max(0, min(WorldPx - r.talkW[slot], p.x * TileSize - 4))
+      result.addObject(ObTalkBase + slot, cx,
+                       p.y * TileSize - (BodyH - TileSize) - 13, 14, LayerMap,
+                       SpTalkBase + slot * 2 + (r.talkFlip[slot] mod 2))
   # bushes (objects: berries shrink as charges deplete)
   var bushIdx = 0
   for b in s.bushes:
@@ -2231,15 +2332,22 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36,
                     SpFadeDeath, FadeStages)
       if e.slot >= 0:
-        # kill feed (Tier 1): credit = last damager, same rule as scoring
+        # settlement chyron (VISUAL_REDESIGN 5.3): credit = last damager,
+        # same rule as scoring; cause from the hit-time watermark
         let k = s.agents[e.slot].lastDamager
         let place = s.computePlacements()[e.slot]
-        let line = (if k >= 0 and k != e.slot: "P" & $k & " > P" & $e.slot
-                    else: "P" & $e.slot & " DOWN") &
-                   " - " & $place & ordSuffix(place)
+        var line = "P" & $e.slot & " SETTLED " & $place & ordSuffix(place)
+        if k >= 0 and k != e.slot:
+          line.add " BY P" & $k
+        if r.lastCause[e.slot].len > 0:
+          line.add " " & r.lastCause[e.slot]
+        line.add " " & mmss(max(0, s.agents[e.slot].deathTick) div 24)
+        if k >= 0 and k != e.slot and
+           s.agents[k].deathTick == s.agents[e.slot].deathTick:
+          line.add " MUTUAL"
         r.killFeed.insert(line, 0)
-        if r.killFeed.len > 3:
-          r.killFeed.setLen(3)
+        if r.killFeed.len > KillRows:
+          r.killFeed.setLen(KillRows)
         r.killDirty = true
         # settlement line (VISUAL_REDESIGN §5.3): a ledger rule strikes
         # the full frame at the dead agent's row
@@ -2338,7 +2446,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   if lampMask != r.lastLampMask:
     r.lastLampMask = lampMask
     result.addSprite(SpLampRow, 81, 6, lampRowPixels(lampMask), "lamps")
-    result.addObject(ObLampRow, 2, 44, 0, LayerHudTL, SpLampRow)
+    result.addObject(ObLampRow, 2, 50, 0, LayerHudTL, SpLampRow)
   # exterior treatment tracks the shrinking ring. The board itself never
   # changes, so it is defined once per match: only the per-tile overlay
   # moves, and only the tiles that actually changed are sent.
@@ -2443,7 +2551,7 @@ proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   result.addLayer(LayerMap, 0x00, 0x01)
   result.addViewport(LayerMap, WorldPxR, WorldPxR)
   result.addLayer(LayerHudTL, 0x01, 0x02)
-  result.addViewport(LayerHudTL, 240, 52)
+  result.addViewport(LayerHudTL, 240, 60)
   result.addLayer(LayerHudBL, 0x04, 0x02)
   result.addViewport(LayerHudBL, 320, 14)
   result.addLayer(LayerBanner, 0x05, 0x02)
@@ -2495,6 +2603,13 @@ proc resetForLoop*(r: var Renderer) =
   r.killFeed = @[]
   r.killDirty = false
   r.killLinesDrawn = 0
+  r.talkSeen = 0
+  for i in 0 .. 15:
+    r.talkOn[i] = false
+    r.talkFlip[i] = 0
+    r.talkUntil[i] = 0
+    r.lastCause[i] = ""
+
   r.lastBgRadius = 0
   for i in 0 ..< r.derezTile.len:
     r.derezTile[i] = 0
