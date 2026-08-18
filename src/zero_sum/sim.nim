@@ -1044,7 +1044,8 @@ proc findLandingTile(s: Sim, origin: Pos): Pos =
 
 proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
                   recipientSlot: int, itemId: string,
-                  target: Pos = Pos(x: -1, y: -1)): GiftOutcome =
+                  target: Pos = Pos(x: -1, y: -1),
+                  requireTile: bool = false): GiftOutcome =
   ## Atomic (DESIGN §9.1): full-cost accept or zero-effect reject. Both logged.
   ## Two targeting modes:
   ##  - tile (v0.2, target.x >= 0): sponsor picks the landing tile; the pinned
@@ -1052,6 +1053,11 @@ proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
   ##    GiftLockoutTicks. recipientSlot is recorded as -1.
   ##  - recipient (v0.1 legacy, target.x < 0): pod lands near the recipient.
   ##    NO lockout — scripted recipient gifts keep their original semantics.
+  ## requireTile refuses the legacy mode outright. Live sponsor ingress passes
+  ## it: the lockout is the whole budget-pacing mechanism of the v0.2 pivot,
+  ## and a live socket omitting `target` would otherwise fall through to the
+  ## lockout-free recipient path and drain the budget as fast as it can send.
+  ## Scripted gifts (config) leave it false and keep both modes.
   let tileMode = target.x >= 0
   var rec = GiftRecord(tickRequested: s.tick, tickLanded: -1, sponsor: sponsor,
                        team: teamIdx,
@@ -1065,6 +1071,8 @@ proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
     GiftOutcome(accepted: false, reason: why, balance: rec.balanceAfter)
   if s.phase == phEnded or teamIdx notin 0 .. 7:
     return reject("malformed")
+  if requireTile and not tileMode:
+    return reject("target_required")
   if tileMode:
     if not inBounds(target):
       return reject("malformed")
