@@ -547,6 +547,17 @@ function clearBlack(){
 // Zero Sum interpolation: agents (100-215), projectiles (42000-42063),
 // and agent chrome (labels/hp bands 45000-45115) tween across one tick.
 const LerpMs=42;
+// One arena tile in WIRE pixels. The server renders the map layer at
+// ArenaSize*TileSize*RS, and RS is a server-side rendering constant that has
+// already changed once (2 -> 4). Deriving the tile size from the viewport the
+// stream announces means nothing here has to be kept in sync with it: the
+// arena is always 48 tiles wide, whatever each tile costs in pixels.
+// Everything below that reasons in tiles must go through this.
+const ArenaTiles=48;
+let mapTilePx=12;
+function noteMapViewport(width){
+  if(width>0)mapTilePx=width/ArenaTiles;
+}
 const lerpReduced=window.matchMedia&&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 function lerpableId(id){
@@ -840,6 +851,7 @@ function setViewport(layerId,width,height){
   const layer=ensureLayer(layerId);
   layer.width=width;
   layer.height=height;
+  if(isMapLayer(layer))noteMapViewport(width);
   layer.canvas.width=width;
   layer.canvas.height=height;
   layer.mips=[];
@@ -1058,7 +1070,7 @@ function parse(bytes){
       offset+=6;
       // Dimensions are u16, so an untrusted stream could ask for a 65535^2
       // allocation. The widest sprite we ever emit is the arena overlay at
-      // WorldPx*RS = 576, so this leaves a wide margin and still bounds it.
+      // WorldPx*RS = 1152, so this leaves a margin and still bounds it.
       if(width>MaxSpriteDimension||height>MaxSpriteDimension){
         throw new Error("sprite "+id+" exceeds the "+MaxSpriteDimension+
           "px limit ("+width+"x"+height+")");
@@ -1104,9 +1116,14 @@ function parse(bytes){
       // ticks (stepped sub-moves, VISUAL_REDESIGN §7) — motion, not soup
       let fromX=x,fromY=y,moveAt=0;
       const prev=objects.get(id);
+      // Only tween a step, never a teleport: one tile of travel plus a
+      // couple of pixels of chrome offset. This was the literal 14 — one
+      // tile plus 2 at RS=2 — which at RS=4 (24 px tiles) is *less* than a
+      // single step, so every agent would have snapped instead of moving.
+      const lerpMax=mapTilePx+2;
       if(!lerpReduced&&prev&&prev.layer===layer&&lerpableId(id)&&
          (prev.x!==x||prev.y!==y)&&
-         Math.abs(prev.x-x)<=14&&Math.abs(prev.y-y)<=14){
+         Math.abs(prev.x-x)<=lerpMax&&Math.abs(prev.y-y)<=lerpMax){
         fromX=prev.renderX!==undefined?prev.renderX:prev.x;
         fromY=prev.renderY!==undefined?prev.renderY:prev.y;
         moveAt=performance.now();
@@ -1467,7 +1484,12 @@ document.addEventListener("visibilitychange",()=>{
 // stream); the sprite-stream logic above is never touched. All camera
 // moves are 3 hard stepped sub-moves ~120ms apart — no easing.
 const directorChip=document.getElementById("directorChip");
-const DirTilePx=6,DirWorldPx=288;
+// The analyst feed speaks in tiles; pan and zoom are applied to the map
+// LAYER, whose pixels are wire pixels. So the camera has to convert with
+// the live tile size, not a hardcoded 6: at RS=2 a camera built on 6 was
+// already centring on half the intended coordinate and zooming twice as
+// far in as it meant to, and RS=4 would have doubled the error again.
+function dirTilePx(){return mapTilePx;}
 const DirTickMs=400,DirStepMs=120,DirPunchMs=3000,DirSuspendMs=10000;
 const DirRetryMs=5000,DirMargin=1.3,DirMinZoom=1,DirMaxZoom=8;
 let directorActive=false,dirEverEnabled=false;
@@ -1571,19 +1593,20 @@ function dirAliveBox(data){
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,any=false;
   for(const agent of data.agents){
     if(!agent||!agent.alive||!Array.isArray(agent.pos))continue;
-    const x=agent.pos[0]*DirTilePx,y=agent.pos[1]*DirTilePx;
+    const tile=dirTilePx();
+    const x=agent.pos[0]*tile,y=agent.pos[1]*tile;
     minX=Math.min(minX,x);
     minY=Math.min(minY,y);
-    maxX=Math.max(maxX,x+DirTilePx);
-    maxY=Math.max(maxY,y+DirTilePx);
+    maxX=Math.max(maxX,x+tile);
+    maxY=Math.max(maxY,y+tile);
     any=true;
   }
   return any?{minX,minY,maxX,maxY}:null;
 }
 
 function dirFitZoom(box){
-  const w=Math.max(DirTilePx,box.maxX-box.minX);
-  const h=Math.max(DirTilePx,box.maxY-box.minY);
+  const w=Math.max(dirTilePx(),box.maxX-box.minX);
+  const h=Math.max(dirTilePx(),box.maxY-box.minY);
   const fit=Math.min(innerWidth/(w*DirMargin),innerHeight/(h*DirMargin));
   return Math.max(DirMinZoom,Math.min(DirMaxZoom,fit));
 }
@@ -1628,8 +1651,8 @@ function directorTick(){
         const box=dirAliveBox(data);
         const punchZoom=Math.min(DirMaxZoom,(box?dirFitZoom(box):DirMinZoom)*2);
         dirCenterOn(
-          victim.pos[0]*DirTilePx+DirTilePx/2,
-          victim.pos[1]*DirTilePx+DirTilePx/2,
+          victim.pos[0]*dirTilePx()+dirTilePx()/2,
+          victim.pos[1]*dirTilePx()+dirTilePx()/2,
           punchZoom
         );
         return;

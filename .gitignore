@@ -52,3 +52,8 @@ dist/
 # local coach plan + stray nim linker arg file
 coach_policy.json
 *_linkerArgs.txt
+
+# local secrets (GEMINI_API_KEY for the art pipeline) — never commit
+.env
+.env.*
+!.env.example
