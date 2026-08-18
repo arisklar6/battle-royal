@@ -1,0 +1,31 @@
+{
+  "_comment": [
+    "EXAMPLE ONLY — not part of the real catalogue. Two entries, kept small, so",
+    "`generate.py _example --dry-run` exercises the loader end to end: a sheet",
+    "sized in pixels, a single with variants > 1, and the AFTERGLOW constraint",
+    "block carried verbatim by prompt_prefix / prompt_suffix.",
+    "Real groups are authored separately per docs/ART_UPGRADE_PLAN.md §2."
+  ],
+  "defaults": {
+    "model": "gemini-3-pro-image",
+    "size": "2048x2048",
+    "variants": 1,
+    "prompt_prefix": "Orthographic front view, straight on, no perspective, no camera tilt.\nSingle key light from the upper left. No cast shadow (the shadow is drawn separately).\nBackground: flat pure #00FF00, edge to edge. There must be no other green anywhere.\nNo text, no letters, no numbers, no logos, no watermark, no signature.",
+    "prompt_suffix": "The subject will be composited onto a dark slate ground, RGB(40,48,57) — light it for that.\n\nPalette, strictly:\n  structure / stone / chassis  -> desaturated blue-grey, #1C242B to #4E5E6B only\n  living signal / emission     -> pale cyan phosphor #A5E3EE, highlights to #EAF7FA\n  matter, loot, money, energy  -> warm amber #FFB454\n  contact shadow / ink line    -> near-black blue #10161C\nNothing warm except the amber. Nothing green. Nothing saturated red unless asked."
+  },
+  "prompts": [
+    {
+      "name": "stencil-sheet",
+      "size": "1536x1152",
+      "prompt": "A 4-column by 3-row grid of twelve flat abstract stencil marks, one mark centred in each cell, each cell a plain #00FF00 square with the mark drawn in solid warm amber #FFB454 and nothing else. The marks are simple machined pictograms with thick strokes: a wedge, a coil, a lens, a hook, a lattice, a droplet, a spiral, a bar-and-dot, a chevron stack, a ring, a fork, a cross-hatch square. Bold and blocky, no outlines thinner than one twelfth of a cell, no shading, no gradient, no perspective.",
+      "notes": "Designed to reduce to twelve 24x24 targets from 384x384 crops (16x). Verify the grid by eye against the PNG before writing art/sheets.json — the model does not grid reliably.",
+      "variants": 1
+    },
+    {
+      "name": "rock-cluster-2x2",
+      "size": "1536x1536",
+      "variants": 3,
+      "prompt": "A single compact cluster of angular quarried slate boulders viewed from directly above and slightly in front, filling a square footprint, chunky faceted planes with hard chamfered edges, desaturated blue-grey stone only, a crisp lit top-left facet and a deep shadowed lower-right facet, no moss, no vegetation, no dirt, no rubble scatter outside the cluster."
+    }
+  ]
+}

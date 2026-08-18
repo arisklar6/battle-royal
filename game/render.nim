@@ -16,7 +16,15 @@ const
   ## at 1x is nearest-neighbour upscaled so proportions hold. Costs ~3x
   ## stream — free over localhost, and the only way to have any room for
   ## detail on a 6px tile.
-  RS* = 2
+  ##
+  ## RS=4 (ART_UPGRADE_PLAN §1): 24 px tile, 1152 px arena, 32x48 carrier.
+  ## 12x12 was below the floor where material, chamfer and stencil survive
+  ## a reduction, so generated art at RS=2 would have looked *worse* than
+  ## the hand-tuned code it replaced. RS must stay EVEN — half of it is the
+  ## authoring canvas the humanoids are drawn on (see `ArtScale`) — and it
+  ## is a rendering constant only: nothing here reaches the sim, and
+  ## tests/t_golden.nim is the standing proof.
+  RS* = 4
   WorldPxR* = WorldPx * RS
   TilePxR* = TileSize * RS
 
@@ -27,8 +35,6 @@ const
   SpMineFlash = 32
   SpZoneFireA = 33          # teal plasma (stages 1-4)
   SpZoneFireB = 34
-  SpPodCrate = 35
-  SpPodChute = 36
   SpFirestormA = 37
   SpFirestormB = 38
   SpFloodA = 39
@@ -45,9 +51,7 @@ const
   SpTrailBase = 750         # 750+ord: arrow/dart/knife trail ghosts
   SpMouthA = 700
   SpMouthB = 701
-  SpCargoBase = 710         # rotating cargo-label text sprites (8)
-  SpItemBase = 50          # 50 + ord(ItemId): ground chips
-  SpProjBase = 80          # 80 + ord(ItemId): projectiles
+  SpItemBase = 50          # 50 + ord(ItemId): ground chips (51..62)
   SpBushBase = 90          # 90..93: bush with 0..3 berries
   SpHudBase = 200
   SpBanner = 210
@@ -58,11 +62,11 @@ const
   SpSlotLabelBase = 800    # 800 + slot: "P<n>" identity tags
   SpHpBandBase = 830       # 830 + band: hp semaphore bar (0 healthy/1 hurt/2 crit)
   SpRingGhost = 834        # dashed next-radius preview tile
-  SpKillBase = 840         # 840..845: kill-feed lines (3 lines x 2 buffers)
+  SpKillBase = 840         # 840..847: kill-feed lines (KillRows x 2 buffers)
+  KillRows = 4             # VISUAL_REDESIGN 6.1: last 4 settlement rows
   SpChannelA = 850         # phosphor channel halo (heal/eat window)
   SpChannelB = 851
   SpRevealMark = 852       # red "camo blown" mark
-  SpTraceLayer = 3         # full-arena phosphor persistence overlay
   SpSettleLine = 860       # full-width settlement rule (death sweep)
   SpLampRow = 861          # 16-lamp alive row
   SpReticle = 870          # amber drop-targeting reticle
@@ -79,7 +83,36 @@ const
   SpFadeMine = 928         # 928..931
   SpFadeVoid = 932         # 932..935
   SpPodCrateBase = 900     # 900 + ord(ItemId): contents-keyed crates
-  SpPodLabelBase = 1000    # 1000 + pod index: persistent cargo labels
+  ## 960 + ord(ItemId) -> 964..972. This lived at 80 until 2026-08-13, where
+  ## `80 + ord(iArrows|iDarts)` = 91, 92 landed inside SpBushBase's 90..93.
+  ## Both families are defined in the same spriteDefs packet with the bushes
+  ## first, and the client's sprite map is last-define-wins, so two of the
+  ## four bush charge states rendered as the 4x4 projectile blob (8x8 on the
+  ## wire, after the RS upscale) instead of foliage. Confirmed off
+  ## the wire, not just by reading. Keep every computed base far enough apart
+  ## that base + ord(ItemId) (max +12) cannot reach the next family.
+  SpProjBase = 960         # 960 + ord(ItemId): projectiles
+  SpPodLabelBase = 1000    # 1000 + pod index (< PodPool): cargo labels
+  ## The phosphor persistence overlay was one whole-arena sprite (id 3)
+  ## redefined every 48 ticks — the single most expensive thing on the wire
+  ## over a full match. It is split into an 8x8 grid of cells and only the
+  ## cells whose pixels actually changed are re-defined.
+  TraceGrid = 8
+  TraceCells = TraceGrid * TraceGrid
+  TraceCell1x = WorldPx div TraceGrid    # 36 at ArenaSize 48, exact
+  TraceCellPx = TraceCell1x * RS         # the cell sprite, authored at RS
+  SpTraceBase = 1100       # 1100 + cell -> 1100..1163
+  ## Reclaimed-territory overlay tiles (VISUAL_REDESIGN §3.7). The exterior
+  ## treatment used to be baked into the arena sprite, which meant re-sending
+  ## the whole board every time the ring stepped in.
+  SpDerezWash = 1200       # stage 0: red "off-air" wash over live art
+  SpDerezWire = 1201       # stage 1: art decays to an Etch wireframe
+  SpDerezWireSolid = 1202  # stage 1, structural tile (masonry border)
+  SpDerezDitherBase = 1210 # stage 2: raw substrate + dropped-pixel dither
+  ## Talk chips (VISUAL_REDESIGN 5.7): chat is public by design, and the
+  ## broadcast finally shows it. Double-buffered per speaker like every
+  ## other dynamic text sprite.
+  SpTalkBase = 1400        # 1400 + slot*2 + flip -> 1400..1431
 
   # object ids
   ObBackground = 1
@@ -92,6 +125,11 @@ const
   ZoneRingPool = 400
   ObNextRingBase = 31000
   NextRingPool = 200
+  ## One pooled overlay object per reclaimed tile, id keyed to the tile so a
+  ## tile's state can be re-pointed or dropped without a rescan. Object ids
+  ## are u16 on the wire: 32000 + 48*48 tops out at 34303.
+  ObDerezBase = 32000
+  ObTraceCellBase = 35000   # 35000 + cell: dirty-tiled trace overlay
   ObPodBase = 40000
   PodPool = 64
   ObItemBase = 41000
@@ -113,9 +151,9 @@ const
   ObPodPingBase = 44700     # contested-crate ping per pod index
   ObSlotLabelBase = 45000   # + slot: identity tag under each agent
   ObHpBandBase = 45100      # + slot: hp semaphore over each agent
+  ObTalkBase = 45200        # + slot: talk chip above the speaker
   ObCorpseBase = 46000      # + slot: persistent corpse (lives to match end)
   ObKillLineBase = 50020    # + 0..2: kill-feed lines, newest first
-  ObTraceLayer = 3          # phosphor persistence overlay (z above bg)
   ObLampRow = 50030         # alive lamps in the TL HUD
 
   LayerHudTL = 1
@@ -127,6 +165,8 @@ const
   ## effects must sit BELOW entities: a carrier standing in the flood or
   ## crossing the ring was being hidden behind the terrain effect drawn on
   ## its own tile. Transient combat FX stay above everything.
+  DerezZ = 1                 # reclaimed-territory overlay, just off the board
+  TraceZ = 3                 # phosphor persistence, under every entity
   HazardZ = 7                # flood / firestorm fields
   RingZ = 9                  # zone boundary + next-radius ghost
   AgentZ = 10                # carriers and their chrome sit above both
@@ -135,6 +175,17 @@ const
   BodyH = 12
   BodyWR = BodyW * RS      # carrier is authored natively at render scale
   BodyHR = BodyH * RS
+
+  ## The carrier, its corpse and the three body-sized overlays were drawn
+  ## with literal coordinates on a 16x24 grid — the buffer's size at RS=2
+  ## and nowhere else. At RS=4 the buffer is 32x48 and every one of those
+  ## figures would have been painted into its top-left quarter. `ArtScale`
+  ## restates that grid as what it always was: an authoring canvas, scaled
+  ## into the render buffer. It is exactly 1 at RS=2, so the pixels emitted
+  ## there do not move.
+  ## TODO(Phase 3): the whole family is replaced by a blit of the baked
+  ## carrier (ART_UPGRADE_PLAN §4.3) and this authoring grid goes with it.
+  ArtScale = RS div 2
 
   ## AFTERGLOW team wheel (VISUAL_REDESIGN §3.1): S/L-locked fills, only
   ## polychrome in the arena. F ice-white and E crimson retired (invisible /
@@ -165,6 +216,21 @@ const
   GoldTone = (255'u8, 180'u8, 84'u8)      # Amber #FFB454
   Bone = (233'u8, 228'u8, 216'u8)         # settlement ink #E9E4D8
 
+  ## Amber value ramp (ART_UPGRADE_PLAN §5 Phase 2). §3.1 law 3 makes amber
+  ## the *only* colour for matter and money, so loot can no longer be told
+  ## apart by hue — every chip, projectile and crate band is amber now.
+  ## Value is what is left, so the ramp is spaced by luma rather than by
+  ## taste: ~96 / 132 / 168 / 204 / 236, four steps of ~36. That stays
+  ## separable after quantization and under every CVD (a value ramp is the
+  ## one channel colour blindness does not touch). Hue is held near 34° so
+  ## the stops read as one material lit differently, not five paints.
+  ## Item *identity* properly returns in Phase 5 as a stencil; until then
+  ## value separates classes and `itemPixels` separates them by shape.
+  AmberDeep = (138'u8, 88'u8, 30'u8)
+  AmberDim = (176'u8, 116'u8, 44'u8)
+  AmberMid = (212'u8, 146'u8, 62'u8)
+  AmberHot = (255'u8, 208'u8, 138'u8)
+
 
 type
   Effect = object
@@ -194,7 +260,14 @@ type
     regionDrawn: int
     bushesDrawn: int
     weaponDrawn: array[16, bool]
-    hudFlip: int
+    ## One flip counter per HUD line. They shared `hudFlip` until 2026-08-13,
+    ## and a shared counter breaks the parity it exists to keep: when both
+    ## lines change on the same tick, hud1 takes parity p and hud2 advances
+    ## the counter again, so hud1's *next* change lands back on parity p —
+    ## redefining the sprite ObHudLine1 is still bound to instead of writing
+    ## the idle buffer and then pointing at it. Double buffering only works
+    ## if each buffer advances on its own writes.
+    hud1Flip, hud2Flip: int
     lastHud1, lastHud2: string
     bannerText: string
     bannerUntil: int
@@ -206,22 +279,38 @@ type
     mouthPhase: int
     podBeamsDrawn: int
     labelFlip: int
-    killFeed: seq[string]     # newest first, max 3
+    killFeed: seq[string]     # newest first, max KillRows
     killDirty: bool
     killFlip: int
     killLinesDrawn: int
+    talkSeen: int             # talkLog high-water mark
+    talkOn: array[16, bool]
+    talkUntil: array[16, int]
+    talkFlip: array[16, int]
+    talkW: array[16, int]     # chip width in 1x space, for the edge clamp
+    lastCause: array[16, string]  # cause watermark for settlement chyrons
     nextRingDrawn: int
-    lastBgRadius: int         # last safe radius baked into the background
+    lastBgRadius: int         # last (safe radius, de-rez stage) key applied
+    derezTile: seq[int]       # per tile: overlay sprite id placed, 0 = none
     channelOn: array[16, bool]
     revealOn: array[16, bool]
     podLabelText: seq[string] # per pod index, for sprite-rebuild detection
     trace: seq[uint32]        # packed RGBA per world px: live afterglow
     scars: seq[uint32]        # packed RGBA per world px: burn-in, permanent
     traceActive: bool
-    traceDrawn: bool
+    traceCellHash: array[TraceCells, uint64]
+    traceCellDrawn: array[TraceCells, bool]
     lastLampMask: int
     lastHp: array[16, int]    # centi-HP watermark for hit flashes
     dmgFlip: int
+    ## Cached sprite-definition blob. `spriteDefs` is a pure function of the
+    ## arena, but it ran in full — the whole rasterizer plus ~270 Snappy
+    ## compressions, a measured 13.5 ms at RS=2 — on the tick thread for
+    ## every viewer that connected, mid-match, against a 41.7 ms frame.
+    ## Keyed by the arena so a new match with a new map rebuilds it itself.
+    defsBlob: seq[uint8]
+    defsKey: uint64
+    defsValid: bool
 
 # ---------------------------------------------------------------- helpers
 
@@ -235,10 +324,26 @@ proc upscaled(px: openArray[uint8], w, h: int): seq[uint8] =
       for c in 0 .. 3:
         result[di + c] = px[si + c]
 
+## The sprites placed on a UI layer, named rather than described by a window
+## of magic numbers, because this set decides who skips the map viewport's
+## xRS upscale. The old test was `id in 200..215 or id in 840..861`, and
+## 840..861 swept up three sprites that are placed on LayerMap: SpChannelA/B
+## (850/851), SpRevealMark (852) and SpSettleLine (860). They shipped at 1x
+## into an RS viewport, so the "full-frame" settlement rule — the flagship
+## death beat — drew across exactly half the arena. Every entry below is
+## paired with the addObject site that puts it on a UI layer; if a sprite is
+## not placed on a UI layer it does not belong here, whatever its id.
+const UiSpriteIds = {
+  uint16(SpHudBase) .. uint16(SpHudBase + 3),      # hud1/hud2 -> LayerHudTL/BL
+  uint16(SpBanner) .. uint16(SpBanner + 1),        # banner    -> LayerBanner
+  uint16(SpKillBase) .. uint16(SpKillBase + KillRows * 2 - 1),  # kill feed -> LayerHudTL
+  uint16(SpLampRow)                                # lamp row  -> LayerHudTL
+}
+
 proc isUiSprite(id: int): bool =
   ## The only sprites that live on UI layers; everything else is board art
   ## and therefore scales with the map viewport.
-  id in 200 .. 215 or id in 840 .. 861
+  id >= 0 and id <= int(uint16.high) and uint16(id) in UiSpriteIds
 
 proc addSprite(packet: var seq[uint8], spriteId, width, height: int,
                pixels: openArray[uint8], label = "", native = false) =
@@ -255,6 +360,13 @@ proc addObject(packet: var seq[uint8],
                objectId, x, y, z, layer, spriteId: int) =
   ## Map placements scale into the supersampled viewport in one place, so
   ## no call site has to know about RS.
+  when not defined(release):
+    # The whole point of UiSpriteIds is that it agrees with where sprites
+    # are actually placed. Check it here, where both halves are in hand.
+    # Debug/test builds only: a hosted match must never die of a Defect.
+    assert isUiSprite(spriteId) == (layer != LayerMap),
+      "sprite " & $spriteId & " placed on layer " & $layer &
+      " disagrees with UiSpriteIds — it will be scaled wrong"
   if layer == LayerMap:
     spriteprotocol.addObject(packet, objectId, x * RS, y * RS, z, layer,
                              spriteId)
@@ -416,7 +528,12 @@ proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena,
 
 proc rockAt(px: var seq[uint8], w, ox, oy: int) =
   ## Boulder under the same up-left key light as the walls.
-  let base = (86'u8, 78'u8, 70'u8)
+  ## Etch ramp as of Phase 2. The old (86,78,70) was a warm brown — stone
+  ## wearing amber's colour, which §3.1 law 3 forbids ("no colour ever
+  ## moonlights"): on a board where amber is the contract for loot, thirty
+  ## brown boulders read as thirty things worth walking to. Cooled onto the
+  ## Etch ramp and sat below Masonry so rock still separates from wall.
+  let base = (84'u8, 96'u8, 108'u8)
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
       let lit = x + y <= 2 * RS
@@ -427,6 +544,11 @@ proc rockAt(px: var seq[uint8], w, ox, oy: int) =
       elif dark: c = shade(base, -30)
       elif rim: c = shade(base, -16)
       px.put(w, ox + x, oy + y, c)
+  ## §3.6 one-key edge light: a single phosphor-tinted top edge, instrument
+  ## backlight rather than sun. One authoring pixel, so it stays a hairline.
+  for x in ArtScale ..< (TilePxR - ArtScale):
+    for k in 0 ..< max(1, ArtScale):
+      px.put(w, ox + x, oy + k, shade(Phosphor, -74), 150)
   px.put(w, ox + TilePxR - 1, oy + TilePxR - 1, StoneInk)
 
 proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
@@ -440,6 +562,101 @@ proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
       px.put(w, ox + 2 * RS + i, oy + 2 * RS + j, shade(gold, 30))
       px.put(w, ox + 3 * RS + i, oy + 3 * RS + j, shade(gold, 30))
 
+## --- reclaimed territory: overlay tiles, not a re-baked board ---------
+##
+## The exterior treatment used to be painted into the arena sprite, so every
+## time the ring stepped in — 27 times a match — the whole board was
+## re-rasterized and re-sent, purely because a radius changed. The treatment
+## is per-tile and depends on nothing but (de-rez stage, structural?, tile),
+## so it belongs in a handful of tile sprites with one pooled object per
+## reclaimed tile (VISUAL_REDESIGN §3.7: "three extra tile sprites, zero
+## shaders"). `backgroundPixels` composites those same tiles with the wire's
+## own source-over math, so the baked path (poster) and the streamed path
+## cannot drift apart.
+const
+  ## Stage 2's dither is a function of the tile's own coordinates. Its true
+  ## period is lcm(16, 11) = 176 tiles — on a 48-tile board it never repeats,
+  ## and that is the point (§3.7 wants reclaimed ground to look like dropped
+  ## memory, not like wallpaper). It therefore cannot be one sprite.
+  ##
+  ## The first pooling attempt sampled the variant at `(tx mod 4, ty mod 4)`,
+  ## which kept the generator and the density but made the *assignment*
+  ## periodic — so the finale, where the whole board is stage 2, became an
+  ## exact 12x12 lattice of identical stamps. That is worse than the tiling
+  ## the pooling was meant to avoid.
+  ##
+  ## The lattice came from the periodic assignment, not from the finite
+  ## pattern set. So: keep a finite pool, but pick from it with `pixHash`,
+  ## which is a prime-mix hash with no period over 48 tiles. Repeats still
+  ## occur — 32 patterns over ~2000 tiles — but they land scattered instead
+  ## of on a grid, which is what stops the eye resolving a weave.
+  DerezVarX = 8
+  DerezVarY = 4
+  DerezVariants = DerezVarX * DerezVarY
+  ## Stage 0 was an in-place `src*3/5 + {26,4,8}` over the baked board. As a
+  ## source-over wash that is exactly RGBA(65,10,20,102):
+  ## (src*(255-102) + 65*102) div 255 == src*3 div 5 + 26, because 153/255 is
+  ## exactly 3/5 and 65*102/255, 10*102/255, 20*102/255 are exactly 26, 4, 8.
+  ## The overlay reproduces the old bake byte for byte, not approximately.
+  DerezWashColor = (65'u8, 10'u8, 20'u8)
+  DerezWashAlpha = 102'u8
+
+proc reclaimVariant(tx, ty: int): int =
+  ## Non-periodic over the board: pixHash is a prime-mix hash, so adjacent
+  ## tiles disagree and no offset reproduces itself. Deterministic, so the
+  ## baked (poster) and streamed paths still pick the same variant.
+  pixHash(tx * 3 + 11, ty * 3 + 5) mod DerezVariants
+
+proc derezSpriteId(derez, tx, ty: int, structural: bool): int =
+  case derez
+  of 0: SpDerezWash
+  of 1: (if structural: SpDerezWireSolid else: SpDerezWire)
+  else: SpDerezDitherBase + reclaimVariant(tx, ty)
+
+proc derezTilePixels(spriteId: int): seq[uint8] =
+  ## The overlay for one reclaimed tile, authored natively at RS.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  if spriteId == SpDerezWash:
+    for y in 0 ..< TilePxR:
+      for x in 0 ..< TilePxR:
+        result.put(TilePxR, x, y, DerezWashColor, DerezWashAlpha)
+    return
+  let wire = spriteId == SpDerezWire or spriteId == SpDerezWireSolid
+  let structural = spriteId == SpDerezWireSolid
+  # sample the dither at this variant's representative tile
+  let v = spriteId - SpDerezDitherBase
+  let vx = v mod DerezVarX
+  let vy = v div DerezVarX
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      var col = BgDark
+      if wire:
+        if x < RS or y < RS:
+          col = EtchDim
+        if structural and (x < RS or y < RS or x >= TilePxR - RS or
+                           y >= TilePxR - RS):
+          col = Masonry
+      else:
+        if tileHash(vx * 3 + x, vy * 3 + y) mod 13 == 0:
+          col = EtchDim
+      result.put(TilePxR, x, y, col)
+
+iterator derezSpriteIds(): int =
+  yield SpDerezWash
+  yield SpDerezWire
+  yield SpDerezWireSolid
+  for v in 0 ..< DerezVariants:
+    yield SpDerezDitherBase + v
+
+proc isStructuralTile(a: Arena, tx, ty: int): bool =
+  a.tiles[ty][tx] in {tkWall, tkFortressWall, tkRock, tkPedestal}
+
+proc isReclaimed(safeR, tx, ty: int): bool =
+  let c = ArenaSize div 2
+  let dx = tx - c
+  let dy = ty - c
+  dx * dx + dy * dy > safeR * safeR
+
 proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
   ## safeR: tiles outside this center radius are reclaimed territory.
   ## derez escalates with the ring stage (VISUAL_REDESIGN §3.7 — the
@@ -450,7 +667,7 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
   ## resolution buys genuine detail (finer bevels, a third noise octave)
   ## rather than doubled pixels.
   result = newSeq[uint8](WorldPxR * WorldPxR * 4)
-  let c = ArenaSize div 2
+  var overlay = initTable[int, seq[uint8]]()   # built at most once per stage
   for ty in 0 ..< ArenaSize:
     for tx in 0 ..< ArenaSize:
       let ox = tx * TilePxR
@@ -468,52 +685,49 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
       of tkPedestal:
         plateAt(result, WorldPxR, ox, oy, tx, ty)
         pedestalAt(result, WorldPxR, ox, oy)
-      let dx = tx - c
-      let dy = ty - c
-      if dx * dx + dy * dy > safeR * safeR:
-        if derez == 0:
-          for y in 0 ..< TilePxR:
-            for x in 0 ..< TilePxR:
-              let i = ((oy + y) * WorldPxR + ox + x) * 4
-              result[i] = uint8(int(result[i]) * 3 div 5 + 26)
-              result[i+1] = uint8(int(result[i+1]) * 3 div 5 + 4)
-              result[i+2] = uint8(int(result[i+2]) * 3 div 5 + 8)
-        else:
-          let structural = a.tiles[ty][tx] in
-            {tkWall, tkFortressWall, tkRock, tkPedestal}
-          for y in 0 ..< TilePxR:
-            for x in 0 ..< TilePxR:
-              var col = BgDark
-              if derez == 1:
-                if x < RS or y < RS:
-                  col = EtchDim
-                if structural and (x < RS or y < RS or x >= TilePxR - RS or
-                                   y >= TilePxR - RS):
-                  col = Masonry
-              else:
-                if tileHash(tx * 3 + x, ty * 3 + y) mod 13 == 0:
-                  col = EtchDim
-              let i = ((oy + y) * WorldPxR + ox + x) * 4
-              result[i] = col[0]
-              result[i+1] = col[1]
-              result[i+2] = col[2]
-              result[i+3] = 255
+      if isReclaimed(safeR, tx, ty):
+        # Composite the very tile the wire places, with the viewer's own
+        # unpremultiplied source-over. Opaque stages replace, the stage-0
+        # wash blends — and lands on the same bytes the in-place bake did.
+        let spId = derezSpriteId(derez, tx, ty, a.isStructuralTile(tx, ty))
+        if spId notin overlay:
+          overlay[spId] = derezTilePixels(spId)
+        let ov = overlay[spId]
+        for y in 0 ..< TilePxR:
+          for x in 0 ..< TilePxR:
+            let si = (y * TilePxR + x) * 4
+            let al = int(ov[si + 3])
+            if al == 0:
+              continue
+            let i = ((oy + y) * WorldPxR + ox + x) * 4
+            for ch in 0 .. 2:
+              result[i + ch] = uint8((int(ov[si + ch]) * al +
+                                      int(result[i + ch]) * (255 - al)) div 255)
+            result[i + 3] = 255
 
 # ---------------------------------------------------------------- humanoids
 
 proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
-  ## AFTERGLOW carrier, authored natively at RS (16x24 at RS=2). The 8x12
-  ## version had no room for shape: at play size it read as a pale blob.
-  ## With the doubled canvas the chassis gets a shaded hull, a rim light
-  ## from up-left, a dark sensor visor that actually shows facing, and a
-  ## ground diamond big enough to carry team identity on its own.
+  ## AFTERGLOW carrier, drawn on the 16x24 authoring canvas and scaled by
+  ## `ArtScale` into the BodyWR x BodyHR buffer. The 8x12 version had no
+  ## room for shape: at play size it read as a pale blob. With the doubled
+  ## canvas the chassis gets a shaded hull, a rim light from up-left, a
+  ## dark sensor visor that actually shows facing, and a ground diamond big
+  ## enough to carry team identity on its own.
   ## Placement offsets stay in 1x tile space and are scaled by addObject.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
   let tunic = TeamColors[team]
   let hull = Phosphor
   let lift = (if frame == 1: -1 else: 0)
+  ## Both templates take canvas coordinates and fill the ArtScale x ArtScale
+  ## render-space cell they name; `P` carries the hover bob, `PD` (the ground
+  ## diamond) deliberately does not.
+  template PD(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
+    for oy in 0 ..< ArtScale:
+      for ox in 0 ..< ArtScale:
+        result.put(BodyWR, x * ArtScale + ox, y * ArtScale + oy, c, a)
   template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
-    result.put(BodyWR, x, y + lift, c, a)
+    PD(x, y + lift, c, a)
 
   # --- hull: rows 5..17, an ovoid with a flat shoulder line ---
   for y in 5 .. 17:
@@ -564,23 +778,30 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
     let wdt = (if dy <= 2: dy + 1 else: 6 - dy)
     for dx in -wdt .. wdt:
       let c = (if dy <= 2: tunic else: shade(tunic, -34))
-      result.put(BodyWR, 8 + dx, 18 + dy, c)
+      PD(8 + dx, 18 + dy, c)
   for dx in -2 .. 2:                   # bright core so it reads when tiny
-    result.put(BodyWR, 8 + dx, 20, shade(tunic, 30))
+    PD(8 + dx, 20, shade(tunic, 30))
 
 const
-  CorpseW = 24              # native render scale (12x6 logical)
-  CorpseH = 12
+  ## Two tiles wide, one tall. These were the absolute wire values 24 and
+  ## 12 — correct only at RS=2 — while the placement offset in `drawAgent`
+  ## is RS-scaled, so at any other RS the wreck slid off its own death tile
+  ## by (CorpseW - TilePxR) div 2. Stated in tiles it cannot drift again.
+  CorpseW = 2 * TilePxR
+  CorpseH = TilePxR
 
 proc corpsePixels(team, parity: int): seq[uint8] =
-  ## Decommissioned carrier, authored natively: the hull has toppled onto
-  ## its side, so it reads as the same object that was standing a moment
-  ## ago — cold, unlit, lying in its own shadow pool.
+  ## Decommissioned carrier: the hull has toppled onto its side, so it
+  ## reads as the same object that was standing a moment ago — cold,
+  ## unlit, lying in its own shadow pool. Drawn on the same 24x12 canvas
+  ## the body uses, scaled by ArtScale (see BodyWR).
   result = newSeq[uint8](CorpseW * CorpseH * 4)
   let tunic = shade(TeamColors[team], -60)
   let cold = shade(Phosphor, -96)
   template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
-    result.put(CorpseW, x, y, c, a)
+    for oy in 0 ..< ArtScale:
+      for ox in 0 ..< ArtScale:
+        result.put(CorpseW, x * ArtScale + ox, y * ArtScale + oy, c, a)
   # shadow pool: a squashed ellipse the wreck sits in
   for y in 8 .. 11:
     let hw = (if y == 8 or y == 11: 8 else: 10)
@@ -607,30 +828,66 @@ proc corpsePixels(team, parity: int): seq[uint8] =
     for dx in -wdt .. wdt:
       P(19 + dx, 6 + dy, tunic)
 
+const GlyphPx = 5 * RS
+
+proc glyphLine(px: var seq[uint8], w, x0, y0, x1, y1, t: int,
+               c: (uint8, uint8, uint8)) =
+  ## One thick stroke in render pixels — the primitive the held-item glyphs
+  ## are drawn from now that they have a canvas big enough for strokes.
+  let steps = max(max(abs(x1 - x0), abs(y1 - y0)), 1)
+  for i in 0 .. steps:
+    let x = x0 + (x1 - x0) * i div steps
+    let y = y0 + (y1 - y0) * i div steps
+    for oy in 0 ..< t:
+      for ox in 0 ..< t:
+        px.put(w, x + ox, y + oy, c)
+
 proc weaponGlyph(id: ItemId): seq[uint8] =
-  ## 5x5 held-item glyph.
-  result = newSeq[uint8](5 * 5 * 4)
-  template P(x, y: int, c: (uint8, uint8, uint8)) =
-    result.put(5, x, y, c)
+  ## Held-item glyph, authored natively at 5 tile-units square. It was a
+  ## 5x5 stamp: at RS=4 the ×RS upscale would have made every weapon four
+  ## 4x4 blocks in a trenchcoat. Drawn in render pixels the silhouettes
+  ## have real diagonals and a stroke weight that holds at any RS.
+  ## TODO(Phase 5): Tier A replaces these six with traced art
+  ## (ART_UPGRADE_PLAN §2); the palette (green blowgun, wood browns) is
+  ## Phase 2's to fix and is deliberately carried over unchanged here.
+  result = newSeq[uint8](GlyphPx * GlyphPx * 4)
+  let g = GlyphPx
+  let t = max(1, ArtScale)          # stroke weight
+  let lo = t                        # inset so strokes stay on the canvas
+  let hi = g - 2 * t
+  let steel = (222'u8, 222'u8, 235'u8)
+  let blade = (190'u8, 190'u8, 205'u8)
+  let wood = (150'u8, 110'u8, 40'u8)
+  let shaft = (180'u8, 140'u8, 90'u8)
   case id
   of iSword:
-    for i in 0 .. 3: P(i + 1, 3 - i, (222'u8, 222'u8, 235'u8))
-    P(1, 4, (150'u8, 110'u8, 40'u8))
+    result.glyphLine(g, lo, hi, hi, lo, t, steel)              # blade
+    result.glyphLine(g, lo, hi - 2 * t, lo + 2 * t, hi, t, wood)  # guard
   of iSpear:
-    for i in 0 .. 4: P(i, 4 - i, (180'u8, 140'u8, 90'u8))
-    P(4, 0, (200'u8, 200'u8, 210'u8))
+    result.glyphLine(g, 0, g - t, hi, lo, t, shaft)            # shaft
+    result.glyphLine(g, hi - t, lo + t, g - t, 0, t, (200'u8, 200'u8, 210'u8))
   of iBow:
-    for y in 0 .. 4: P(1, y, (200'u8, 160'u8, 60'u8))
-    P(2, 0, (200'u8, 160'u8, 60'u8)); P(2, 4, (200'u8, 160'u8, 60'u8))
-    for y in 1 .. 3: P(3, y, (235'u8, 235'u8, 235'u8))
+    let bx = lo + t
+    result.glyphLine(g, bx, lo, bx, hi, t, (200'u8, 160'u8, 60'u8))  # limb
+    result.glyphLine(g, bx, lo, bx + t, 0, t, (200'u8, 160'u8, 60'u8))
+    result.glyphLine(g, bx, hi, bx + t, g - t, t, (200'u8, 160'u8, 60'u8))
+    result.glyphLine(g, bx + 2 * t, lo, bx + 2 * t, hi, t,
+                     (235'u8, 235'u8, 235'u8))                 # string
   of iKnives:
-    P(2, 2, (190'u8, 190'u8, 205'u8)); P(3, 1, (190'u8, 190'u8, 205'u8))
-    P(1, 3, (150'u8, 110'u8, 40'u8))
+    result.glyphLine(g, lo, hi - t, hi - t, lo, t, blade)
+    result.glyphLine(g, lo, hi, lo + 2 * t, hi - 2 * t, t, wood)
   of iBlowgun:
-    for x in 0 .. 4: P(x, 2, (120'u8, 160'u8, 110'u8))
+    ## was (120,160,110) — the last green on a held weapon. Phosphor: the
+    ## blowgun is the anti-heal tool, and §3.1 gives live signal to phosphor.
+    result.glyphLine(g, 0, g div 2, g - t, g div 2, t, Phosphor)
   of iNet:
-    for x in [0, 2, 4]:
-      for y in [0, 2, 4]: P(x, y, (150'u8, 150'u8, 110'u8))
+    for kx in 0 .. 2:
+      for ky in 0 .. 2:
+        let nx = kx * (g - t) div 2
+        let ny = ky * (g - t) div 2
+        for oy in 0 ..< t:
+          for ox in 0 ..< t:
+            result.put(g, nx + ox, ny + oy, (150'u8, 150'u8, 110'u8))
   else:
     discard
 
@@ -667,55 +924,76 @@ proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
 
 proc plasmaPixels(phase: int, crit: bool): seq[uint8] =
   ## Swirling plasma wall: teal (stages 1-4) or crimson (endgame).
-  result = newSeq[uint8](TileSize * TileSize * 4)
+  ## Native at RS: the band widths are stated in render pixels, so the
+  ## diagonal is a clean edge instead of the ×RS staircase the 6x6 version
+  ## became. The period is a whole tile in the (2x + y) metric — one tile
+  ## right adds 2*TilePxR, one tile down adds TilePxR, both ≡ 0 — so the
+  ## ring is one continuous hatch with no seam where the tiles butt. At 1x
+  ## the bands were 5 px on a 6 px tile and every joint showed.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
   let hotC = (if crit: Klaxon else: RingMagenta)
   let coldC = shade(hotC, -110)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let swirl = (x * 2 + y + phase * 2) mod 5
-      if swirl == 0:
-        result.put(TileSize, x, y, (255'u8, 255'u8, 255'u8), 210)
-      elif swirl < 3:
-        result.put(TileSize, x, y, hotC, 190)
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let swirl = (x * 2 + y + phase * 2 * RS) mod TilePxR
+      if swirl < RS:
+        result.put(TilePxR, x, y, (255'u8, 255'u8, 255'u8), 210)
+      elif swirl < 3 * RS:
+        result.put(TilePxR, x, y, hotC, 190)
       else:
-        result.put(TileSize, x, y, coldC, 150)
+        result.put(TilePxR, x, y, coldC, 150)
 
 proc floodPixels(phase: int): seq[uint8] =
   ## Commanded-flood fluid. Hash dither breaks the crest lattice so the
-  ## surface reads as moving liquid instead of a repeating hatch.
-  result = newSeq[uint8](TileSize * TileSize * 4)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
+  ## surface reads as moving liquid instead of a repeating hatch. Native at
+  ## RS: crest spacing and thickness are render pixels, and the dither is
+  ## sampled per render pixel, so the field gains grain instead of ×RS
+  ## blocks. Reduces to the old field exactly at RS=1.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
       let n = pixHash(x * 3 + phase * 29, y * 5 + phase * 17) mod 5
-      let crest = (x + y * 2 + phase * 3 + n) mod 6 == 0
-      result.put(TileSize, x, y,
+      let crest = (x + y * 2 + (phase * 3 + n) * RS) mod (6 * RS) < RS
+      result.put(TilePxR, x, y,
         (if crest: (255'u8, 160'u8, 205'u8) else: RingMagenta),
         (if crest: 220'u8 else: uint8(132 + n * 6)))
 
 proc stormPixels(phase: int): seq[uint8] =
   ## Firestorm: dithered density rather than a checkerboard, so overlapping
-  ## tiles merge into one field instead of showing their tile seams.
-  result = newSeq[uint8](TileSize * TileSize * 4)
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
+  ## tiles merge into one field instead of showing their tile seams. Native
+  ## at RS — the dither is the art here, so sampling it per render pixel is
+  ## the whole point; at 1x it was ×RS blocks of embers.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
       let n = pixHash(x * 7 + phase * 13, y * 11 + phase * 23) mod 100
       if n < 55:
-        result.put(TileSize, x, y, (255'u8, 90'u8, 30'u8),
-                   uint8(90 + (n mod 5) * 12))
+        ## Klaxon, not a bespoke orange. Firestorm is harm happening now,
+        ## which is exactly Klaxon's contract (§3.1); (255,90,30) was a
+        ## tenth colour that meant the same thing as one we already had.
+        result.put(TilePxR, x, y, Klaxon, uint8(90 + (n mod 5) * 12))
 
 proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
   ## Crate keyed to contents, authored natively: plank grain, a lit top
   ## face, and the contents strap crossing it so a contested drop stays
   ## identified after touchdown.
   result = newSeq[uint8](TilePxR * TilePxR * 4)
-  let wood = (150'u8, 105'u8, 55'u8)
+  ## Chamfered amber, not wood. §3.4: "pods are chamfered amber crates".
+  ## The old (150,105,55) plank read as a crate from a different game —
+  ## and the machine prints deliveries, it does not ship them in timber.
+  let wood = AmberDim
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
       let edge = x < RS or y < RS or x >= TilePxR - RS or y >= TilePxR - RS
+      let cham = x + y < RS * 2 or                        # 45° corner cuts
+                 (TilePxR - 1 - x) + y < RS * 2 or
+                 x + (TilePxR - 1 - y) < RS * 2 or
+                 (TilePxR - 1 - x) + (TilePxR - 1 - y) < RS * 2
       var c = wood
-      if edge: c = shade(wood, -46)
+      if cham: c = shade(wood, -70)
+      elif edge: c = shade(wood, -46)
       elif y < TilePxR div 3: c = shade(wood, 26)        # lit top face
-      elif (y div RS) mod 2 == 0: c = shade(wood, -12)   # plank grain
+      elif (y div RS) mod 2 == 0: c = shade(wood, -12)   # panel seam
       result.put(TilePxR, x, y, c)
   for y in (TilePxR div 2 - RS) ..< (TilePxR div 2 + RS):
     for x in 0 ..< TilePxR:
@@ -724,30 +1002,24 @@ proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
     result.put(TilePxR, RS + i, RS, band)
   result.addBacklight(TilePxR, TilePxR, GoldTone, 80)
 
-proc podChutePixels(): seq[uint8] =
-  ## 10x12: canopy + lines + crate.
-  result = newSeq[uint8](10 * 12 * 4)
-  template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
-    result.put(10, x, y, c, a)
-  for x in 1 .. 8:
-    P(x, 1, (235'u8, 235'u8, 235'u8))
-  for x in 0 .. 9:
-    P(x, 2, (215'u8, 215'u8, 220'u8))
-  for x in [0, 3, 6, 9]:
-    P(x, 3, (150'u8, 150'u8, 155'u8), 200)
-  P(2, 4, (120'u8, 120'u8, 125'u8), 180); P(7, 4, (120'u8, 120'u8, 125'u8), 180)
-  P(3, 5, (120'u8, 120'u8, 125'u8), 180); P(6, 5, (120'u8, 120'u8, 125'u8), 180)
-  let wood = (150'u8, 105'u8, 55'u8)
-  for y in 6 .. 10:
-    for x in 3 .. 6:
-      P(x, y, (if y == 6 or y == 10 or x == 3 or x == 6: shade(wood, -40) else: wood))
-  P(4, 8, (220'u8, 40'u8, 40'u8)); P(5, 8, (220'u8, 40'u8, 40'u8))
+## `podChutePixels` lived here until 2026-08-13. The bible retired the
+## parachute ("the machine prints deliveries, it does not parachute them")
+## and the print sequence in `cratePartPixels` replaced it, but the sprite
+## kept being rasterized and Snappy-compressed into every init packet and
+## was never placed by any object. Deleted with SpPodChute, SpPodCrate (35)
+## and SpCargoBase (710), which had no definition or placement left at all.
 
 proc bushPixels(berries: int): seq[uint8] =
   ## Foliage clump, native: lit crown, shaded underside, frayed rim, and
   ## berries big enough to count at a glance (charges are gameplay).
   result = newSeq[uint8](TilePxR * TilePxR * 4)
-  let leaf = (46'u8, 108'u8, 50'u8)
+  ## Etch-dark, not foliage green. This was the most clear-cut art-bible
+  ## violation in the renderer (§3.1 law 3: "there is no green anywhere in
+  ## the identity"), and the bush is the one organic exception the bible
+  ## allows — §3.4 grants it "small Etch-dark clusters whose berries are
+  ## amber pips". Lifted a little off EtchDim so the clump still separates
+  ## from the substrate it sits on.
+  let leaf = shade(EtchDim, 12)
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
       let dx = x * 2 + 1 - TilePxR
@@ -761,32 +1033,50 @@ proc bushPixels(berries: int): seq[uint8] =
         elif dy > RS * 2: c = shade(leaf, -22)    # underside
         if n mod 3 == 0: c = shade(c, 14)
         result.put(TilePxR, x, y, c)
+  ## Berry positions are on the same 12x12 authoring canvas the clump was
+  ## drawn against, so they scale by ArtScale — `* RS div 2` truncated at
+  ## odd RS and put the pips off the foliage.
   const spots = [(2, 4), (7, 2), (5, 8)]
   for i in 0 ..< min(berries, 3):
-    let bx = spots[i][0] * RS div 2
-    let by = spots[i][1] * RS div 2
+    let bx = spots[i][0] * ArtScale
+    let by = spots[i][1] * ArtScale
     for oy in 0 ..< RS:
       for ox in 0 ..< RS:
-        result.put(TilePxR, bx + ox, by + oy, (215'u8, 45'u8, 60'u8))
-    result.put(TilePxR, bx, by, (245'u8, 120'u8, 130'u8))
+        result.put(TilePxR, bx + ox, by + oy, GoldTone)
+    result.put(TilePxR, bx, by, AmberHot)
 
 proc hullHalfWidth(y: int): int =
   ## The carrier's silhouette profile, shared by every body-sized overlay
   ## so camo, glitch and hit flash trace the same shape the hull does.
-  if y < 5 or y > 17: 0
-  elif y <= 6: 3
-  elif y <= 8: 5
-  elif y <= 14: 6
-  elif y == 15: 5
-  else: 4
+  ## Takes a row in the BodyWR x BodyHR buffer and answers a half width in
+  ## the same space; the table itself is on the 16x24 authoring canvas that
+  ## `bodyPixels` draws on, which is the only place it agrees with the hull.
+  ## TODO(Phase 3): delete outright. ART_UPGRADE_PLAN §4.3 and risk 3 —
+  ## once the carrier is a baked blit, camo/glitch/hit-flash must be derived
+  ## from *its* alpha mask, or the peak-white flash visibly misses the body
+  ## it is flashing. A hand-kept table cannot track generated art.
+  let ay = y div ArtScale
+  let hw =
+    if ay < 5 or ay > 17: 0
+    elif ay <= 6: 3
+    elif ay <= 8: 5
+    elif ay <= 14: 6
+    elif ay == 15: 5
+    else: 4
+  hw * ArtScale
 
 proc glassBodyPixels(): seq[uint8] =
   ## Camo: refractive carrier silhouette — faint rim, near-clear fill.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
-  for y in 5 .. 17:
+  let cx = BodyWR div 2
+  for y in 0 ..< BodyHR:
     let hw = hullHalfWidth(y)
-    for x in (8 - hw) ..< (8 + hw):
-      let edge = x < 8 - hw + 1 or x >= 8 + hw - 1 or y == 5 or y == 17
+    if hw == 0:
+      continue
+    let ay = y div ArtScale
+    for x in (cx - hw) ..< (cx + hw):
+      let edge = x < cx - hw + ArtScale or x >= cx + hw - ArtScale or
+                 ay == 5 or ay == 17
       result.put(BodyWR, x, y, (200'u8, 235'u8, 255'u8),
                  (if edge: 96'u8 else: 30'u8))
 
@@ -861,6 +1151,7 @@ proc glitchPixels(): seq[uint8] =
   ## Camo-reveal artifact: horizontal tear bands across the hull, which
   ## reads as a decode failure rather than confetti.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
+  let cx = BodyWR div 2
   for y in 0 ..< BodyHR:
     let hw = hullHalfWidth(y)
     if hw == 0:
@@ -869,7 +1160,7 @@ proc glitchPixels(): seq[uint8] =
     if band < 45:
       continue                       # untorn scanline
     let shift = (pixHash(y * 7, 3) mod (RS * 3)) - RS
-    for x in (8 - hw + shift) ..< (8 + hw + shift):
+    for x in (cx - hw + shift) ..< (cx + hw + shift):
       let n = pixHash(x * 3 + 1, y * 5 + 2)
       result.put(BodyWR, x, y,
         (if n mod 3 == 0: Klaxon else: PhosphorPeak),
@@ -910,55 +1201,141 @@ proc trailPixels(id: ItemId): seq[uint8] =
     for x in 0 ..< TilePxR:
       result.put(TilePxR, x, mid + RS + RS div 2, c, 70)
 
-proc itemColor(id: ItemId): (uint8, uint8, uint8) =
+type
+  ItemShape = enum
+    ## Chip silhouette. With hue spent (everything is amber now) and value
+    ## carrying only four steps, shape is the widest identity channel left
+    ## on a 24px chip. Four classes, four outlines — a coarse read that
+    ## survives at 1:1, which the Phase 5 stencil then refines to the item.
+    shGem      ## weapons — the bevelled diamond, kept from the old chip
+    shBolt     ## ammunition — narrow, pointed, reads as a stack of shafts
+    shCase     ## consumables — chamfered square, a supply box
+    shPack     ## gear/utility — wide flattened hex, a carried bundle
+
+proc itemShape(id: ItemId): ItemShape =
   case id
-  of iSword: (220, 220, 235)
-  of iSpear: (180, 140, 90)
-  of iBow: (200, 160, 60)
-  of iKnives: (170, 170, 190)
-  of iBlowgun: (120, 160, 110)
-  of iNet: (140, 140, 100)
-  of iFirstAid: (240, 80, 80)
-  of iRations: (200, 170, 110)
-  of iBackpack: (150, 110, 60)
-  of iCamo: (90, 120, 70)
-  of iArrows: (210, 190, 120)
-  of iDarts: (140, 200, 140)
-  of iNone: (255, 0, 255)
+  of iSword, iSpear, iBow, iKnives, iBlowgun: shGem
+  of iArrows, iDarts: shBolt
+  of iFirstAid, iRations: shCase
+  of iNet, iBackpack, iCamo: shPack
+  of iNone: shGem
+
+proc itemColor(id: ItemId): (uint8, uint8, uint8) =
+  ## One amber ramp. Killed here on 2026-08-14: blowgun (120,160,110),
+  ## camouflage (90,120,70) and darts (140,200,140) — the last greens in
+  ## the renderer, against §3.1 law 3 — plus first-aid's (240,80,80),
+  ## which sat close enough to Klaxon Red to claim "harm" while meaning
+  ## "heal". Value now separates within a shape class; the shape class
+  ## does the coarse separation. See `itemShape`.
+  case id
+  of iSword: AmberHot        # the plainest, brightest weapon
+  of iSpear: AmberMid
+  of iBow: GoldTone
+  of iKnives: AmberDim
+  of iBlowgun: AmberDeep
+  of iArrows: GoldTone
+  of iDarts: AmberDim
+  of iFirstAid: AmberHot
+  of iRations: AmberMid
+  of iNet: AmberMid
+  of iBackpack: AmberDim
+  of iCamo: AmberDeep
+  of iNone: (255'u8, 0'u8, 255'u8)   # debug sentinel; never placed in play
+
+proc inItemShape(shape: ItemShape, ex, ey, rr: int): bool =
+  ## Membership test in the doubled edge space `itemPixels` works in
+  ## (ex, ey odd, |.| < TilePxR), with `rr` the diamond's radius budget.
+  ## Each class is sized to carry roughly the gem's visual weight so no
+  ## item silently becomes the big one on the board.
+  let ax = abs(ex)
+  let ay = abs(ey)
+  case shape
+  of shGem:
+    ax + ay <= rr
+  of shBolt:
+    ## narrow and pointed: a stack of shafts stood on end. The half-width
+    ## closes toward the top so the tip is a point, not a flat cap.
+    ay <= rr * 9 div 10 and
+      ax * 20 <= rr * 7 * (rr + ey + rr div 3) div (rr + rr div 3)
+  of shCase:
+    ## chamfered square — the corner cut is what keeps it from reading as
+    ## "untextured tile" at 1:1.
+    max(ax, ay) <= rr * 62 div 100 and ax + ay <= rr * 96 div 100
+  of shPack:
+    ## wide flattened hex, squat enough to never be confused with the gem.
+    ay <= rr * 46 div 100 and ax <= rr * 78 div 100 and
+      ax * 6 + ay * 10 <= rr * 78 div 100 * 6 + rr * 20 div 100
 
 proc itemPixels(id: ItemId): seq[uint8] =
-  ## Ground chip, native: a bevelled gem rather than a flat lozenge — lit
-  ## upper-left facet, darker lower-right facet, ink rim, specular dot.
+  ## Ground chip, native: lit upper-left facet, darker lower-right facet,
+  ## ink rim, specular dot — now cut to one of four class silhouettes
+  ## (`itemShape`) because Phase 2 spent hue on the amber contract.
+  ## The rim is derived from the mask rather than from a distance formula,
+  ## so every shape gets a correct outline instead of only the diamond.
   result = newSeq[uint8](TilePxR * TilePxR * 4)
   let c = itemColor(id)
-  let r = TilePxR - 1 - RS
+  let shape = itemShape(id)
+  let rr = (TilePxR - 1 - RS) * 2
+  var mask = newSeq[bool](TilePxR * TilePxR)
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
+      mask[y * TilePxR + x] =
+        inItemShape(shape, x * 2 + 1 - TilePxR, y * 2 + 1 - TilePxR, rr)
+  proc solid(mx, my: int): bool =
+    mx >= 0 and my >= 0 and mx < TilePxR and my < TilePxR and
+      mask[my * TilePxR + mx]
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      if not mask[y * TilePxR + x]:
+        continue
       let ex = x * 2 + 1 - TilePxR
       let ey = y * 2 + 1 - TilePxR
-      let d = abs(ex) + abs(ey)
-      if d > r * 2:
-        continue
       var col =
         if ex + ey < -RS: shade(c, 34)        # upper-left facet catches light
         elif ex + ey > RS * 2: shade(c, -34)  # lower-right facet in shadow
         else: c
-      if d >= r * 2 - RS * 2:
+      ## rim: any mask pixel touching open space, at ArtScale thickness
+      var rim = false
+      let t = max(1, ArtScale)
+      for k in 1 .. t:
+        if not (solid(x - k, y) and solid(x + k, y) and
+                solid(x, y - k) and solid(x, y + k)):
+          rim = true
+          break
+      if rim:
         col = shade(c, -66)                   # ink rim
       result.put(TilePxR, x, y, col)
-  for oy in 0 ..< RS:                         # specular highlight
-    for ox in 0 ..< RS:
-      result.put(TilePxR, TilePxR div 3 + ox, TilePxR div 3 + oy,
-                 (255'u8, 255'u8, 255'u8))
+  block specular:                             # specular highlight, if lit face exists
+    let sx = TilePxR div 3
+    let sy = TilePxR div 3
+    if not solid(sx, sy):
+      break specular
+    for oy in 0 ..< RS:
+      for ox in 0 ..< RS:
+        if solid(sx + ox, sy + oy):
+          result.put(TilePxR, sx + ox, sy + oy, (255'u8, 255'u8, 255'u8))
   # amber backlight: matter glows, so loot separates from the plate
   result.addBacklight(TilePxR, TilePxR, GoldTone, 70)
 
+const ProjPx = 4 * RS
+
 proc projPixels(id: ItemId): seq[uint8] =
-  result = newSeq[uint8](4 * 4 * 4)
+  ## In flight: a bolt, not a bar. Authored natively at RS so the head can
+  ## be a point and the tail can taper — at 1x this was a 4x2 rectangle of
+  ## flat colour blown up to 16x8, the crudest thing on the board.
+  ## The travel direction is still always east (see `trailPixels`);
+  ## rotation is deferred with it.
+  result = newSeq[uint8](ProjPx * ProjPx * 4)
   let c = itemColor(id)
-  for y in 1 .. 2:
-    for x in 0 .. 3:
-      result.put(4, x, y, c)
+  let mid = ProjPx div 2
+  let t = max(1, ArtScale)
+  for x in 0 ..< ProjPx:
+    # thickness grows toward the head, so the shape reads as a vector
+    let half = max(t, (t * 2 * (x + 1) + ProjPx - 1) div ProjPx)
+    for y in (mid - half) ..< (mid + half):
+      let head = x >= ProjPx - t
+      result.put(ProjPx, x, y, (if head: PhosphorPeak else: c),
+                 (if x < t: 150'u8 else: 255'u8))
 
 proc hpBandPixels(band: int): seq[uint8] =
   ## 10x3 semaphore bar over each agent: color AND fill length encode the
@@ -978,13 +1355,21 @@ proc hpBandPixels(band: int): seq[uint8] =
 
 proc ringGhostPixels(): seq[uint8] =
   ## Faint bone outline tile; every-other tile placement dashes the circle.
-  result = newSeq[uint8](TileSize * TileSize * 4)
-  let bone = (233'u8, 228'u8, 216'u8)
-  for i in 0 ..< TileSize:
-    result.put(TileSize, i, 0, bone, 130)
-    result.put(TileSize, i, TileSize - 1, bone, 130)
-    result.put(TileSize, 0, i, bone, 130)
-    result.put(TileSize, TileSize - 1, i, bone, 130)
+  ## Native at RS: the outline is one *authoring* pixel thick (ArtScale
+  ## render px) rather than a whole ×RS block, so the preview stays a hair
+  ## line as the board grows instead of thickening with it.
+  ## Directive Magenta as of Phase 2. §3.7 makes the *target* radius a
+  ## dashed magenta circle, and §3.1 reserves magenta for commanded
+  ## geometry — a bone preview said "record", which is Bone's contract
+  ## (the settlement rule), not the ring's.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  let t = max(1, ArtScale)
+  for i in 0 ..< TilePxR:
+    for k in 0 ..< t:
+      result.put(TilePxR, i, k, RingMagenta, 130)
+      result.put(TilePxR, i, TilePxR - 1 - k, RingMagenta, 130)
+      result.put(TilePxR, k, i, RingMagenta, 130)
+      result.put(TilePxR, TilePxR - 1 - k, i, RingMagenta, 130)
 
 proc channelHaloPixels(phase: int): seq[uint8] =
   ## Phosphor ring: the 48-tick heal/eat channel made visible. Sparser
@@ -1014,21 +1399,51 @@ proc upperLabel(s: string): string =
     elif ch >= 'a' and ch <= 'z': result.add(chr(ord(ch) - 32))
     else: result.add(ch)
 
+const
+  TalkChipTtl = 60     # 2.5 s at 24 Hz
+  TalkChipMax = 24     # chars of message after the speaker tag
+
+proc talkSafe(text: string): string =
+  ## 3x5-font-safe chip text: uppercase, unsupported glyphs become spaces,
+  ## space runs collapse, hard cap so a monologue can't span the arena.
+  var prevSpace = true
+  for ch in text:
+    if result.len >= TalkChipMax:
+      break
+    let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
+    if (up >= '0' and up <= '9') or (up >= 'A' and up <= 'Z') or
+       up in {':', '-', '>', '.'}:
+      result.add(up)
+      prevSpace = false
+    elif not prevSpace:
+      result.add(' ')
+      prevSpace = true
+  while result.len > 0 and result[^1] == ' ':
+    result.setLen(result.len - 1)
+
 proc reticlePixels(): seq[uint8] =
   ## Amber drop-targeting reticle: corner brackets + center mark — the
-  ## sponsor console's grammar stamped into the arena itself.
-  result = newSeq[uint8](TileSize * TileSize * 4)
-  let m = TileSize - 1
-  for i in 0 .. 1:
-    result.put(TileSize, i, 0, GoldTone)
-    result.put(TileSize, 0, i, GoldTone)
-    result.put(TileSize, m - i, 0, GoldTone)
-    result.put(TileSize, m, i, GoldTone)
-    result.put(TileSize, i, m, GoldTone)
-    result.put(TileSize, 0, m - i, GoldTone)
-    result.put(TileSize, m - i, m, GoldTone)
-    result.put(TileSize, m, m - i, GoldTone)
-  result.put(TileSize, TileSize div 2, TileSize div 2, GoldTone, 230)
+  ## sponsor console's grammar stamped into the arena itself. Native at RS:
+  ## the brackets keep their proportions (a third of the tile long, one
+  ## authoring pixel thick) rather than growing into ×RS bars.
+  result = newSeq[uint8](TilePxR * TilePxR * 4)
+  let m = TilePxR - 1
+  let t = max(1, ArtScale)          # stroke weight
+  let arm = TilePxR div 3           # bracket length
+  for i in 0 ..< arm:
+    for k in 0 ..< t:
+      result.put(TilePxR, i, k, GoldTone)
+      result.put(TilePxR, k, i, GoldTone)
+      result.put(TilePxR, m - i, k, GoldTone)
+      result.put(TilePxR, m - k, i, GoldTone)
+      result.put(TilePxR, i, m - k, GoldTone)
+      result.put(TilePxR, k, m - i, GoldTone)
+      result.put(TilePxR, m - i, m - k, GoldTone)
+      result.put(TilePxR, m - k, m - i, GoldTone)
+  for oy in 0 ..< t:                # center mark
+    for ox in 0 ..< t:
+      result.put(TilePxR, TilePxR div 2 + ox, TilePxR div 2 + oy,
+                 GoldTone, 230)
 
 proc cratePartPixels(rows: int): seq[uint8] =
   ## Crate rastering in top-to-bottom under the beam — a print, not a
@@ -1070,9 +1485,13 @@ proc pingPixels(big: bool): seq[uint8] =
 proc hitFlashPixels(): seq[uint8] =
   ## 1-frame peak-white carrier silhouette on any damage taken.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
-  for y in 5 .. 17:
+  let cx = BodyWR div 2
+  for y in 0 ..< BodyHR:
     let hw = hullHalfWidth(y)
-    for x in (8 - hw - 1) ..< (8 + hw + 1):
+    if hw == 0:
+      continue
+    # one authoring pixel of dilation, so the flash reads as a rim
+    for x in (cx - hw - ArtScale) ..< (cx + hw + ArtScale):
       result.put(BodyWR, x, y, PhosphorPeak, 185)
 
 # --- 3x5 pixel font ---
@@ -1211,18 +1630,23 @@ proc ordSuffix(n: int): string =
   elif n mod 10 == 3: "RD"
   else: "TH"
 
+## The persistence buffers are the board at render scale. They used to be
+## WorldPx square and were nearest-neighbour blown up on the way out, which
+## cost the Knowledge Layer the one thing it is: the vision disc is an
+## analytic circle (VISUAL_REDESIGN law 1) and a x4 upscale gives it a
+## staircase rim. Stamps and scars are tile-granular either way.
 proc ensureTrace(r: var Renderer) =
   if r.trace.len == 0:
-    r.trace = newSeq[uint32](WorldPx * WorldPx)
-    r.scars = newSeq[uint32](WorldPx * WorldPx)
+    r.trace = newSeq[uint32](WorldPxR * WorldPxR)
+    r.scars = newSeq[uint32](WorldPxR * WorldPxR)
 
 proc stampTrace(r: var Renderer, tileX, tileY: int,
                 c: (uint8, uint8, uint8), a: uint8) =
-  let ox = tileX * TileSize + 1
-  let oy = tileY * TileSize + 1
-  for y in 0 ..< TileSize - 2:
-    for x in 0 ..< TileSize - 2:
-      let i = (oy + y) * WorldPx + ox + x
+  let ox = tileX * TilePxR + RS
+  let oy = tileY * TilePxR + RS
+  for y in 0 ..< TilePxR - 2 * RS:
+    for x in 0 ..< TilePxR - 2 * RS:
+      let i = (oy + y) * WorldPxR + ox + x
       if i >= 0 and i < r.trace.len:
         if uint32(a) > (r.trace[i] and 0xFF):
           r.trace[i] = (uint32(c[0]) shl 24) or (uint32(c[1]) shl 16) or
@@ -1233,31 +1657,36 @@ proc etchScar(r: var Renderer, slot: int, pos: Pos) =
   ## Burn-in: team-tinted floor scar plus the slot glyph, for the rest
   ## of the match. Rendered under live entities (overlay sits at z=3).
   let tc = TeamColors[slot div 2]
-  let ox = pos.x * TileSize
-  let oy = pos.y * TileSize
-  for y in 0 ..< TileSize:
-    for x in 0 ..< TileSize:
-      let i = (oy + y) * WorldPx + ox + x
+  let ox = pos.x * TilePxR
+  let oy = pos.y * TilePxR
+  for y in 0 ..< TilePxR:
+    for x in 0 ..< TilePxR:
+      let i = (oy + y) * WorldPxR + ox + x
       if i >= 0 and i < r.scars.len and (r.scars[i] and 0xFF) < 45:
         r.scars[i] = (uint32(tc[0]) shl 24) or (uint32(tc[1]) shl 16) or
                      (uint32(tc[2]) shl 8) or 45'u32
+  ## The slot glyph keeps its physical size: one font pixel is RS render
+  ## pixels, so the etch reads the same next to a 24 px tile as it did next
+  ## to a 6 px one. A crisper cut is the Phase-2 font job, not this.
   let label = "P" & $slot
-  var gx = ox + TileSize + 1
+  var gx = ox + TilePxR + RS
   for ch in label:
     let bits = Glyphs.getOrDefault(ch, 0)
     for yy in 0 ..< 5:
       for xx in 0 ..< 3:
         if ((bits shr ((4 - yy) * 3 + (2 - xx))) and 1) == 1:
-          let i = (oy + yy) * WorldPx + gx + xx
-          if i >= 0 and i < r.scars.len:
-            r.scars[i] = (uint32(Bone[0]) shl 24) or
-                         (uint32(Bone[1]) shl 16) or
-                         (uint32(Bone[2]) shl 8) or 85'u32
-    gx += 4
+          for sy in 0 ..< RS:
+            for sx in 0 ..< RS:
+              let i = (oy + yy * RS + sy) * WorldPxR + gx + xx * RS + sx
+              if i >= 0 and i < r.scars.len:
+                r.scars[i] = (uint32(Bone[0]) shl 24) or
+                             (uint32(Bone[1]) shl 16) or
+                             (uint32(Bone[2]) shl 8) or 85'u32
+    gx += 4 * RS
   r.traceActive = true
 
 proc traceSpritePixels(r: Renderer, s: Sim): seq[uint8] =
-  result = newSeq[uint8](WorldPx * WorldPx * 4)
+  result = newSeq[uint8](WorldPxR * WorldPxR * 4)
   for i in 0 ..< r.trace.len:
     let t = r.trace[i]
     let sc = r.scars[i]
@@ -1277,15 +1706,15 @@ proc traceSpritePixels(r: Renderer, s: Sim): seq[uint8] =
       let a = s.agents[slot]
       if not a.alive:
         continue
-      let vr = (5 + (a.stats.intelligence + 1) div 2) * TileSize
-      let cx = a.pos.x * TileSize + TileSize div 2
-      let cy = a.pos.y * TileSize + TileSize div 2
-      for y in max(0, cy - vr) .. min(WorldPx - 1, cy + vr):
-        for x in max(0, cx - vr) .. min(WorldPx - 1, cx + vr):
+      let vr = (5 + (a.stats.intelligence + 1) div 2) * TilePxR
+      let cx = a.pos.x * TilePxR + TilePxR div 2
+      let cy = a.pos.y * TilePxR + TilePxR div 2
+      for y in max(0, cy - vr) .. min(WorldPxR - 1, cy + vr):
+        for x in max(0, cx - vr) .. min(WorldPxR - 1, cx + vr):
           let dx = x - cx
           let dy = y - cy
           if dx * dx + dy * dy <= vr * vr:
-            let o = (y * WorldPx + x) * 4
+            let o = (y * WorldPxR + x) * 4
             let cur = int(result[o+3])
             if cur < 36:
               let na = min(36, cur + 9)
@@ -1296,6 +1725,75 @@ proc traceSpritePixels(r: Renderer, s: Sim): seq[uint8] =
               result[o+2] = uint8((int(result[o+2]) * cur +
                 int(Phosphor[2]) * (na - cur)) div max(1, na))
               result[o+3] = uint8(na)
+
+proc traceCell(px: seq[uint8], cell: int): (seq[uint8], uint64, bool) =
+  ## One cell of the overlay, its content hash, and whether anything at all
+  ## is visible in it. FNV-1a over the exact bytes that would ship, so "did
+  ## this change" is answered by the pixels rather than by guessing which
+  ## stamps landed where.
+  ##
+  ## Row copy, then one hash step per pixel rather than per byte. At RS=4
+  ## this walks 5.3 MB every 48 ticks on the match thread; the hash only
+  ## has to answer "did this cell change", and folding four bytes at a time
+  ## answers that just as well a quarter as often.
+  var buf = newSeq[uint8](TraceCellPx * TraceCellPx * 4)
+  var h = 0xCBF29CE484222325'u64
+  var lit = false
+  let ox = (cell mod TraceGrid) * TraceCellPx
+  let oy = (cell div TraceGrid) * TraceCellPx
+  for y in 0 ..< TraceCellPx:
+    let src = ((oy + y) * WorldPxR + ox) * 4
+    let dst = y * TraceCellPx * 4
+    copyMem(addr buf[dst], unsafeAddr px[src], TraceCellPx * 4)
+    var i = dst
+    let stop = dst + TraceCellPx * 4
+    while i < stop:
+      let v = (uint32(buf[i]) shl 24) or (uint32(buf[i + 1]) shl 16) or
+              (uint32(buf[i + 2]) shl 8) or uint32(buf[i + 3])
+      h = (h xor uint64(v)) * 0x100000001B3'u64
+      if (v and 0xFF'u32) != 0:
+        lit = true
+      i += 4
+  (buf, h, lit)
+
+proc emitTraceCells(r: var Renderer, packet: var seq[uint8],
+                    px: seq[uint8]) =
+  ## Re-define only the cells whose pixels moved. Cells that empty out drop
+  ## their object instead of shipping a transparent rectangle forever.
+  for cell in 0 ..< TraceCells:
+    let (buf, h, lit) = traceCell(px, cell)
+    if lit:
+      if r.traceCellDrawn[cell] and r.traceCellHash[cell] == h:
+        continue
+      packet.addSprite(SpTraceBase + cell, TraceCellPx, TraceCellPx, buf,
+                       "trace" & $cell, native = true)
+      if not r.traceCellDrawn[cell]:
+        packet.addObject(ObTraceCellBase + cell,
+                         (cell mod TraceGrid) * TraceCell1x,
+                         (cell div TraceGrid) * TraceCell1x, TraceZ,
+                         LayerMap, SpTraceBase + cell)
+        r.traceCellDrawn[cell] = true
+      r.traceCellHash[cell] = h
+    elif r.traceCellDrawn[cell]:
+      packet.addDeleteObject(ObTraceCellBase + cell)
+      r.traceCellDrawn[cell] = false
+      r.traceCellHash[cell] = 0
+
+proc emitTraceCellsFull(packet: var seq[uint8], px: seq[uint8]) =
+  ## Everything a fresh viewer needs to see the afterglow that is already on
+  ## the board. Before this, a viewer joining at tick 5000 got no trace at
+  ## all until the next 48-tick refresh; with dirty cells it would have got
+  ## only the cells that happened to change after it connected.
+  for cell in 0 ..< TraceCells:
+    let (buf, _, lit) = traceCell(px, cell)
+    if not lit:
+      continue
+    packet.addSprite(SpTraceBase + cell, TraceCellPx, TraceCellPx, buf,
+                     "trace" & $cell, native = true)
+    packet.addObject(ObTraceCellBase + cell,
+                     (cell mod TraceGrid) * TraceCell1x,
+                     (cell div TraceGrid) * TraceCell1x, TraceZ,
+                     LayerMap, SpTraceBase + cell)
 
 # ---------------------------------------------------------------- packets
 
@@ -1313,10 +1811,53 @@ proc derezLevel(s: Sim): int =
   elif d <= 8: 1
   else: 2
 
+proc derezObjectAt(packet: var seq[uint8], tx, ty, spriteId: int) =
+  ## One overlay tile, id keyed to the tile so it can be re-pointed or
+  ## dropped later without a rescan. Placed in 1x board space like every
+  ## other map object; addObject scales it into the RS viewport.
+  packet.addObject(ObDerezBase + ty * ArenaSize + tx, tx * TileSize,
+                   ty * TileSize, DerezZ, LayerMap, spriteId)
+
+proc emitDerezFull(packet: var seq[uint8], a: Arena, safeR, derez: int) =
+  ## Complete reclaimed-territory state, for a viewer that just connected.
+  for ty in 0 ..< ArenaSize:
+    for tx in 0 ..< ArenaSize:
+      if isReclaimed(safeR, tx, ty):
+        packet.derezObjectAt(tx, ty,
+          derezSpriteId(derez, tx, ty, a.isStructuralTile(tx, ty)))
+
+proc syncDerez(r: var Renderer, packet: var seq[uint8], a: Arena,
+               safeR, derez: int) =
+  ## Emit only what changed. A ring step reclaims a ring of tiles (a few
+  ## hundred object messages); a de-rez stage change re-points the tiles
+  ## already placed. Either way it is bytes per tile, not a whole board.
+  if r.derezTile.len == 0:
+    r.derezTile = newSeq[int](ArenaSize * ArenaSize)
+  for ty in 0 ..< ArenaSize:
+    for tx in 0 ..< ArenaSize:
+      let want =
+        if isReclaimed(safeR, tx, ty):
+          derezSpriteId(derez, tx, ty, a.isStructuralTile(tx, ty))
+        else: 0
+      let idx = ty * ArenaSize + tx
+      if want == r.derezTile[idx]:
+        continue
+      if want == 0:
+        packet.addDeleteObject(ObDerezBase + idx)
+      else:
+        packet.derezObjectAt(tx, ty, want)
+      r.derezTile[idx] = want
+
 proc spriteDefs(s: Sim): seq[uint8] =
+  ## Every sprite here is a pure function of the arena, so this whole blob
+  ## is cacheable (see initPacket). The background is deliberately baked
+  ## *pristine* — reclaimed territory arrives as overlay objects, which is
+  ## what stops the board being re-sent 27 times a match.
   result.addSprite(SpBackground, WorldPxR, WorldPxR,
-                   backgroundPixels(s.arena, s.effectiveSafeRadius(),
-                                    s.derezLevel()), "arena")
+                   backgroundPixels(s.arena, ArenaSize, 0), "arena")
+  for id in derezSpriteIds():
+    result.addSprite(id, TilePxR, TilePxR, derezTilePixels(id), "derez",
+                     native = true)
   for slot in 0 .. 15:
     for facing in 0 .. 3:
       for frame in 0 .. 1:
@@ -1326,16 +1867,21 @@ proc spriteDefs(s: Sim): seq[uint8] =
     result.addSprite(SpCorpseBase + slot, CorpseW, CorpseH,
       corpsePixels(slot div 2, slot mod 2), "corpse" & $slot, native = true)
   for id in [iSword, iSpear, iBow, iKnives, iBlowgun, iNet]:
-    result.addSprite(SpWeaponBase + ord(id), 5, 5, weaponGlyph(id), "held_" & $id)
+    result.addSprite(SpWeaponBase + ord(id), GlyphPx, GlyphPx, weaponGlyph(id),
+                     "held_" & $id, native = true)
   # death burst in bone: the old (25,25,30)-on-Faraday burst measured
   # under 1.5:1 contrast — the game's pivotal event was invisible
   result.addSprite(SpFwBlack, 18, 18, burstPixels(18, 233, 228, 216), "fw_black")
   result.addSprite(SpFwGold, 18, 18, burstPixels(18, 255, 210, 110), "fw_gold")
   result.addSprite(SpMineFlash, 12, 12, burstPixels(12, 255, 74, 54), "mine")
-  result.addSprite(SpZoneFireA, TileSize, TileSize, plasmaPixels(0, false), "plasmaA")
-  result.addSprite(SpZoneFireB, TileSize, TileSize, plasmaPixels(1, false), "plasmaB")
-  result.addSprite(SpPlasmaCritA, TileSize, TileSize, plasmaPixels(0, true), "plasmaCritA")
-  result.addSprite(SpPlasmaCritB, TileSize, TileSize, plasmaPixels(1, true), "plasmaCritB")
+  result.addSprite(SpZoneFireA, TilePxR, TilePxR, plasmaPixels(0, false),
+                   "plasmaA", native = true)
+  result.addSprite(SpZoneFireB, TilePxR, TilePxR, plasmaPixels(1, false),
+                   "plasmaB", native = true)
+  result.addSprite(SpPlasmaCritA, TilePxR, TilePxR, plasmaPixels(0, true),
+                   "plasmaCritA", native = true)
+  result.addSprite(SpPlasmaCritB, TilePxR, TilePxR, plasmaPixels(1, true),
+                   "plasmaCritB", native = true)
   result.addSprite(SpGlassBody, BodyWR, BodyHR, glassBodyPixels(),
                    "camo_glass", native = true)
   result.addSprite(SpNetMesh, TilePxR, TilePxR, netMeshPixels(), "net_mesh",
@@ -1368,16 +1914,19 @@ proc spriteDefs(s: Sim): seq[uint8] =
   for id in [iArrows, iDarts, iKnives]:
     result.addSprite(SpTrailBase + ord(id), TilePxR, TilePxR, trailPixels(id),
                      "trail_" & $id, native = true)
-  result.addSprite(SpFirestormA, TileSize, TileSize, stormPixels(0), "stormA")
-  result.addSprite(SpFirestormB, TileSize, TileSize, stormPixels(1), "stormB")
-  result.addSprite(SpFloodA, TileSize, TileSize, floodPixels(0), "floodA")
-  result.addSprite(SpFloodB, TileSize, TileSize, floodPixels(1), "floodB")
+  result.addSprite(SpFirestormA, TilePxR, TilePxR, stormPixels(0), "stormA",
+                   native = true)
+  result.addSprite(SpFirestormB, TilePxR, TilePxR, stormPixels(1), "stormB",
+                   native = true)
+  result.addSprite(SpFloodA, TilePxR, TilePxR, floodPixels(0), "floodA",
+                   native = true)
+  result.addSprite(SpFloodB, TilePxR, TilePxR, floodPixels(1), "floodB",
+                   native = true)
   for id in ItemId:
     if id != iNone:
       result.addSprite(SpPodCrateBase + ord(id), TilePxR, TilePxR,
                        podCratePixels(itemColor(id)), "pod_" & $id,
                        native = true)
-  result.addSprite(SpPodChute, 10, 12, podChutePixels(), "chute")
   result.addSprite(SpChannelA, 10, 10, channelHaloPixels(0), "chanA")
   result.addSprite(SpChannelB, 10, 10, channelHaloPixels(1), "chanB")
   result.addSprite(SpRevealMark, 5, 5, revealMarkPixels(), "revealed")
@@ -1389,15 +1938,18 @@ proc spriteDefs(s: Sim): seq[uint8] =
       result.addSprite(SpItemBase + ord(id), TilePxR, TilePxR,
                        itemPixels(id), "item_" & $id, native = true)
   for id in [iArrows, iDarts, iKnives, iNet]:
-    result.addSprite(SpProjBase + ord(id), 4, 4, projPixels(id), "proj_" & $id)
+    result.addSprite(SpProjBase + ord(id), ProjPx, ProjPx, projPixels(id),
+                       "proj_" & $id, native = true)
   for slot in 0 .. 15:
     let (w, h, px) = textPixels("P" & $slot, 205, 214, 220)
     result.addSprite(SpSlotLabelBase + slot, w, h, px, "tag" & $slot)
   for band in 0 .. 2:
     result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
-  result.addSprite(SpRingGhost, TileSize, TileSize, ringGhostPixels(), "ring_ghost")
+  result.addSprite(SpRingGhost, TilePxR, TilePxR, ringGhostPixels(),
+                   "ring_ghost", native = true)
   result.addSprite(SpSettleLine, WorldPx, 3, settleLinePixels(), "settle")
-  result.addSprite(SpReticle, TileSize, TileSize, reticlePixels(), "reticle")
+  result.addSprite(SpReticle, TilePxR, TilePxR, reticlePixels(), "reticle",
+                   native = true)
   for ph in 0 .. 2:
     result.addSprite(SpCratePartBase + ph, TilePxR, TilePxR,
                      cratePartPixels(2 + ph * 2), "crate_p" & $ph,
@@ -1466,6 +2018,28 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       if r.lastHp[slot] > a.hpCenti:
         r.spawnEffect(result, s, SpHitFlash,
           a.pos.x * TileSize + 3, a.pos.y * TileSize, 8, 2)
+        # cause watermark for the settlement chyron: damageSources is
+        # cleared before the death event becomes visible next tick, so
+        # the cause is recorded the tick the damage actually lands
+        if a.damageSources.len > 0:
+          let label = a.damageSources[^1][0]
+          r.lastCause[slot] =
+            (if label.len > 0 and label[0] == 'P' and a.lastDamager >= 0:
+               (if s.agents[a.lastDamager].hand == iNone: "FISTS"
+                else: upperLabel($s.agents[a.lastDamager].hand))
+             elif label == "environment": ""
+             else: upperLabel(label))
+        # attack facing (VISUAL_REDESIGN 5.2): the attacker turns toward
+        # the victim the tick the hit lands, so duels stop reading as two
+        # agents stabbing sideways
+        if a.lastDamager >= 0 and a.lastDamager != slot and
+           s.agents[a.lastDamager].alive:
+          let ddx = a.pos.x - s.agents[a.lastDamager].pos.x
+          let ddy = a.pos.y - s.agents[a.lastDamager].pos.y
+          if ddx != 0 or ddy != 0:
+            r.facing[a.lastDamager] =
+              (if abs(ddx) >= abs(ddy): (if ddx > 0: 2 else: 3)
+               else: (if ddy > 0: 0 else: 1))
         let dmg = (r.lastHp[slot] - a.hpCenti + 50) div 100
         # numerals for combat/hazard hits only — steady zone burn would
         # carpet the endgame in floating digits (HP bars carry that)
@@ -1569,6 +2143,51 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     elif r.weaponDrawn[slot]:
       result.addDeleteObject(ObWeaponBase + slot)
       r.weaponDrawn[slot] = false
+  # talk chips (VISUAL_REDESIGN 5.7): the diplomacy layer, on air. Talk is
+  # permanently public by design; the broadcast shows it live. One chip per
+  # speaker, newest message wins, TalkChipTtl and gone. Late joiners can
+  # miss an active chip's sprite for its remaining life -- same convention
+  # as the kill feed's dynamic text.
+  for idx in r.talkSeen ..< s.talkLog.len:
+    let msg = s.talkLog[idx]
+    if msg.slot < 0 or msg.slot > 15 or not s.agents[msg.slot].alive:
+      continue
+    let body = talkSafe(msg.text)
+    if body.len == 0:
+      continue
+    let tag =
+      case msg.channel
+      of tcBroadcast: "P" & $msg.slot & ":"
+      of tcTeam: "P" & $msg.slot & "+"
+      of tcDm: "P" & $msg.slot & ">P" & $msg.to
+    let chipColor =
+      case msg.channel
+      of tcBroadcast: Bone
+      of tcTeam: Phosphor
+      of tcDm: GoldTone
+    inc r.talkFlip[msg.slot]
+    let spId = SpTalkBase + msg.slot * 2 + (r.talkFlip[msg.slot] mod 2)
+    let (w, h, px) = textPixels(tag & " " & body,
+                                chipColor[0], chipColor[1], chipColor[2])
+    result.addSprite(spId, w, h, px, "talk" & $msg.slot)
+    r.talkW[msg.slot] = w
+    r.talkOn[msg.slot] = true
+    r.talkUntil[msg.slot] = s.tick + TalkChipTtl
+  r.talkSeen = s.talkLog.len
+  for slot in 0 .. 15:
+    if not r.talkOn[slot]:
+      continue
+    if s.tick >= r.talkUntil[slot] or not s.agents[slot].alive:
+      result.addDeleteObject(ObTalkBase + slot)
+      r.talkOn[slot] = false
+    else:
+      # re-pin to the speaker every tick so the chip follows them; clamp
+      # into the arena so edge speakers don't push their text off-world
+      let p = s.agents[slot].pos
+      let cx = max(0, min(WorldPx - r.talkW[slot], p.x * TileSize - 4))
+      result.addObject(ObTalkBase + slot, cx,
+                       p.y * TileSize - (BodyH - TileSize) - 13, 14, LayerMap,
+                       SpTalkBase + slot * 2 + (r.talkFlip[slot] mod 2))
   # bushes (objects: berries shrink as charges deplete)
   var bushIdx = 0
   for b in s.bushes:
@@ -1713,15 +2332,22 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36,
                     SpFadeDeath, FadeStages)
       if e.slot >= 0:
-        # kill feed (Tier 1): credit = last damager, same rule as scoring
+        # settlement chyron (VISUAL_REDESIGN 5.3): credit = last damager,
+        # same rule as scoring; cause from the hit-time watermark
         let k = s.agents[e.slot].lastDamager
         let place = s.computePlacements()[e.slot]
-        let line = (if k >= 0 and k != e.slot: "P" & $k & " > P" & $e.slot
-                    else: "P" & $e.slot & " DOWN") &
-                   " - " & $place & ordSuffix(place)
+        var line = "P" & $e.slot & " SETTLED " & $place & ordSuffix(place)
+        if k >= 0 and k != e.slot:
+          line.add " BY P" & $k
+        if r.lastCause[e.slot].len > 0:
+          line.add " " & r.lastCause[e.slot]
+        line.add " " & mmss(max(0, s.agents[e.slot].deathTick) div 24)
+        if k >= 0 and k != e.slot and
+           s.agents[k].deathTick == s.agents[e.slot].deathTick:
+          line.add " MUTUAL"
         r.killFeed.insert(line, 0)
-        if r.killFeed.len > 3:
-          r.killFeed.setLen(3)
+        if r.killFeed.len > KillRows:
+          r.killFeed.setLen(KillRows)
         r.killDirty = true
         # settlement line (VISUAL_REDESIGN §5.3): a ledger rule strikes
         # the full frame at the dead agent's row
@@ -1811,10 +2437,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         let na = (a * 2) div 5
         r.trace[i] = (r.trace[i] and 0xFFFFFF00'u32) or
                      (if na < 6: 0'u32 else: na)
-    result.addSprite(SpTraceLayer, WorldPx, WorldPx, r.traceSpritePixels(s),
-                     "trace")
-    result.addObject(ObTraceLayer, 0, 0, 3, LayerMap, SpTraceLayer)
-    r.traceDrawn = true
+    r.emitTraceCells(result, r.traceSpritePixels(s))
   # 16-lamp alive row: subtraction made visible as light
   var lampMask = 0
   for slot in 0 .. 15:
@@ -1823,16 +2446,16 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   if lampMask != r.lastLampMask:
     r.lastLampMask = lampMask
     result.addSprite(SpLampRow, 81, 6, lampRowPixels(lampMask), "lamps")
-    result.addObject(ObLampRow, 2, 44, 0, LayerHudTL, SpLampRow)
-  # exterior treatment tracks the shrinking ring: re-bake the background
-  # whenever the integer safe radius OR the de-rez stage changes
+    result.addObject(ObLampRow, 2, 50, 0, LayerHudTL, SpLampRow)
+  # exterior treatment tracks the shrinking ring. The board itself never
+  # changes, so it is defined once per match: only the per-tile overlay
+  # moves, and only the tiles that actually changed are sent.
   let bgR = s.effectiveSafeRadius()
-  let bgKey = bgR * 4 + s.derezLevel()
+  let derez = s.derezLevel()
+  let bgKey = bgR * 4 + derez
   if bgKey != r.lastBgRadius:
     r.lastBgRadius = bgKey
-    result.addSprite(SpBackground, WorldPxR, WorldPxR,
-                     backgroundPixels(s.arena, bgR, s.derezLevel()), "arena")
-    result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
+    r.syncDerez(result, s.arena, bgR, derez)
   # Fortress mouth gold light (§21.3): warm pulse in each wall gap
   let mouthNow = (s.tick div 12) mod 2
   if not r.mouthsDrawn or mouthNow != r.mouthPhase:
@@ -1865,16 +2488,16 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     hud2.add(" " & TeamNames[t] & $s.teamBudget[t])
   if hud1 != r.lastHud1:
     r.lastHud1 = hud1
-    let spId = SpHudBase + (r.hudFlip mod 2)
-    inc r.hudFlip
+    let spId = SpHudBase + (r.hud1Flip mod 2)
+    inc r.hud1Flip
     let (w, h, px) = textPixels7(hud1, PhosphorPeak[0], PhosphorPeak[1],
                                  PhosphorPeak[2])
     result.addSprite(spId, w, h, px, "hud1")
     result.addObject(ObHudLine1, 2, 2, 0, LayerHudTL, spId)
   if hud2 != r.lastHud2:
     r.lastHud2 = hud2
-    let spId = SpHudBase + 2 + (r.hudFlip mod 2)
-    inc r.hudFlip
+    let spId = SpHudBase + 2 + (r.hud2Flip mod 2)
+    inc r.hud2Flip
     let (w, h, px) = textPixels7(hud2, GoldTone[0], GoldTone[1], GoldTone[2])
     result.addSprite(spId, w, h, px, "hud2")
     result.addObject(ObHudLine2, 2, 2, 0, LayerHudBL, spId)
@@ -1913,19 +2536,38 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.bannerText = ""
     result.addDeleteObject(ObBanner)
 
-proc initPacket*(r: Renderer, s: Sim): seq[uint8] =
+proc arenaKey(a: Arena): uint64 =
+  ## FNV-1a over the tile grid. spriteDefs depends on the arena and nothing
+  ## else, so this is the entire cache key — and it costs microseconds
+  ## against the tens of milliseconds it guards.
+  result = 0xCBF29CE484222325'u64
+  for ty in 0 ..< ArenaSize:
+    for tx in 0 ..< ArenaSize:
+      result = (result xor uint64(ord(a.tiles[ty][tx]))) * 0x100000001B3'u64
+
+proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   ## Complete current scene for a fresh viewer (or replay-loop restart).
   result.addClearObjects()
   result.addLayer(LayerMap, 0x00, 0x01)
   result.addViewport(LayerMap, WorldPxR, WorldPxR)
   result.addLayer(LayerHudTL, 0x01, 0x02)
-  result.addViewport(LayerHudTL, 240, 52)
+  result.addViewport(LayerHudTL, 240, 60)
   result.addLayer(LayerHudBL, 0x04, 0x02)
   result.addViewport(LayerHudBL, 320, 14)
   result.addLayer(LayerBanner, 0x05, 0x02)
   result.addViewport(LayerBanner, 120, 16)
-  result.add(spriteDefs(s))
+  let key = arenaKey(s.arena)
+  if not r.defsValid or r.defsKey != key:
+    r.defsBlob = spriteDefs(s)
+    r.defsKey = key
+    r.defsValid = true
+  result.add(r.defsBlob)
   result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
+  # the board is pristine in the sprite; reclaimed ground is objects, and a
+  # viewer joining at tick 5000 needs the ones already standing
+  emitDerezFull(result, s.arena, s.effectiveSafeRadius(), s.derezLevel())
+  if r.traceActive:
+    emitTraceCellsFull(result, r.traceSpritePixels(s))
   const MouthPos = [(23, 20), (24, 20), (23, 28), (24, 28),
                     (20, 23), (20, 24), (28, 23), (28, 24)]
   for i, (mx, my) in MouthPos:
@@ -1961,12 +2603,23 @@ proc resetForLoop*(r: var Renderer) =
   r.killFeed = @[]
   r.killDirty = false
   r.killLinesDrawn = 0
+  r.talkSeen = 0
+  for i in 0 .. 15:
+    r.talkOn[i] = false
+    r.talkFlip[i] = 0
+    r.talkUntil[i] = 0
+    r.lastCause[i] = ""
+
   r.lastBgRadius = 0
+  for i in 0 ..< r.derezTile.len:
+    r.derezTile[i] = 0
   r.podLabelText = @[]
   r.trace = @[]
   r.scars = @[]
   r.traceActive = false
-  r.traceDrawn = false
+  for i in 0 ..< TraceCells:
+    r.traceCellHash[i] = 0
+    r.traceCellDrawn[i] = false
   r.lastLampMask = 0
   for i in 0 .. 15:
     r.lastHp[i] = 0

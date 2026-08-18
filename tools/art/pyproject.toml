@@ -1,0 +1,42 @@
+[project]
+name = "zero-sum-art"
+version = "0.1.0"
+description = "ZERO SUM art pipeline: nano banana (Gemini image) generation harness + bake helpers."
+requires-python = ">=3.11"
+
+# Deliberately minimal. `requests` talks to the Gemini REST endpoint directly
+# (no google-genai SDK: the wire body is pinned by docs/ART_UPGRADE_PLAN.md and
+# --dry-run must be able to print the literal bytes we would POST). `pillow`
+# verifies the returned PNG's real pixel dimensions, which the segmentation
+# crop rects in art/sheets.json depend on being exact.
+# `cramjam` supplies raw-block Snappy (compress_raw/decompress_raw), the exact
+# format Nim's supersnappy reads — bake.py --emit blob writes art/baked/*.snappy
+# for assets too large to ship as escaped Nim literals (ART_UPGRADE_PLAN §4.2).
+dependencies = [
+  "requests>=2.32",
+  "pillow>=11.0",
+  "numpy>=2.1",
+  "cramjam>=2.8",
+]
+
+# Local generation backend (the default since 2026-08-17). FLUX.1-schnell is
+# Apache-2.0 and ungated, which is the only open image model whose licence
+# leaves no strings on art shipped in this MIT, public repo — and unlimited
+# local iteration matters more than per-image fidelity when every source
+# image is reduced to a 24x24 tile or a 32x48 carrier.
+# `uv sync --project tools/art --extra local` installs it; the Gemini path
+# needs none of this and still runs without it.
+[project.optional-dependencies]
+local = [
+  "torch>=2.6",
+  "diffusers>=0.32",
+  "transformers>=4.48",
+  "accelerate>=1.3",
+  "sentencepiece>=0.2",
+  "protobuf>=5.29",
+]
+
+# Not an installable package — just a place to hang dependencies so everything
+# runs via `uv run --project tools/art <script>`.
+[tool.uv]
+package = false
