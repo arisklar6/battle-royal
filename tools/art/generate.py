@@ -972,10 +972,36 @@ def main(argv: list[str]) -> int:
                     print(f"  ✓ {label}  cached (prompt unchanged) — not billed")
                     continue
 
-                print(f"  → {label}  calling {spec.model} "
-                      f"({spec.aspect_ratio} @ {spec.image_size})"
-                      + (f"  variant {index + 1}/{spec.variants}" if spec.variants > 1 else ""))
-                try:
+                seed_used = None
+                if use_local:
+                    print(f"  → {label}  generating locally "
+                          f"({flux_cfg.model_id.rsplit('/', 1)[-1]}, "
+                          f"{spec.aspect_ratio} @ {spec.image_size})"
+                          + (f"  variant {index + 1}/{spec.variants}"
+                             if spec.variants > 1 else ""))
+                    try:
+                        # Perturb the deterministic per-prompt seed by the
+                        # variant index: Gemini gets variety from server
+                        # nondeterminism, but a seeded local model would
+                        # otherwise emit N identical PNGs.
+                        base_seed = flux_seed_for(spec.prompt, spec.seed)
+                        raw, _gw, _gh, seed_used = flux.generate_png(
+                            spec.prompt, spec.aspect_ratio, spec.image_size,
+                            seed=(base_seed + index) & 0x7FFFFFFF)
+                        total_calls += 1
+                        mime, finish_reason, text = "image/png", "LOCAL", ""
+                    except (FluxUnavailable, RuntimeError, ValueError) as exc:
+                        failures.append(f"{group}/{label}")
+                        print(f"  ✗ {label}  local generation failed: {exc}",
+                              file=sys.stderr)
+                        if args.keep_going:
+                            continue
+                        return EXIT_API
+                else:
+                  print(f"  → {label}  calling {spec.model} "
+                        f"({spec.aspect_ratio} @ {spec.image_size})"
+                        + (f"  variant {index + 1}/{spec.variants}" if spec.variants > 1 else ""))
+                  try:
                     response = call_api(
                         session, spec.model, body, api_key,
                         timeout=args.timeout, max_retries=args.max_retries,
@@ -983,7 +1009,7 @@ def main(argv: list[str]) -> int:
                     )
                     total_calls += 1
                     mime, raw, finish_reason, text = extract_image(response)
-                except SafetyBlocked as exc:
+                  except SafetyBlocked as exc:
                     total_calls += 1
                     blocked.append(f"{group}/{label}")
                     print(f"  ✗ {label}  SAFETY BLOCK — {exc.reason}", file=sys.stderr)
@@ -996,7 +1022,7 @@ def main(argv: list[str]) -> int:
                     if args.keep_going:
                         continue
                     return EXIT_BLOCKED
-                except NoImageReturned as exc:
+                  except NoImageReturned as exc:
                     total_calls += 1
                     failures.append(f"{group}/{label}")
                     print(f"  ✗ {label}  no image returned (finishReason={exc.finish_reason})",
@@ -1006,7 +1032,7 @@ def main(argv: list[str]) -> int:
                     if args.keep_going:
                         continue
                     return EXIT_API
-                except ApiError as exc:
+                  except ApiError as exc:
                     failures.append(f"{group}/{label}")
                     print(f"  ✗ {label}  {exc}", file=sys.stderr)
                     if exc.body:
@@ -1034,8 +1060,13 @@ def main(argv: list[str]) -> int:
                     "entry": spec.name,
                     "variant": index + 1,
                     "variants": spec.variants,
-                    "model": spec.model,
-                    "endpoint": endpoint_for(spec.model),
+                    "model": (f"local:{flux_cfg.model_id}" if use_local
+                              else spec.model),
+                    "endpoint": ("local" if use_local
+                                 else endpoint_for(spec.model)),
+                    "seed_used": seed_used,
+                    "steps": flux_cfg.steps if use_local else None,
+                    "guidance": flux_cfg.guidance if use_local else None,
                     "request_sha256": req_sha,
                     "aspect_ratio": spec.aspect_ratio,
                     "image_size": spec.image_size,

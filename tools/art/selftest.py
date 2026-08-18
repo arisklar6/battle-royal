@@ -333,7 +333,8 @@ def test_end_to_end(tmp: Path) -> None:
         stub_requests = types.SimpleNamespace(Session=lambda: session)
         sys.modules["requests"] = stub_requests  # type: ignore[assignment]
         try:
-            return original_main(["pilot", "--out-dir", str(out_root),
+            return original_main(["pilot", "--backend", "gemini",
+                                  "--out-dir", str(out_root),
                                   "--prompts-dir", str(prompts),
                                   "--env-file", str(tmp / "fake.env")] + extra_argv)
         finally:
@@ -344,11 +345,16 @@ def test_end_to_end(tmp: Path) -> None:
     try:
         rc = run([], [ok_image_response(64, 64), ok_image_response(64, 64), ok_image_response(64, 64)])
         check("first run exits 0", rc == 0, f"rc={rc}")
-        check("3 API calls made", len(sessions[-1].calls) == 3, str(len(sessions[-1].calls)))
-        check("api key sent as x-goog-api-key header",
-              sessions[-1].calls[0]["headers"]["x-goog-api-key"] == "test-key-not-real")
-        check("endpoint is generateContent",
-              sessions[-1].calls[0]["url"].endswith(":generateContent"))
+        calls = sessions[-1].calls
+        check("3 API calls made", len(calls) == 3, str(len(calls)))
+        if calls:
+            check("api key sent as x-goog-api-key header",
+                  calls[0]["headers"]["x-goog-api-key"] == "test-key-not-real")
+            check("endpoint is generateContent",
+                  calls[0]["url"].endswith(":generateContent"))
+        else:
+            check("api key sent as x-goog-api-key header", False, "no calls made")
+            check("endpoint is generateContent", False, "no calls made")
 
         carrier = out_root / "pilot" / "carrier.png"
         rock1 = out_root / "pilot" / "rock-01.png"
@@ -423,10 +429,14 @@ def test_missing_key(tmp: Path) -> None:
     saved = {k: os.environ.pop(k, None) for k in
              ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_API_KEY")}
     try:
-        rc = generate.main(["nokey", "--prompts-dir", str(prompts),
+        # The no-key contract is Gemini's alone: the local backend needs no
+        # key at all (and would really generate here if left on the default).
+        rc = generate.main(["nokey", "--backend", "gemini",
+                            "--prompts-dir", str(prompts),
                             "--out-dir", str(tmp / "raw"),
                             "--env-file", str(tmp / "absent.env")])
-        check("live run with no key exits 5", rc == generate.EXIT_NO_KEY, f"rc={rc}")
+        check("gemini live run with no key exits 5",
+              rc == generate.EXIT_NO_KEY, f"rc={rc}")
         rc = generate.main(["nokey", "--dry-run", "--prompts-dir", str(prompts),
                             "--out-dir", str(tmp / "raw"),
                             "--env-file", str(tmp / "absent.env")])

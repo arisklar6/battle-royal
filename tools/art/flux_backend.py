@@ -1,12 +1,14 @@
-"""Local FLUX.1-schnell backend for the ZERO SUM art pipeline.
+"""Local FLUX.2 [klein] 4B backend for the ZERO SUM art pipeline.
 
-Why local, and why this model specifically (decided 2026-08-17):
+Why local, and why this model specifically (decided 2026-08-17; model updated
+to FLUX.2 klein-4B 2026-08-18 when BFL's newer Apache-2.0 model landed locally):
 
   * Zero Sum is a PUBLIC, MIT repo, so the generator's licence attaches to art
-    we would be committing. FLUX.1-schnell is Apache-2.0 and ungated — the only
-    open image model of this class that leaves no strings on its output.
-    FLUX.1-dev is explicitly non-commercial; SDXL is Open RAIL++ and the sprite
-    LoRAs people actually use for pixel art mostly have unstated terms.
+    we would be committing. FLUX.2 [klein] 4B is Apache-2.0 and ungated
+    (verified on the model card 2026-08-18) — same clean terms as schnell,
+    newer model, a third the size. FLUX.2 [dev] and klein-9B are explicitly
+    non-commercial; SDXL is Open RAIL++ and the sprite LoRAs people actually
+    use for pixel art mostly have unstated terms.
   * Every Gemini image model reports `limit: 0` on the free tier — image
     generation there needs billing, and iteration would cost money per attempt.
   * At our target sizes the generator matters far less than the reduction.
@@ -21,12 +23,12 @@ reproduces the same PNG across runs and machines. That matters in a repo whose
 whole identity is bit-exactness — `art/raw/**` should be regenerable, not a
 pile of lucky draws. Pass an explicit `seed` in the spec to pin one.
 
-Hardware note: on Apple Silicon the model runs on MPS in bfloat16. FLUX.1-
-schnell is a 12B transformer (~24 GB) plus T5-XXL (~9.5 GB); peak resident is
-around 35 GB, which fits a 48 GB machine but not a 16 GB one. `--offload`
-trades speed for headroom by moving components to CPU between stages; on
-unified memory that saves less than it does on discrete GPUs, so it is a
-fallback rather than the default.
+Hardware note: on Apple Silicon the model runs on MPS in bfloat16. klein-4B
+is a 4B rectified-flow transformer; peak resident is ~13 GB, comfortable on a
+48 GB machine with room for the baker beside it. `--offload` trades speed for
+headroom by moving components to CPU between stages; on unified memory that
+saves less than it does on discrete GPUs, so it is a fallback rather than the
+default (and with klein-4B it should rarely be needed at all).
 """
 
 from __future__ import annotations
@@ -39,13 +41,13 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-MODEL_ID = "black-forest-labs/FLUX.1-schnell"
+MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
 
-# schnell is timestep-distilled: it is *designed* for 1-4 steps and takes no
-# classifier-free guidance. Raising steps does not improve it and raising
-# guidance actively degrades it — both are common misconfigurations.
+# klein-4B is size-distilled for 4 steps with CFG effectively off: the model
+# card's reference pipeline runs num_inference_steps=4, guidance_scale=1.0.
+# Raising steps mostly burns time; raising guidance degrades a distilled model.
 DEFAULT_STEPS = 4
-DEFAULT_GUIDANCE = 0.0
+DEFAULT_GUIDANCE = 1.0
 
 # Long edge of the generated source image. Deliberately not 2K/4K: the largest
 # thing we bake is the 1152x1152 floor field, everything else reduces to <= 72px,
@@ -126,7 +128,7 @@ def _install_hint() -> str:
         "    uv sync --project tools/art --extra local\n"
         "It installs torch + diffusers (~2 GB of wheels). The model weights\n"
         f"({MODEL_ID}, Apache-2.0, ungated — no HF token needed) download on\n"
-        "first use into ~/.cache/huggingface, about 34 GB."
+        "first use into ~/.cache/huggingface, about 22 GB."
     )
 
 
@@ -153,7 +155,7 @@ class FluxPipeline:
             return
         ensure_available()
         import torch
-        from diffusers import FluxPipeline as _DiffusersFlux
+        from diffusers import Flux2KleinPipeline as _DiffusersFlux
 
         device = _pick_device(self.cfg.device)
         self._device = device
@@ -255,10 +257,11 @@ def selftest() -> int:
     check("explicit seed wins", seed_for("carrier", 7) == 7)
     check("seed fits int32", 0 <= a <= 0x7FFFFFFF)
 
-    check("guidance is 0 (schnell takes no CFG)", DEFAULT_GUIDANCE == 0.0)
-    check("steps is 4 (schnell is distilled)", DEFAULT_STEPS == 4)
-    check("model is the Apache-2.0 schnell, not dev",
-          MODEL_ID.endswith("FLUX.1-schnell"))
+    check("guidance is 1.0 (klein is CFG-distilled; 1.0 = CFG off)",
+          DEFAULT_GUIDANCE == 1.0)
+    check("steps is 4 (klein is 4-step distilled)", DEFAULT_STEPS == 4)
+    check("model is the Apache-2.0 klein-4B, not dev/9B (non-commercial)",
+          MODEL_ID.endswith("FLUX.2-klein-4B"))
 
     try:
         dimensions_for("oops", "1K", cfg)
