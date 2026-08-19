@@ -10,6 +10,29 @@ image.**
 This document decides five things: which sprites get generated art, what resolution the board
 runs at, how images become pixels, how pixels become Nim, and in what order it lands.
 
+> **Amendment (PAINTBOT pass, `a343a35`, superseded 2026-08-19): the carrier is no longer baked art.**
+> Phase 3 shipped the carrier as eight baked sprites (two chassis × four facings) and this document
+> still describes that pipeline throughout — see §2's Tier A table, the `bodyPixels` row in §1, and
+> §2's "derived at bake time from the baked carrier's alpha mask". That is now historical.
+>
+> The PAINTBOT pass replaced the baked chassis with a **procedurally drawn cog** (`buildCog` /
+> `CogArt` in `game/render.nim`): greyscale geometry on the same authoring grid, tinted per team at
+> blit time. The eight `Carrier*` baked assets were deleted once they had been unreferenced for a
+> while — ~840 lines and ~181 KB of `staticRead` in every binary. Rendering is pixel-identical
+> across the deletion, which is what proved they were dead.
+>
+> What this changes in the plan, and nothing more:
+> - The carrier leaves **Tier A**; it is **Tier C — procedural forever**.
+> - Camo glass, glitch and hit-flash still derive from a mask, but from `CogArt`'s masks rather than
+>   the baked carrier's. The §2 rationale — derive them so they cannot misregister — is unchanged
+>   and still the reason `hullHalfWidth` stays deleted.
+> - `CorpseWreckPx` is **still baked and still live** (tinted per team in `corpsePixels`). It was not
+>   part of the carrier deletion and must not be swept up with it.
+>
+> Everything else in this document — the RS=4 decision, the tier definitions, the reduction chain,
+> the ramps, the bake format — is unaffected and still governs the terrain, props and stencils.
+> See `docs/VISUAL_REDESIGN.md` §3.1 for the matching substrate amendment.
+
 ---
 
 ## 0. Ground truth (measured, not quoted)

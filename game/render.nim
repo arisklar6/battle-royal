@@ -1,5 +1,8 @@
-## sprite_v1 renderer — v0.3 art: baked generative carriers (two chassis,
-## ART_UPGRADE_PLAN Phase 3) over a code-generated board. Baked art lives
+## sprite_v1 renderer — v0.4 art: procedurally drawn cog carriers (two
+## chassis, PAINTBOT pass) over a warm-concrete code-generated board. The
+## carriers were baked art through Phase 3; they are now drawn in this file
+## by `buildCog`, and the eight baked Carrier* assets have been deleted.
+## Remaining baked art lives
 ## in game/art_baked.nim as const data — nothing loads at runtime, nothing
 ## ships beside the binary — and code still stamps everything that carries
 ## state: pupils, pips, team diamonds, HP, text. <=16 colors per sprite.
