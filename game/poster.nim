@@ -34,7 +34,7 @@ when isMainModule:
   # sponsor gift lands so the poster carries the drop story too.
   while s.phase != phEnded:
     if s.tick == giftTick:
-      discard s.requestGift("poster", 0, -1, "blowgun", Pos(x: 30, y: 24))
+      discard s.requestGift("poster", 0, "blowgun", Pos(x: 30, y: 24))
     if s.phase == phLive:
       for i in 0 .. 15:
         let a = s.agents[i]

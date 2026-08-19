@@ -76,10 +76,14 @@ block wire_shapes:
   s.applyInputJson(AgentId(0), parseJson(
     """{"type":"allocate_stats","speed":7,"strength":5,"intelligence":4,"athleticism":4}"""))
   doAssert s.agents[0].statsLocked and s.agents[0].stats.speed == 7
-  # flat wire talk
+  # flat wire talk (FFA: broadcast and dm are the only channels; both
+  # carry at any distance)
   s.applyInputJson(AgentId(1), parseJson(
-    """{"type":"talk","channel":"team","text":"wire format"}"""))
-  doAssert s.talkLog.len == 1 and s.talkLog[0].channel == tcTeam
+    """{"type":"talk","channel":"broadcast","text":"wire format"}"""))
+  doAssert s.talkLog.len == 1 and s.talkLog[0].channel == tcBroadcast
+  s.applyInputJson(AgentId(1), parseJson(
+    """{"type":"talk","channel":"team","text":"gone"}"""))
+  doAssert s.talkLog.len == 1, "removed team channel must not parse"
   # wire action: applied for real (cleared ground, must move)
   while s.phase == phCountdown: s.step()
   s.clearRect(9, 11, 29, 31)
@@ -95,7 +99,8 @@ block player_config_shape:
   let c = parseJson(playerConfigJson(s, 3))
   doAssert c["protocol"].getStr() == "battle_royal.player.v1"
   doAssert c["slot"].getInt() == 3
-  doAssert c["teammate_slot"].getInt() == 2
+  doAssert c["mode"].getStr() == "ffa"
+  doAssert c["num_players"].getInt() == 16
   doAssert c["arena"]["static_map"].len == ArenaSize
   doAssert c["arena"]["legend"].hasKey("P")
   doAssert c["stats"]["budget"].getInt() == 20

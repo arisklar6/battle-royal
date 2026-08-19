@@ -4,8 +4,7 @@
   "player_connect_timeout_seconds": 60,
   "tokens": ["t0","t1","t2","t3","t4","t5","t6","t7",
               "t8","t9","t10","t11","t12","t13","t14","t15"],
-  "sponsor": {"live": true, "budget_per_team": 300,
+  "sponsor": {"live": true, "budget_per_player": 150,
                "shop_opens_tick": 1680,
-               "sponsor_tokens": {"A": "sA", "B": "sB", "C": "sC", "D": "sD",
-                                   "E": "sE", "F": "sF", "G": "sG", "H": "sH"}}
+               "sponsor_tokens": {"0": "s0", "1": "s1", "2": "s2", "3": "s3", "4": "s4", "5": "s5", "6": "s6", "7": "s7", "8": "s8", "9": "s9", "10": "s10", "11": "s11", "12": "s12", "13": "s13", "14": "s14", "15": "s15"}}
 }

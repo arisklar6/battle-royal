@@ -43,7 +43,7 @@ proc track*(t: var AnalystTracker, s: Sim) =
       tick: s.tick, itemId: old.itemId, recipientSlot: old.recipientSlot,
       looterSlot: looter,
       stolen: looter >= 0 and old.recipientSlot >= 0 and
-              team(AgentId(looter)) != team(AgentId(old.recipientSlot))))
+              looter != old.recipientSlot))
   t.prevPods = s.pods
 
 proc reset*(t: var AnalystTracker) =
@@ -60,13 +60,13 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     if a.alive:
       inc alive
     var e = %*{
-      "slot": i, "team": TeamNames[team(AgentId(i))],
+      "slot": i,
       "name": s.cfg.playerNames[i],
       "pos": [a.pos.x, a.pos.y],
       "alive": a.alive, "hp": (if a.alive: a.hpCenti div 100 else: 0),
       "kills": a.kills, "damage_dealt": a.damageDealtCenti div 100,
       "placement": places[i],
-      "projected_score": scoreFor(places[i], a.kills),
+      "projected_score": s.scoreFor(places[i]),
       "hand": $a.hand}
     if not a.alive:
       e["death_tick"] = %a.deathTick
@@ -75,15 +75,15 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
                        "intelligence": a.stats.intelligence,
                        "athleticism": a.stats.athleticism}
     agents.add(e)
-  var teams = newJArray()
-  for ti in 0 .. 7:
-    teams.add(%*{"team": TeamNames[ti], "budget": s.teamBudget[ti]})
+  var purses = newJArray()
+  for ti in 0 ..< s.cfg.numPlayers:
+    purses.add(%*{"player": ti, "budget": s.playerBudget[ti]})
   var ticker = newJArray()
   let lo = max(0, s.sponsorLog.len - 16)
   for j in lo ..< s.sponsorLog.len:
     let g = s.sponsorLog[j]
     ticker.add(%*{"tick": g.tickRequested, "sponsor": g.sponsor,
-                   "team": (if g.team in 0 .. 7: TeamNames[g.team] else: "?"),
+                   "player": g.player,
                    "recipient_slot": g.recipientSlot, "item": g.itemId,
                    "target": (if g.target.x >= 0: %[g.target.x, g.target.y]
                               else: newJNull()),
@@ -107,7 +107,6 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
   for i in dead:
     let a = s.agents[i]
     settlements.add(%*{"tick": a.deathTick, "victim": i,
-                        "team": TeamNames[team(AgentId(i))],
                         "killer": (if a.lastDamager != i: a.lastDamager else: -1),
                         "placement": places[i]})
   # live chat: the diplomacy layer is public by design (spec: permanently
@@ -142,6 +141,6 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
     "zone": {"radius": s.zoneRadius(), "next_radius": nextR,
              "shrink_tick": shrinkT, "damage_per_s": s.zoneDamagePerS()},
     "arena": arenaRows,
-    "agents": agents, "teams": teams,
+    "agents": agents, "purses": purses,
     "ticker": ticker, "interceptions": steals, "settlements": settlements,
     "chat": chatArr})

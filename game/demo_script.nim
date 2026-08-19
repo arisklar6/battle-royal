@@ -8,7 +8,7 @@ proc driveScript*(s: var Sim) =
     discard s.submitTalk(AgentId(0), tcBroadcast, -1,
       "sixteen of us, one crown. anyone want the fortress mouth?")
   if s.tick == 30:
-    discard s.submitTalk(AgentId(1), tcTeam, -1, "stay east, loot the crates")
+    discard s.submitTalk(AgentId(1), tcBroadcast, -1, "east crates are claimed. cross me and find out")
   if s.tick == 60:
     discard s.submitTalk(AgentId(9), tcDm, 2, "truce until the ring closes?")
   if s.tick == 100:

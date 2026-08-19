@@ -47,7 +47,6 @@
   .wide { grid-column: 1 / -1; }
   #comms { height: 150px; overflow-y: auto; font-size: 11px; }
   #comms .row { padding: 1px 0; border-bottom: 1px solid #14181f; }
-  #comms .ch-team { color: var(--teal); }
   #comms .ch-dm { color: var(--gold); }
   #mini { image-rendering: pixelated; display: block; }
   #timeline { display: block; width: 100%; height: 16px; margin-bottom: 10px;
@@ -115,14 +114,19 @@ function websocketAddress(path) {
   target.hash = '';
   return target;
 }
-// AFTERGLOW team wheel (VISUAL_REDESIGN §3.1)
-const TEAM = {A:'#FF8FA8', B:'#49C7E8', C:'#E8C558', D:'#9B7BFF',
-              E:'#E85D75', F:'#9FB8D8', G:'#E8975D', H:'#D97BE8'};
+// FFA player wheel: eight AFTERGLOW hues, odd seats at the deep value
+const HUES = ['#FF8FA8','#49C7E8','#E8C558','#9B7BFF',
+              '#E85D75','#9FB8D8','#E8975D','#D97BE8'];
+const shadeHex = (hex, d) => '#' + [1, 3, 5].map(i =>
+  Math.max(0, Math.min(255, parseInt(hex.slice(i, i + 2), 16) + d))
+    .toString(16).padStart(2, '0')).join('');
+const playerColor = s => (s % 2 ? shadeHex(HUES[(s >> 1) % 8], -56)
+                                : HUES[(s >> 1) % 8]);
 // server-supplied strings (names, sponsor item ids) must never reach
 // innerHTML raw — a live sponsor socket can put arbitrary text in item_id
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const teamColor = t => TEAM[t] || '#56606a';
+const hueClass = s => 'ABCDEFGH'[(s >> 1) % 8];   // CVD chip pattern key
 const el = id => document.getElementById(id);
 let finaleShown = false, tickerKeys = new Set();
 // MINIMAP: static arena cached from the first payload that carries it
@@ -159,7 +163,7 @@ function drawMini(m) {
   // agents: alive = 4px team square, dead = 2px dim dot
   for (const a of m.agents) {
     if (a.alive) {
-      ctx.fillStyle = teamColor(a.team);
+      ctx.fillStyle = playerColor(a.slot);
       ctx.fillRect(a.pos[0] * 4, a.pos[1] * 4, 4, 4);
     } else {
       ctx.fillStyle = '#8a95a3';
@@ -284,7 +288,7 @@ ws.onmessage = (ev) => {
     // HP semaphore (VISUAL_REDESIGN §3.1): phosphor/amber/klaxon, no green
     const band = a.hp > 66 ? '#A5E3EE' : a.hp >= 33 ? '#FFB454' : '#FF4A36';
     return `<tr class="${a.alive ? '' : 'dead'}">
-      <td><span class="team-chip chip-${esc(a.team)}" style="background-color:${teamColor(a.team)}"></span>${esc(a.team)}</td>
+      <td><span class="team-chip chip-${hueClass(a.slot)}" style="background-color:${playerColor(a.slot)}"></span></td>
       <td>P${a.slot} ${esc(a.name || '')}</td>
       <td>${a.alive ? a.hp + '<div class="hpbar"><i style="width:' + a.hp + '%;background:' + band + '"></i></div>' : '<span class="crim">✝ ' + fmtT(a.death_tick) + '</span>'}</td>
       <td>${a.kills}</td><td>${a.damage_dealt}</td>
@@ -293,11 +297,11 @@ ws.onmessage = (ev) => {
   }).join('');
 
   // budgets + ticker
-  el('budgets').tBodies[0].innerHTML = '<tr>' + m.teams.map(t =>
-    `<td><span class="team-chip chip-${esc(t.team)}" style="background-color:${teamColor(t.team)}"></span>${esc(t.team)} <b class="gold">${t.budget}</b></td>`).join('') + '</tr>';
+  el('budgets').tBodies[0].innerHTML = '<tr>' + m.purses.map(t =>
+    `<td><span class="team-chip chip-${hueClass(t.player)}" style="background-color:${playerColor(t.player)}"></span>P${t.player} <b class="gold">${t.budget}</b></td>`).join('') + '</tr>';
   const tick = el('ticker');
   for (const g of m.ticker) {
-    const key = 'g' + g.tick + g.team + g.item + g.recipient_slot;
+    const key = 'g' + g.tick + g.player + g.item + g.recipient_slot;
     if (tickerKeys.has(key)) continue;
     tickerKeys.add(key);
     const d = document.createElement('div'); d.className = 'row';
@@ -305,8 +309,8 @@ ws.onmessage = (ev) => {
       ? `tile (${g.target ? esc(g.target[0]) + ',' + esc(g.target[1]) : '?,?'})`
       : `P${g.recipient_slot}`;
     d.innerHTML = g.status === 'accepted'
-      ? `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → ${dest} <span style="color:#8a95a3">(bal ${g.balance})</span>`
-      : `[${fmtT(g.tick)}] <span style="color:${teamColor(g.team)}">${esc(g.team)}</span> <span class="crim">REJECTED</span> ${esc(g.item)} (${esc(g.reason)})`;
+      ? `[${fmtT(g.tick)}] <span style="color:${playerColor(g.player)}">P${g.player}</span> BUYS <span class="gold">${esc(g.item.toUpperCase())}</span> −${g.cost} SC → ${dest} <span style="color:#8a95a3">(bal ${g.balance})</span>`
+      : `[${fmtT(g.tick)}] <span style="color:${playerColor(g.player)}">P${g.player}</span> <span class="crim">REJECTED</span> ${esc(g.item)} (${esc(g.reason)})`;
     tick.prepend(d);
   }
   let sndStolenNew = false;
@@ -332,7 +336,7 @@ ws.onmessage = (ev) => {
     if (tickerKeys.has(key)) continue;
     tickerKeys.add(key);
     const d = document.createElement('div');
-    d.className = 'row' + (c.channel === 'team' ? ' ch-team' : c.channel === 'dm' ? ' ch-dm' : '');
+    d.className = 'row' + (c.channel === 'dm' ? ' ch-dm' : '');
     const tag = c.channel === 'dm' ? '→P' + c.to : c.channel === 'team' ? '·team' : '';
     d.innerHTML = `[${fmtT(c.tick)}] <b>P${c.from}${tag}</b>: ${esc(c.text)}`;
     comms.prepend(d);
@@ -345,7 +349,7 @@ ws.onmessage = (ev) => {
     tickerKeys.add(key);
     const d = document.createElement('div'); d.className = 'row settle';
     const by = st.killer >= 0 ? ' BY P' + st.killer : ' · ARENA';
-    d.innerHTML = `[${fmtT(st.tick)}] <span style="color:${teamColor(st.team)}">${esc(st.team)}</span> <span class="victim">P${st.victim}</span> SETTLED · ${ordinal(st.placement)}${by}`;
+    d.innerHTML = `[${fmtT(st.tick)}] <span class="victim" style="color:${playerColor(st.victim)}">P${st.victim}</span> SETTLED · ${ordinal(st.placement)}${by}`;
     tick.prepend(d);
     // one thunk per new row, staggered; capped so a backlog burst can't clip
     if (sndSettleNew < 4) sfxThunk(sndSettleNew * 0.15);
@@ -357,7 +361,7 @@ ws.onmessage = (ev) => {
     el('lockTag').textContent = '· LOCKED';
     el('matrix').tBodies[0].innerHTML = m.agents.map(a =>
       `<tr class="${a.alive ? '' : 'dead'}">
-        <td style="text-align:left"><span class="team-chip chip-${esc(a.team)}" style="background-color:${teamColor(a.team)}"></span>P${a.slot}</td>
+        <td style="text-align:left"><span class="team-chip chip-${hueClass(a.slot)}" style="background-color:${playerColor(a.slot)}"></span>P${a.slot}</td>
         <td>${a.stats.speed}</td><td>${a.stats.strength}</td>
         <td>${a.stats.intelligence}</td><td>${a.stats.athleticism}</td>
       </tr>`).join('');

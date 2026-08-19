@@ -155,8 +155,8 @@ proc playerConfigJson*(s: Sim, slot: int): string =
     zoneArr.add(%[st.warnT, st.shrinkT, st.doneT, st.rStart, st.rEnd, st.dmgPerS])
   $(%*{
     "type": "player_config", "protocol": "battle_royal.player.v1",
-    "slot": slot, "team": teamName(AgentId(slot)),
-    "teammate_slot": int(teammate(AgentId(slot))),
+    "slot": slot, "mode": "ffa",
+    "num_players": s.cfg.numPlayers,
     "name": s.cfg.playerNames[slot],
     "arena": {"size": ArenaSize, "static_map": rows,
               "legend": {".": "ground", "#": "wall", "R": "rock",
@@ -172,7 +172,7 @@ proc playerConfigJson*(s: Sim, slot: int): string =
     "tick_rate": 24, "max_ticks": s.cfg.maxTicks,
     "ignition_tick": s.ignitionTick,
     "sponsor": {"enabled": true,
-                 "budget_per_team": s.cfg.sponsor.budgetPerTeam,
+                 "budget_per_player": s.cfg.sponsor.budgetPerPlayer,
                  "shop_opens_tick": s.cfg.sponsor.shopOpensTick,
                  "catalog": catalog}})
 
@@ -196,7 +196,7 @@ proc observationJson*(s: Sim, slot: int): string =
       continue
     if s.canSee(slot, i):
       let o = s.agents[i]
-      agentsArr.add(%*{"slot": i, "team": teamName(AgentId(i)),
+      agentsArr.add(%*{"slot": i,
         "pos": [o.pos.x, o.pos.y], "hp_band": hpBand(o.hpCenti),
         "hand": $o.hand,
         "body": (if o.body == iNone: newJNull() else: %($o.body)),

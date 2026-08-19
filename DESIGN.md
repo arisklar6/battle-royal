@@ -7,6 +7,20 @@ Naming (locked, 4 forms): display "Battle Royal", slug `battle-royal`, code `bat
 
 Engine/platform facts were verified against bitworld `e47559c` and coworld `7c3d8f0` source — file:line evidence in docs/PLATFORM_FACTS.md. This draft was adversarially reviewed (6 lenses, 39 agents); all confirmed defects are fixed in this text. The 8 open design parameters were decided by the owner via popups (§19 decision record) and are integrated throughout.
 
+> **v0.2 FFA revision (2026-08-19, owner-directed) — supersedes every team
+> reference below.** Zero Sum is a pure free-for-all: there are no teams, no
+> teammates, no duos league mode, and no team talk channel. Where this
+> document says "team", read "player": sponsor purses are per-player
+> (default 150), the platform seats policies identically (seat i = slot i),
+> and the finale event fires at the last-two showdown instead of the
+> civil-war moment. Scoring (§12.1) is survival-only:
+> `score = (num_players − placement) + podium bonus` with podium bonuses
+> +10/+5/+2 for places 1/2/3 — kills are tracked and broadcast but score
+> nothing. Talk (§8) has exactly two channels, `broadcast` and `dm`, and
+> both carry at ANY distance — diplomacy is arena-wide by design. Matches
+> seat 2–16 players via `num_players`. `game/docs/*.md` and the manifest
+> generator carry the authoritative current wire shapes.
+
 ---
 
 ## 1. Match timeline & tick model

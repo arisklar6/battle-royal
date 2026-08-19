@@ -16,14 +16,16 @@ const GoldenSeeds = [1, 7, 42, 99, 1234]
 const Checkpoints = [1000, 3000]     # plus the final tick, always
 
 # (seed, checkpoint hashes..., final tick, final hash)
-# Generated 2026-08-01 under the ring-closure fix (r=0 has no safe tile);
-# every scripted episode now resolves at full closure (t=7632).
+# Regenerated 2026-08-19 for the FFA rules change (DELIBERATE): no team
+# layer (per-player sponsor purses resize the hashed budget array, the
+# finale event moves to the last-two showdown, team chat is gone) and the
+# scripted gift is player-addressed. Same seeds, same scripted episodes.
 const GoldenHashes: array[5, (int, uint64, uint64, int, uint64)] = [
-  (1, 0xAC1A1E241656FC4C'u64, 0xF33FCEBA904737D6'u64, 7632, 0xF8DCBD4BE7E09A3E'u64),
-  (7, 0x2B40D73CA16E0BEF'u64, 0x403631A80F54AC6B'u64, 7632, 0x5871FEB58F92DE88'u64),
-  (42, 0x422F8D6318B35178'u64, 0x561580FCCD6EF079'u64, 7632, 0xD927F2C878CA5D5B'u64),
-  (99, 0x43C9907314E688D8'u64, 0x6210CDC991808C98'u64, 7632, 0xF56D930F098DCEDC'u64),
-  (1234, 0xA285EEBAF474CC4E'u64, 0x168276F0056DEA65'u64, 7632, 0xA1BC8B3D533EA8CF'u64)]
+  (1, 0xD30458640B36BB0C'u64, 0x1D965A01A0510116'u64, 7632, 0x6B74490D05938DFE'u64),
+  (7, 0x7FD6E55B4F8A530F'u64, 0x38A8A113BCB69F4B'u64, 7632, 0xDCB6129E6F276548'u64),
+  (42, 0x804A90D7A27E32B8'u64, 0x2DFB31D1D33EF639'u64, 7632, 0x5C854246068EB5BB'u64),
+  (99, 0x03102FD142564C78'u64, 0x1F422BDEB80BC978'u64, 7632, 0xC6A5DACE448DF91C'u64),
+  (1234, 0x73E5FF5A2650FF8E'u64, 0xF1725E942C33FC25'u64, 7632, 0x0E26468989C26CEF'u64)]
 
 const DirDx = [0, 1, 1, 1, 0, -1, -1, -1]
 const DirDy = [-1, -1, 0, 1, 1, 1, 0, -1]
@@ -52,12 +54,12 @@ proc runEpisode(seed: int): (uint64, uint64, int, uint64) =
   var minted = proc(): uint64 = 0'u64
   var s = initSim(parseSimConfig(%*{
     "seed": seed, "max_ticks": 9120, "freeze_ticks": 48,
-    "sponsor": {"live": true, "budget_per_team": 300,
+    "sponsor": {"live": true, "budget_per_player": 300,
                  "shop_opens_tick": 1680}}, minted))
   var cp: array[2, uint64]
   while s.phase != phEnded:
     if s.tick == s.cfg.sponsor.shopOpensTick + 24:
-      discard s.requestGift("golden", 0, -1, "blowgun", Pos(x: 30, y: 24))
+      discard s.requestGift("golden", 0, "blowgun", Pos(x: 30, y: 24))
     if s.phase == phLive:
       let c = ArenaSize div 2
       for i in 0 .. 15:

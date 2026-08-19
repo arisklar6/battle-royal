@@ -218,11 +218,12 @@ const
   ## carrier (ART_UPGRADE_PLAN §4.3) and this authoring grid goes with it.
   ArtScale = RS div 2
 
-  ## AFTERGLOW team wheel (VISUAL_REDESIGN §3.1): S/L-locked fills, only
-  ## polychrome in the arena. F ice-white and E crimson retired (invisible /
-  ## danger-red collision). Always paired with the slot glyph, never hue-alone.
+  ## FFA player wheel (from the AFTERGLOW hue set): sixteen seats, sixteen
+  ## fills — eight S/L-locked hues, each at a bright and a deep value, so no
+  ## two players share a paint and nothing on the board implies a team.
+  ## Always paired with the slot glyph, never hue-alone.
   ## rose / cyan / gold / violet / wine / steel / copper / orchid
-  TeamColors: array[8, (uint8, uint8, uint8)] = [
+  HueWheel: array[8, (uint8, uint8, uint8)] = [
     (255'u8, 143'u8, 168'u8), (73'u8, 199'u8, 232'u8), (232'u8, 197'u8, 88'u8),
     (155'u8, 123'u8, 255'u8), (232'u8, 93'u8, 117'u8), (159'u8, 184'u8, 216'u8),
     (232'u8, 151'u8, 93'u8), (217'u8, 123'u8, 232'u8)]
@@ -427,6 +428,12 @@ proc shade(c: (uint8, uint8, uint8), d: int): (uint8, uint8, uint8) =
   (uint8(max(0, min(255, int(c[0]) + d))),
    uint8(max(0, min(255, int(c[1]) + d))),
    uint8(max(0, min(255, int(c[2]) + d))))
+
+proc playerColor(slot: int): (uint8, uint8, uint8) =
+  ## Even seats wear the hue bright, odd seats wear it deep (-56): sixteen
+  ## distinct fills from eight CVD-vetted hues.
+  let base = HueWheel[(slot div 2) mod 8]
+  if slot mod 2 == 0: base else: shade(base, -56)
 
 proc lumaOf(c: (uint8, uint8, uint8)): int =
   (int(c[0]) * 30 + int(c[1]) * 59 + int(c[2]) * 11) div 100
@@ -1053,12 +1060,13 @@ proc chassisPx(parity, facing: int):
   (cast[ptr UncheckedArray[uint8]](unsafeAddr CogArt[parity][facing][0][0]),
    cast[ptr UncheckedArray[uint8]](unsafeAddr CogArt[parity][facing][1][0]))
 
-proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
+proc bodyPixels(slot, facing, frame: int): seq[uint8] =
+  let parity = slot mod 2   # chassis flavour only — no team meaning in FFA
   ## Baked AFTERGLOW carrier. Placement offsets stay in 1x tile space and
   ## are scaled by addObject; the buffer is BodyWR x BodyHR, exactly the
   ## baked sprite's size, so the blit is a straight copy with the bob lift.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
-  let tunic = TeamColors[team]
+  let tunic = playerColor(slot)
   let lift = (if frame == 1: -ArtScale else: 0)   # 1 authoring px of hover
   let (art, _) = chassisPx(parity, facing)
   # blit with the lift; source rows land lift px higher.
@@ -1111,9 +1119,6 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
     PD(2, 2 + bob, Phosphor, 190)
   else:
     discard
-  if parity == 1:                      # teammate pip on the shoulder
-    PD(5, 7 + lift div ArtScale, PhosphorPeak)
-    PD(6, 7 + lift div ArtScale, PhosphorPeak)
   # contact shadow before the diamond goes down
   result.addBacklight(BodyWR, BodyHR, StoneInk, 95, dx = RS, dy = RS)
   # ...then ctf's warm amber backlight (pixie.shadow behind every rig): a
@@ -1137,13 +1142,13 @@ const
   CorpseW = 2 * TilePxR
   CorpseH = TilePxR
 
-proc corpsePixels(team, parity: int): seq[uint8] =
+proc corpsePixels(slot: int): seq[uint8] =
   ## Decommissioned carrier: the baked chassis-neutral wreck (its width
   ## sits between the two standing silhouettes), grounded in a code-drawn
   ## shadow pool, with the darkened team diamond spilled clear of the hull
   ## and the parity pixel — state stays code-stamped.
   result = newSeq[uint8](CorpseW * CorpseH * 4)
-  let tunic = shade(TeamColors[team], -60)
+  let tunic = shade(playerColor(slot), -60)
   template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
     for oy in 0 ..< ArtScale:
       for ox in 0 ..< ArtScale:
@@ -1160,14 +1165,12 @@ proc corpsePixels(team, parity: int): seq[uint8] =
       let di = k * 4
       let l = (int(CorpseWreckPx[di]) * 30 + int(CorpseWreckPx[di + 1]) * 59 +
                int(CorpseWreckPx[di + 2]) * 11) div 100
-      let tun = [int(TeamColors[team][0]), int(TeamColors[team][1]),
-                 int(TeamColors[team][2])]
+      let pc = playerColor(slot)
+      let tun = [int(pc[0]), int(pc[1]), int(pc[2])]
       for ch in 0 .. 2:
         result[di + ch] = uint8((int(CorpseWreckPx[di + ch]) * 7 +
                                  tun[ch] * l * 3 div 255) div 10)
       result[di + 3] = CorpseWreckPx[di + 3]
-  if parity == 1:
-    P(14, 4, (170'u8, 180'u8, 190'u8))
   # team diamond gone dark, spilled clear of the hull
   for dy in 0 .. 3:
     let wdt = (if dy <= 1: dy + 1 else: 4 - dy)
@@ -1864,12 +1867,11 @@ proc slotLabel*(s: Sim, slot: int): string =
     "P" & $slot
 
 proc shortLabel*(slot: int): string =
-  ## Crowded fallback: team letter + which of the duo, so A1/A2 are the two
-  ## contestants of team A. Two characters is ~a third of a tile, narrow
+  ## Crowded fallback: the seat number. Three characters tops, narrow
   ## enough that a cluster cannot stack into a wall, and it keeps identity
-  ## off team hue alone for CVD viewers (VISUAL_REDESIGN Part 8.1).
+  ## off hue alone for CVD viewers (VISUAL_REDESIGN Part 8.1).
   if slot < 0 or slot > 15: return "??"
-  TeamNames[slot div 2] & $(slot mod 2 + 1)
+  "P" & $(slot + 1)
 
 proc plateX*(tileX: int, label: string): int =
   ## Centre a text plate on the agent's tile. textPixels is 2px of plate plus
@@ -2314,7 +2316,7 @@ proc stampTrace(r: var Renderer, tileX, tileY: int,
 proc etchScar(r: var Renderer, slot: int, pos: Pos) =
   ## Burn-in: team-tinted floor scar plus the slot glyph, for the rest
   ## of the match. Rendered under live entities (overlay sits at z=3).
-  let tc = TeamColors[slot div 2]
+  let tc = playerColor(slot)
   let ox = pos.x * TilePxR
   let oy = pos.y * TilePxR
   for y in 0 ..< TilePxR:
@@ -2521,10 +2523,10 @@ proc spriteDefs(s: Sim): seq[uint8] =
     for facing in 0 .. 3:
       for frame in 0 .. 1:
         result.addSprite(SpBodyBase + slot * 10 + facing * 2 + frame,
-          BodyWR, BodyHR, bodyPixels(slot div 2, slot mod 2, facing, frame),
+          BodyWR, BodyHR, bodyPixels(slot, facing, frame),
           "body" & $slot, native = true)
     result.addSprite(SpCorpseBase + slot, CorpseW, CorpseH,
-      corpsePixels(slot div 2, slot mod 2), "corpse" & $slot, native = true)
+      corpsePixels(slot), "corpse" & $slot, native = true)
   for id in ItemId:
     if id != iNone:      # every carriable shows in the hand, medkits included
       result.addSprite(SpWeaponBase + ord(id), HeldPx, HeldPx,
@@ -2761,7 +2763,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   for slot in 0 ..< s.cfg.numPlayers:
     let a = s.agents[slot]
     if a.alive:
-      r.stampTrace(a.pos.x, a.pos.y, TeamColors[slot div 2], 130)
+      r.stampTrace(a.pos.x, a.pos.y, playerColor(slot), 130)
       # hit response (Tier 2): 1-frame peak-white flash + damage numeral
       if r.lastHp[slot] > a.hpCenti:
         r.spawnEffect(result, s, SpHitFlash,
@@ -2934,12 +2936,10 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     let tag =
       case msg.channel
       of tcBroadcast: slotLabel(s, msg.slot) & ":"
-      of tcTeam: slotLabel(s, msg.slot) & "+"
       of tcDm: slotLabel(s, msg.slot) & ">" & slotLabel(s, msg.to)
     let chipColor =
       case msg.channel
       of tcBroadcast: Bone
-      of tcTeam: Phosphor
       of tcDm: GoldTone
     inc r.talkFlip[msg.slot]
     let spId = SpTalkBase + msg.slot * 2 + (r.talkFlip[msg.slot] mod 2)
@@ -3290,9 +3290,13 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
           ringTxt.add(">" & $st.rEnd & " IN " & mmss((st.shrinkT - s.tick) div 24))
       break
   let hud1 = "ALIVE " & $s.aliveCount() & "  " & ringTxt & "  T " & mmss(secs)
-  var hud2 = "COIN"
-  for t in 0 ..< s.cfg.numPlayers div 2:
-    hud2.add(" " & TeamNames[t] & $s.teamBudget[t])
+  # FFA sponsor economy: sixteen purses don't fit a HUD line — show the
+  # remaining pool, which is the one number that tells the room how much
+  # outside interference is still possible.
+  var coinPool = 0
+  for t in 0 ..< s.cfg.numPlayers:
+    coinPool += s.playerBudget[t]
+  let hud2 = "COIN POOL " & $coinPool
   if hud1 != r.lastHud1:
     r.lastHud1 = hud1
     let spId = SpHudBase + (r.hud1Flip mod 2)
@@ -3325,10 +3329,9 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     let txt =
       case e.kind
       of evIgnition: "IGNITION"
-      of evFinale: "FINALE"
+      of evFinale: "FINAL 2"
       of evMatchEnd:
-        (if e.slot >= 0: "WINNER " & $TeamNames[team(AgentId(e.slot))] &
-                         " " & slotLabel(s, e.slot)
+        (if e.slot >= 0: "WINNER " & slotLabel(s, e.slot)
          else: "MATCH OVER")
       else: ""
     if txt.len > 0:
