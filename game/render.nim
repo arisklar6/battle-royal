@@ -123,6 +123,9 @@ const
   SpDecompBase = 1450      # + parity*8 + frame -> 1450..1465
   DecompFrames = 8
   SpDeathFlashBase = 1470  # + parity: opaque peak-white body silhouette
+  SpSlotShortBase = 1500   # 1500 + slot: 2-char team+parity plate (A1, A2,
+                           # B1 ...) shown instead of the name when agents
+                           # cluster — keeps identity off hue alone (Part 8)
 
   # object ids
   ObBackground = 1
@@ -270,7 +273,6 @@ type
     regionDrawn: int
     bushesDrawn: int
     weaponDrawn: array[16, bool]
-    tagOn: array[16, bool]        # identity plate currently placed
     ## One flip counter per HUD line. They shared `hudFlip` until 2026-08-13,
     ## and a shared counter breaks the parity it exists to keep: when both
     ## lines change on the same tick, hud1 takes parity p and hud2 advances
@@ -1527,6 +1529,21 @@ proc slotLabel*(s: Sim, slot: int): string =
   else:
     "P" & $slot
 
+proc shortLabel*(slot: int): string =
+  ## Crowded fallback: team letter + which of the duo, so A1/A2 are the two
+  ## contestants of team A. Two characters is ~a third of a tile, narrow
+  ## enough that a cluster cannot stack into a wall, and it keeps identity
+  ## off team hue alone for CVD viewers (VISUAL_REDESIGN Part 8.1).
+  if slot < 0 or slot > 15: return "??"
+  TeamNames[slot div 2] & $(slot mod 2 + 1)
+
+proc plateX*(tileX: int, label: string): int =
+  ## Centre a text plate on the agent's tile. textPixels is 2px of plate plus
+  ## 4px per glyph, and the tile is TileSize wide in 1x space; the old fixed
+  ## -3 offset was tuned for 3-character "P<n>" and left an 8-character name
+  ## sitting a full tile-and-a-half to the right of its carrier.
+  tileX * TileSize + TileSize div 2 - (2 + label.len * 4) div 2
+
 proc clipCols(line: string, cols: int): string =
   if line.len <= cols: line else: line[0 ..< cols]
 
@@ -2110,6 +2127,8 @@ proc spriteDefs(s: Sim): seq[uint8] =
   for slot in 0 .. 15:
     let (w, h, px) = textPixels(slotLabel(s, slot), 205, 214, 220)
     result.addSprite(SpSlotLabelBase + slot, w, h, px, "tag" & $slot)
+    let (sw, sh, spx) = textPixels(shortLabel(slot), 205, 214, 220)
+    result.addSprite(SpSlotShortBase + slot, sw, sh, spx, "tagshort" & $slot)
   for band in 0 .. 2:
     result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
   result.addSprite(SpRingGhost, TilePxR, TilePxR, ringGhostPixels(),
@@ -2142,9 +2161,10 @@ proc tagCrowded(s: Sim, slot: int): bool =
   ## An 8-character plate is about two tiles wide, so neighbouring tags stack
   ## into an unreadable block wherever agents bunch up — worst during the
   ## Fortress scramble, where the whole courtyard vanishes behind text.
-  ## Suppress the plate instead of stacking it: a name is worth drawing
-  ## exactly when it can be read, and the board art carries the moment when
-  ## it cannot. (P-numbers had the same pile-up; names just made it wide.)
+  ## Swap to the 2-char plate instead of stacking names: a name is worth
+  ## drawing exactly when it can be read, and A1/A2 still separates the two
+  ## contestants of a duo when it cannot. (P-numbers had the same pile-up;
+  ## names just made it wide enough to notice.)
   let p = s.agents[slot].pos
   for i in 0 .. 15:
     if i == slot or not s.agents[i].alive: continue
@@ -2167,10 +2187,13 @@ proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
     packet.addObject(ObWeaponBase + slot, p.x * TileSize - 1 + dx,
                      p.y * TileSize - 3, 11, LayerMap, SpWeaponBase + ord(hand))
   # identity tag + hp semaphore (Tier 1): fights must be readable on air
-  if not s.tagCrowded(slot):
-    packet.addObject(ObSlotLabelBase + slot, p.x * TileSize - 3,
-                     p.y * TileSize + TileSize + 1, 12, LayerMap,
-                     SpSlotLabelBase + slot)
+  # A cluster gets the 2-char plate, not no plate: identity must never fall
+  # back to team hue alone (VISUAL_REDESIGN Part 8.1).
+  let crowded = s.tagCrowded(slot)
+  let plate = (if crowded: shortLabel(slot) else: slotLabel(s, slot))
+  packet.addObject(ObSlotLabelBase + slot, plateX(p.x, plate),
+                   p.y * TileSize + TileSize + 1, 12, LayerMap,
+                   (if crowded: SpSlotShortBase else: SpSlotLabelBase) + slot)
   let band = (if s.agents[slot].hpCenti > 6600: 0
               elif s.agents[slot].hpCenti >= 3300: 1 else: 2)
   packet.addObject(ObHpBandBase + slot, p.x * TileSize - 2,
@@ -2259,10 +2282,6 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         r.lastMoveTick[slot] = s.tick
         r.lastPos[slot] = a.pos
       r.drawAgent(result, s, slot)
-      let showTag = not s.tagCrowded(slot)
-      if not showTag and r.tagOn[slot]:
-        result.addDeleteObject(ObSlotLabelBase + slot)
-      r.tagOn[slot] = showTag
       r.weaponDrawn[slot] = s.agents[slot].hand != iNone and not s.camoHidden(slot)
       # camo reveal glitch: hidden last frame, visible now (§21.3)
       let hiddenNow = s.camoHidden(slot)
@@ -2312,7 +2331,6 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     elif not r.deadDrawn[slot]:
       result.addDeleteObject(ObAgentBase + slot)
       result.addDeleteObject(ObSlotLabelBase + slot)
-      r.tagOn[slot] = false
       result.addDeleteObject(ObHpBandBase + slot)
       if r.weaponDrawn[slot]:
         result.addDeleteObject(ObWeaponBase + slot)
@@ -2811,7 +2829,6 @@ proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   for slot in 0 .. 15:
     if s.agents[slot].alive:
       r.drawAgent(result, s, slot)
-      r.tagOn[slot] = not s.tagCrowded(slot)
     elif s.agents[slot].deathTick >= 0:
       # late joiners still see the fallen where they fell
       result.addObject(ObCorpseBase + slot,
@@ -2824,7 +2841,6 @@ proc resetForLoop*(r: var Renderer) =
   for i in 0 .. 15:
     r.deadDrawn[i] = false
     r.weaponDrawn[i] = false
-    r.tagOn[i] = false
     r.facing[i] = 0
     r.lastPos[i] = Pos(x: -1, y: -1)
     r.lastMoveTick[i] = -100

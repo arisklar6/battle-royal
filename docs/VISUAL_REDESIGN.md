@@ -244,7 +244,9 @@ Every agent carries: an **identity plate** beneath the carrier, and an HP-band a
 
 **The plate carries the player's name, not a slot number** (shipped 0.1.16). Hosted dispatch resolves each seat to a display name in `game_config.players[].name` — `relh`, `sivannn`, `Ryan Schiller`, and `Baseline`, `Baseline (2)` … for filler seats — which the sim parses into `cfg.playerNames`. The renderer folds that name into the 41-glyph face and clips it to **8 characters**, keeping any ` (N)` dedup tail and dropping stem instead (`BASELIN5`, `BASELI12`), because that tail is the only thing separating twelve filler seats. Unnamed or local matches fall back to the themed default table, then to `P<n>`.
 
-**Suppression:** an 8-character plate is about two tiles wide, so plates stack into an unreadable block wherever agents bunch — worst in the Fortress scramble, where the courtyard vanishes behind text. The plate is therefore **hidden while another live agent is within 2 tiles**; the board art carries the moment instead. Slot numbers piled up identically before names; names only made the pile wide enough to notice. See the open accessibility item in Part 8.
+**Crowded fallback:** an 8-character plate is about two tiles wide, so plates stack into an unreadable block wherever agents bunch — worst in the Fortress scramble, where the courtyard vanishes behind text. While another live agent is within 2 tiles the plate therefore swaps to a **2-character team+parity glyph** — `A1`/`A2` are the two contestants of team A — which is about a third of a tile and cannot stack into a wall. It is a swap, never a removal: identity must never fall back to team hue alone (Part 8.1). Slot numbers piled up identically before names; names only made the pile wide enough to notice.
+
+**Centering:** plates centre on the carrier's tile (`plateX`). The old fixed −3 offset was tuned for a 3-character `P<n>` and left an 8-character name sitting a tile and a half to the right of the agent it named.
 
 ### 5.3 The Settlement system (kill feed + death drama)
 
@@ -339,7 +341,7 @@ Screen shake: spectator only, 1–2px, deaths and mine only, killed by `prefers-
 ## Part 8 — Accessibility
 
 1. **Identity is never hue-alone:** identity plates under every carrier, letter+chip pairing in every table, parity pip retained. Team wheel passes a CVD-simulator gate before freeze (CI palette lint).
-   - **OPEN (0.1.16):** plate suppression in clusters (5.2) breaks this rule exactly where it matters most — mid-scramble a clustered agent is separable only by team hue and parity pip. Candidate fix: fall back to a 2-character team+parity glyph (`A1`, `A2`) instead of hiding the plate outright, which is narrow enough not to collide while keeping identity off hue alone.
+   - Holds in clusters too (0.1.17): a crowded plate shrinks to the `A1`/`A2` team+parity glyph rather than disappearing (5.2), so a clustered agent is still separable without relying on team hue. 0.1.16 briefly hid the plate outright and did not satisfy this rule.
 2. **HP is never hue-alone:** band = color + arc length + (own HP) numeral. Semaphore hues chosen for luminance separation (pale cyan / amber / red) — verified for deutan/protan.
 3. **Contrast:** all UI text ≥4.5:1 (`#56606A`/`#4A525A`/`#555` retire to ≥`#8A95A3`); dead-row strikethrough carries state so gray may stay decorative.
 4. **Text floors:** 11px minimum web (data face), 24px display floor, UI scale setting ×1.0–×2.0 (layouts are already relative post-redesign; canvases integer-zoom).

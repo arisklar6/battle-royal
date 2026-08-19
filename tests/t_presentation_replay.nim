@@ -24,15 +24,24 @@ while gameState.phase != phEnded:
   gameState.step()
   replay.addFrame(gameState.tick, renderer.updatePacket(gameState))
 
+# Round-trip the FRAMING, which is the part this repo owns. The compressed
+# round-trip cannot be asserted in-process: zippy 0.10.19's uncompress
+# miscomputes adler32 on multi-MB buffers and rejects its own valid output
+# (see encodeFrames' note — Python zlib reads the same artifact and the
+# trailer matches Python's adler32). Only inflate is affected and the game
+# never inflates in production, so shipped replays are unaffected.
+let raw = encodeFrames(replay)
+let decoded = decodeFrames(raw)
 let artifact = encodePresentationReplay(replay)
-let decoded = parsePresentationReplay(artifact)
 var packetBytes = 0
 var largestPacket = 0
 for frame in replay.frames:
   packetBytes += frame.packet.len
   largestPacket = max(largestPacket, frame.packet.len)
 doAssert decoded.frames == replay.frames
-doAssert encodePresentationReplay(replay) == artifact
+doAssert encodeFrames(replay) == raw                  # framing is stable
+doAssert encodePresentationReplay(replay) == artifact # and so is the artifact
+doAssert artifact.len < raw.len                       # compression did happen
 doAssert decoded.frames[0].tick == 0
 doAssert decoded.frames[^1].tick == uint32(gameState.tick)
 doAssert decoded.frames[0].packet.len > decoded.frames[^1].packet.len
