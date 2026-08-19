@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Pre-push: run the CI check job locally (see scripts/check.sh).
+exec "$(dirname "$0")/../check.sh"
