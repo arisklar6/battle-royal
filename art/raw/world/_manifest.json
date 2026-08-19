@@ -476,6 +476,34 @@
       "variant": 1,
       "variants": 1
     },
+    "stencil-sheet-b.png": {
+      "actual_px": [
+        2048,
+        2048
+      ],
+      "aspect_ratio": "1:1",
+      "bytes": 1464865,
+      "created_utc": "2026-08-19T02:32:36Z",
+      "endpoint": "local",
+      "entry": "stencil-sheet-b",
+      "file": "stencil-sheet-b.png",
+      "finish_reason": "LOCAL",
+      "guidance": 1.0,
+      "image_size": "2K",
+      "mime_type": "image/png",
+      "model": "local:black-forest-labs/FLUX.2-klein-4B",
+      "model_text": "",
+      "notes": "SUPPLEMENT (2026-08-18): the main stencil-sheet generation came out 3x3 with nine marks; these are the four the vocabulary still needs. 2x2 grid, same crop discipline: detect each cell's mark bbox, centre a square crop, reduce to 24x24. Same family rules as stencil-sheet.",
+      "prompt": "Orthographic front view, straight on, no perspective, no camera tilt.\nSingle key light from the upper left. No cast shadow (the shadow is drawn separately).\nBackground: flat pure #00FF00, edge to edge. There must be no other green anywhere.\nNo text, no letters, no numbers, no logos, no watermark, no signature.\n\nA 2 column by 2 row grid of four flat pictogram marks, one mark centred in each of four equal square cells, the marks separated by the flat background alone \u2014 no gutter lines, no borders, no boxes, no captions.\n\nReading order, and it must be exactly this:\n  top left     \u2014 a bow: one vertical arc with a straight vertical string, curve opening to the left\n  top right    \u2014 a camouflage cloak: a hooded poncho silhouette, wide at the hem, narrowing to the hood\n  bottom left  \u2014 three arrows in a vertical bundle, points up, fletching visible at the base\n  bottom right \u2014 three short darts in a vertical bundle, points up, clearly shorter and slighter than arrows\n\nEvery mark is a single flat fill of near-black #10161C and nothing else: flat silhouettes with hard edges, every stroke straight \u2014 horizontal, vertical or at 45 degrees, corners cut square. All four marks share one weight and one scale, each filling about two thirds of its cell. The background is one continuous field of pure #00FF00 touching all four edges.\n\nThe subject will be composited onto a dark slate ground, RGB(40,48,57) \u2014 light it for that.\n\nPalette, strictly:\n  structure / stone / chassis  -> desaturated blue-grey, #1C242B to #4E5E6B only\n  living signal / emission     -> pale cyan phosphor #A5E3EE, highlights to #EAF7FA\n  matter, loot, money, energy  -> warm amber #FFB454\n  contact shadow / ink line    -> near-black blue #10161C\nNothing warm except the amber. Nothing green. Nothing saturated red unless asked.",
+      "request_sha256": "db3903d3afca6e0f35f798e769e35a539ebd815a00b0625ef497f9305e175cb7",
+      "requested_px": null,
+      "seed_used": 1385937893,
+      "sha256": "571cfa931e80338ecf6a5ecfb7a4ffc7f0b3cc91758afd2af316de7fb6cdbe04",
+      "source_format": "PNG",
+      "steps": 4,
+      "variant": 1,
+      "variants": 1
+    },
     "stencil-sheet.png": {
       "actual_px": [
         2048,

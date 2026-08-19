@@ -923,56 +923,46 @@ proc glyphLine(px: var seq[uint8], w, x0, y0, x1, y1, t: int,
       for ox in 0 ..< t:
         px.put(w, x + ox, y + oy, c)
 
-proc weaponGlyph(id: ItemId): seq[uint8] =
-  ## Held-item glyph, authored natively at 5 tile-units square. It was a
-  ## 5x5 stamp: at RS=4 the ×RS upscale would have made every weapon four
-  ## 4x4 blocks in a trenchcoat. Drawn in render pixels the silhouettes
-  ## have real diagonals and a stroke weight that holds at any RS.
-  ## TODO(Phase 5): Tier A replaces these six with traced art
-  ## (ART_UPGRADE_PLAN §2); the palette (green blowgun, wood browns) is
-  ## Phase 2's to fix and is deliberately carried over unchanged here.
-  result = newSeq[uint8](GlyphPx * GlyphPx * 4)
-  let g = GlyphPx
-  let t = max(1, ArtScale)          # stroke weight
-  let lo = t                        # inset so strokes stay on the canvas
-  let hi = g - 2 * t
-  let steel = (222'u8, 222'u8, 235'u8)
-  let blade = (190'u8, 190'u8, 205'u8)
-  let wood = (150'u8, 110'u8, 40'u8)
-  let shaft = (180'u8, 140'u8, 90'u8)
-  case id
-  of iSword:
-    result.glyphLine(g, lo, hi, hi, lo, t, steel)              # blade
-    result.glyphLine(g, lo, hi - 2 * t, lo + 2 * t, hi, t, wood)  # guard
-  of iSpear:
-    result.glyphLine(g, 0, g - t, hi, lo, t, shaft)            # shaft
-    result.glyphLine(g, hi - t, lo + t, g - t, 0, t, (200'u8, 200'u8, 210'u8))
-  of iBow:
-    let bx = lo + t
-    result.glyphLine(g, bx, lo, bx, hi, t, (200'u8, 160'u8, 60'u8))  # limb
-    result.glyphLine(g, bx, lo, bx + t, 0, t, (200'u8, 160'u8, 60'u8))
-    result.glyphLine(g, bx, hi, bx + t, g - t, t, (200'u8, 160'u8, 60'u8))
-    result.glyphLine(g, bx + 2 * t, lo, bx + 2 * t, hi, t,
-                     (235'u8, 235'u8, 235'u8))                 # string
-  of iKnives:
-    result.glyphLine(g, lo, hi - t, hi - t, lo, t, blade)
-    result.glyphLine(g, lo, hi, lo + 2 * t, hi - 2 * t, t, wood)
-  of iBlowgun:
-    ## was (120,160,110) — the last green on a held weapon. Phosphor: the
-    ## blowgun is the anti-heal tool, and §3.1 gives live signal to phosphor.
-    result.glyphLine(g, 0, g div 2, g - t, g div 2, t, Phosphor)
-  of iNet:
-    for kx in 0 .. 2:
-      for ky in 0 .. 2:
-        let nx = kx * (g - t) div 2
-        let ny = ky * (g - t) div 2
-        for oy in 0 ..< t:
-          for ox in 0 ..< t:
-            result.put(g, nx + ox, ny + oy, (150'u8, 150'u8, 110'u8))
-  else:
-    discard
+type StencilRef = tuple[px: ptr UncheckedArray[uint8],
+                        mask: ptr UncheckedArray[uint8], w, h: int]
 
-# ---------------------------------------------------------------- misc art
+proc stencilFor(id: ItemId): StencilRef =
+  ## One glyph vocabulary (world.json decision): the same mark identifies
+  ## an item on the ground chip, on the crate, and in a hand.
+  template st(n): untyped =
+    (cast[ptr UncheckedArray[uint8]](unsafeAddr `n Px`[0]),
+     cast[ptr UncheckedArray[uint8]](unsafeAddr `n Mask`[0]), `n W`, `n H`)
+  case id
+  of iSword: st(StencilSword)
+  of iSpear: st(StencilSpear)
+  of iBow: st(StencilBow)
+  of iKnives: st(StencilKnives)
+  of iBlowgun: st(StencilBlowgun)
+  of iNet: st(StencilNet)
+  of iFirstAid: st(StencilFirstAid)
+  of iRations: st(StencilRations)
+  of iBackpack: st(StencilBackpack)
+  of iCamo: st(StencilCamo)
+  of iArrows: st(StencilArrows)
+  of iDarts: st(StencilDarts)
+  of iNone: st(StencilSword)   # never drawn; a valid ref keeps this total
+
+proc weaponGlyph(id: ItemId): seq[uint8] =
+  ## Held-item glyph: the SAME stencil mark the chips and crates wear,
+  ## cut concentrically and tinted phosphor — live signal on a living
+  ## agent. One vocabulary, zero drift: the sword a player learns on a
+  ## ground chip is pixel-identical to the sword in an enemy's hand.
+  result = newSeq[uint8](GlyphPx * GlyphPx * 4)
+  let stn = stencilFor(id)
+  let inset = (stn.w - GlyphPx) div 2     # 24 -> 20: concentric crop
+  for y in 0 ..< GlyphPx:
+    for x in 0 ..< GlyphPx:
+      let sx = x + inset
+      let sy = y + inset
+      if sx < 0 or sy < 0 or sx >= stn.w or sy >= stn.h:
+        continue
+      if stn.mask[sy * stn.w + sx] > 0:
+        result.put(GlyphPx, x, y, Phosphor)
 
 proc dimmed(px: seq[uint8], mul: int): seq[uint8] =
   ## Alpha-scaled copy for a baked fade stage.
@@ -1054,41 +1044,18 @@ proc stormPixels(phase: int): seq[uint8] =
         ## tenth colour that meant the same thing as one we already had.
         result.put(TilePxR, x, y, Klaxon, uint8(90 + (n mod 5) * 12))
 
-proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
-  ## Crate keyed to contents, authored natively: plank grain, a lit top
-  ## face, and the contents strap crossing it so a contested drop stays
-  ## identified after touchdown.
+proc podCratePixels(id: ItemId): seq[uint8] =
+  ## Baked chamfered amber crate, identified by its contents stencil —
+  ## the same mark the ground chip wears, so a contested drop stays
+  ## identified after touchdown without a label.
   result = newSeq[uint8](TilePxR * TilePxR * 4)
-  ## Chamfered amber, not wood. §3.4: "pods are chamfered amber crates".
-  ## The old (150,105,55) plank read as a crate from a different game —
-  ## and the machine prints deliveries, it does not ship them in timber.
-  let wood = AmberDim
+  result.compositeBaked(TilePxR, 0, 0, CrateBodyPx, CrateBodyW, CrateBodyH)
+  let stn = stencilFor(id)
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
-      let edge = x < RS or y < RS or x >= TilePxR - RS or y >= TilePxR - RS
-      let cham = x + y < RS * 2 or                        # 45° corner cuts
-                 (TilePxR - 1 - x) + y < RS * 2 or
-                 x + (TilePxR - 1 - y) < RS * 2 or
-                 (TilePxR - 1 - x) + (TilePxR - 1 - y) < RS * 2
-      var c = wood
-      if cham: c = shade(wood, -70)
-      elif edge: c = shade(wood, -46)
-      elif y < TilePxR div 3: c = shade(wood, 26)        # lit top face
-      elif (y div RS) mod 2 == 0: c = shade(wood, -12)   # panel seam
-      result.put(TilePxR, x, y, c)
-  for y in (TilePxR div 2 - RS) ..< (TilePxR div 2 + RS):
-    for x in 0 ..< TilePxR:
-      result.put(TilePxR, x, y, band)
-  for i in 0 ..< RS * 2:                                 # corner seal
-    result.put(TilePxR, RS + i, RS, band)
+      if x < stn.w and y < stn.h and stn.mask[y * stn.w + x] > 0:
+        result.put(TilePxR, x, y, StoneInk)
   result.addBacklight(TilePxR, TilePxR, GoldTone, 80)
-
-## `podChutePixels` lived here until 2026-08-13. The bible retired the
-## parachute ("the machine prints deliveries, it does not parachute them")
-## and the print sequence in `cratePartPixels` replaced it, but the sprite
-## kept being rasterized and Snappy-compressed into every init packet and
-## was never placed by any object. Deleted with SpPodChute, SpPodCrate (35)
-## and SpCargoBase (710), which had no definition or placement left at all.
 
 proc bushPixels(berries: int): seq[uint8] =
   ## Baked crystal clump (Tier A); the berries stay code — charges are
@@ -1332,55 +1299,17 @@ proc inItemShape(shape: ItemShape, ex, ey, rr: int): bool =
       ax * 6 + ay * 10 <= rr * 78 div 100 * 6 + rr * 20 div 100
 
 proc itemPixels(id: ItemId): seq[uint8] =
-  ## Ground chip, native: lit upper-left facet, darker lower-right facet,
-  ## ink rim, specular dot — now cut to one of four class silhouettes
-  ## (`itemShape`) because Phase 2 spent hue on the amber contract.
-  ## The rim is derived from the mask rather than from a distance formula,
-  ## so every shape gets a correct outline instead of only the diamond.
+  ## Ground chip: the baked amber diamond plus the contents stencil in
+  ## ink. Hue no longer carries identity (Phase 2 spent it on the amber
+  ## contract); the mark does — and it is the same mark everywhere.
   result = newSeq[uint8](TilePxR * TilePxR * 4)
-  let c = itemColor(id)
-  let shape = itemShape(id)
-  let rr = (TilePxR - 1 - RS) * 2
-  var mask = newSeq[bool](TilePxR * TilePxR)
+  result.compositeBaked(TilePxR, 0, 0, ChipBodyPx, ChipBodyW, ChipBodyH)
+  let stn = stencilFor(id)
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
-      mask[y * TilePxR + x] =
-        inItemShape(shape, x * 2 + 1 - TilePxR, y * 2 + 1 - TilePxR, rr)
-  proc solid(mx, my: int): bool =
-    mx >= 0 and my >= 0 and mx < TilePxR and my < TilePxR and
-      mask[my * TilePxR + mx]
-  for y in 0 ..< TilePxR:
-    for x in 0 ..< TilePxR:
-      if not mask[y * TilePxR + x]:
-        continue
-      let ex = x * 2 + 1 - TilePxR
-      let ey = y * 2 + 1 - TilePxR
-      var col =
-        if ex + ey < -RS: shade(c, 34)        # upper-left facet catches light
-        elif ex + ey > RS * 2: shade(c, -34)  # lower-right facet in shadow
-        else: c
-      ## rim: any mask pixel touching open space, at ArtScale thickness
-      var rim = false
-      let t = max(1, ArtScale)
-      for k in 1 .. t:
-        if not (solid(x - k, y) and solid(x + k, y) and
-                solid(x, y - k) and solid(x, y + k)):
-          rim = true
-          break
-      if rim:
-        col = shade(c, -66)                   # ink rim
-      result.put(TilePxR, x, y, col)
-  block specular:                             # specular highlight, if lit face exists
-    let sx = TilePxR div 3
-    let sy = TilePxR div 3
-    if not solid(sx, sy):
-      break specular
-    for oy in 0 ..< RS:
-      for ox in 0 ..< RS:
-        if solid(sx + ox, sy + oy):
-          result.put(TilePxR, sx + ox, sy + oy, (255'u8, 255'u8, 255'u8))
-  # amber backlight: matter glows, so loot separates from the plate
-  result.addBacklight(TilePxR, TilePxR, GoldTone, 70)
+      if x < stn.w and y < stn.h and stn.mask[y * stn.w + x] > 0 and
+         result[(y * TilePxR + x) * 4 + 3] > 0:
+        result.put(TilePxR, x, y, StoneInk)
 
 const ProjPx = 4 * RS
 
@@ -1511,23 +1440,22 @@ proc reticlePixels(): seq[uint8] =
                  GoldTone, 230)
 
 proc cratePartPixels(rows: int): seq[uint8] =
-  ## Crate rastering in top-to-bottom under the beam — a print, not a
-  ## landing. The print head is an amber line at the current row.
+  ## Crate rastering in top-to-bottom under the beam — a row-slice of the
+  ## baked crate body with an amber print-head line, which is what fixes
+  ## the touchdown pop: the finished print IS the crate.
   result = newSeq[uint8](TilePxR * TilePxR * 4)
-  let wood = (150'u8, 105'u8, 55'u8)
   let done = min(rows * RS, TilePxR)
   for y in 0 ..< done:
     for x in 0 ..< TilePxR:
-      let edge = x < RS or y < RS or x >= TilePxR - RS
-      var c = wood
-      if edge: c = shade(wood, -46)
-      elif y < TilePxR div 3: c = shade(wood, 26)
-      elif (y div RS) mod 2 == 0: c = shade(wood, -12)
-      result.put(TilePxR, x, y, c)
+      let si = (y * CrateBodyW + x) * 4
+      if CrateBodyPx[si + 3] > 0:
+        result[(y * TilePxR + x) * 4] = CrateBodyPx[si]
+        result[(y * TilePxR + x) * 4 + 1] = CrateBodyPx[si + 1]
+        result[(y * TilePxR + x) * 4 + 2] = CrateBodyPx[si + 2]
+        result[(y * TilePxR + x) * 4 + 3] = 255
   if done < TilePxR:
-    for i in 0 ..< RS:                     # print head, RS px thick
-      for x in 0 ..< TilePxR:
-        result.put(TilePxR, x, min(done + i, TilePxR - 1), GoldTone, 235)
+    for x in 0 ..< TilePxR:
+      result.put(TilePxR, x, done, AmberHot)
 
 proc pingPixels(big: bool): seq[uint8] =
   ## Expanding contested-crate ping. Authored natively so the ring is a
@@ -1991,7 +1919,7 @@ proc spriteDefs(s: Sim): seq[uint8] =
   for id in ItemId:
     if id != iNone:
       result.addSprite(SpPodCrateBase + ord(id), TilePxR, TilePxR,
-                       podCratePixels(itemColor(id)), "pod_" & $id,
+                       podCratePixels(id), "pod_" & $id,
                        native = true)
   result.addSprite(SpChannelA, 10, 10, channelHaloPixels(0), "chanA")
   result.addSprite(SpChannelB, 10, 10, channelHaloPixels(1), "chanB")
