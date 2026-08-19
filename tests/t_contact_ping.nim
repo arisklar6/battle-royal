@@ -1,6 +1,7 @@
 ## Contact calls are drawn, not printed (VISUAL_REDESIGN 5.7 amendment): a
 ## talk message leading with "contact" becomes a klaxon sighting ring on the
-## reported tile plus a "!" chip riding the reporter — never a text chip.
+## reported tile plus a ring echo riding the reporter — never a text chip
+## and never a "!" (that glyph is the camo-blown mark's, see 5.7).
 ## Packs meeting used to stack "CONTACT: P0 AT .." chips into text walls
 ## (league round 1854's midgame was unreadable for exactly this).
 

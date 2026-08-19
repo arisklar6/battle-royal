@@ -118,6 +118,32 @@ Rationale for the two changes from v0.2: F `#EBF5FF` disappears against light UI
 
 **HP semaphore (protocol-honest — graft from the broadcast pitch).** The wire exposes exactly three bands; the palette encodes exactly the bands and nothing more: healthy = Phosphor, hurt = Amber, critical = Klaxon Red — everywhere, all clients, plus arc-length redundancy (band shown as ring-arc fill fraction, not hue alone). The bright green HP bar is the first thing retired.
 
+*Amendment (PAINTBOT pass, `a343a35`) — the live board's substrate leaves Faraday.* The spectator board is regraded onto warm daylight concrete (`concreteGrade`, `game/render.nim`), taking coworld-ctf's broadcast vocabulary. This retires four contracts above, and only for the **live** board:
+
+1. **Faraday is no longer the terrain floor.** Its row says "Substrate. Every background, every client"; that now holds for every client surface and for reclaimed territory, but not for live ground. See also §3.4's "Ground: Faraday + 4% etch grid".
+2. **The 4% per-tile etch grid is deleted** (`render.nim`, `plateAt`). At tile rate it read as graph paper. The 8-tile panel joints stay; hairline cracks replace the grid.
+3. **"New gray hues are not legal" no longer binds floor, wall and rock material.** They keep their baked luma detail and are retoned through `concreteGrade`; the Etch ramp still binds structural ink, UI, and the de-rez overlays.
+4. **Amber is no longer "the only warm tone in the machine."** This is the consequential one: warm was the *figure* and cold was the *ground*, and that exclusivity is what made loot and harm pop without outlines. The ground is now warm too.
+
+**What still holds, and is verified in the merged code:** Phosphor = live signal, Amber = matter, Directive Magenta = commanded geometry, Klaxon = harm, **no green anywhere**, and team hue never used alone. Faraday and the Etch ramp still own the de-rez overlays, so the cold/warm split now *carries* meaning it did not before — reclaimed territory reads as the machine shutting the warm world off, a warm island in a cold sea.
+
+**The figure/ground law that replaces exclusivity.** Because the ground inverted from dark to light, luminance alone no longer separates a mark from the board. Measured against the median open-floor pixel, cold `(39,52,63)` → warm `(92,81,68)`:
+
+| token | on cold slate | on warm concrete |
+|---|---|---|
+| Klaxon Red | 3.81:1 | 2.31:1 |
+| Amber `#FFB454` | 7.22:1 | 4.39:1 |
+| AmberDeep | 2.12:1 | 1.29:1 |
+| Phosphor | 8.99:1 | 5.46:1 |
+| **StoneInk** | **1.43:1** | **2.35:1** |
+
+Every light figure lost roughly a third of its separation; `StoneInk` is the only token that *gained*. So on the live board **dark ink is the separation channel**, and the rule is by mark class, not by colour:
+
+- **Persistent marks that must always read** take a `StoneInk` contact shadow and/or rim: `itemPixels`, `podCratePixels`, `bushPixels`, `heldWeaponPixels`, `bodyPixels`. ("Amber on warm concrete needs the ink edge the cold slate gave for free.")
+- **Transient marks whose alpha ramp *is* their semantic** deliberately do not: the contact sighting ring's four-stage bloom, trail ghosts, the dashed ring-radius preview. A constant-contrast outline would flatten the fade those exist to express. Verified on the composited board — the ring is legible at every stage, including the last.
+
+*No contrast threshold is claimed here, because this bible sets none for in-world sprites.* The "contrast under 1.5:1" quoted in the opening diagnosis is a measurement of one shipped defect — the old `(25,25,30)`-on-Faraday death burst, which actually computes to ~1.12:1 by WCAG — not a pass/fail line. The only stated contrast *requirements* in this document are 4.5:1 and every one is scoped to UI text. Do not convert a measured delta into a defect without first confirming the threshold exists.
+
 ### 3.2 Typography
 
 - **Display:** Routed Gothic Wide (free digitization of Gorton engraving lettering — the face literally machined into cockpit panels). All-caps, +12% tracking, always seated on a 1px rule. **Forbidden below 24px** (it is thin; below that the data face in bold takes over). `WINNER P5 · TEAM C` at 120px, letterspaced across a rule, is the trophy shot.
@@ -137,7 +163,7 @@ Two laws in permanent opposition (see Part 2): chamfered orthogonal structure vs
 
 ### 3.4 Terrain, Fortress, props, environment
 
-- **Ground:** Faraday + 4% etch grid; deterministic per-tile shade hash stays (it's good) but within the Etch ramp. Inside-ring floor lifts +3% luminance so "safe" reads subliminally.
+- **Ground:** Faraday + 4% etch grid; deterministic per-tile shade hash stays (it's good) but within the Etch ramp. Inside-ring floor lifts +3% luminance so "safe" reads subliminally. *(Amended by the PAINTBOT pass `a343a35` — see §3.1: live ground is warm concrete and the 4% etch grid is deleted. This bullet still describes the de-rezzed board and every non-live surface.)*
 - **Border wall & Fortress:** Etch chamfered blocks — the machine's frame. The Fortress is the arena's one *landmark*: slightly brighter masonry ramp, mouth tiles carry a slow amber pulse (kept from v0.2 — it's correct: the best loot in the game glows like matter), and the interior chamber floor carries a faint amber etch pattern so the prize room reads as a prize room.
 - **Pedestals:** amber tiles ringed with a hazard-stripe chamfer *until ignition* (they are mines pre-ignition — Klaxon-red corner ticks during countdown, dropping to plain amber at t=240). The most dramatic pre-ignition rule finally has a color.
 - **Rocks:** Etch-ramp boulders with a single phosphor edge highlight on the north face (one-rule lighting, see 3.6).

@@ -316,7 +316,7 @@ type
     talkUntil: array[16, int]
     talkFlip: array[16, int]
     talkW: array[16, int]     # chip width in 1x space, for the edge clamp
-    talkMark: array[16, bool] # active chip is a contact "!", not text
+    talkMark: array[16, bool] # active chip is a contact ring echo, not text
     lastCause: array[16, string]  # cause watermark for settlement chyrons
     labels: array[16, string]     # slotLabel per seat; see ensureLabels
     labelsReady: bool
