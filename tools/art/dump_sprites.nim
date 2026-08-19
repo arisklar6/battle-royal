@@ -264,7 +264,7 @@ when isMainModule:
     # never appear in the init packet.
     while s.phase != phEnded and s.tick < ticksArg:
       if wantGift and s.tick == giftTick:
-        discard s.requestGift("dump", 0, -1, "blowgun", Pos(x: 30, y: 24))
+        discard s.requestGift("dump", 0, "blowgun", Pos(x: 30, y: 24))
       if s.phase == phLive:
         for i in 0 .. 15:
           let a = s.agents[i]
