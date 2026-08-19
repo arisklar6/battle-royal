@@ -509,6 +509,109 @@ proc noiseAt(x, y, cell: int): int =
   let bot = c * (cell - fx) + d * fx
   ((top * (cell - fy) + bot * fy) div (cell * cell)) - 128
 
+# --- organic cracks: seed-and-propagate, not a noise level set -----------
+#
+# The PAINTBOT pass drew cracks as the zero band of a value-noise octave
+# pair. A level set of a smooth 2D field is, by construction, a set of
+# CLOSED contours — so the "cracks" traced complete rings and read as
+# dropped string or chalk outlines rather than settled concrete (#11).
+# Real cracks meander, branch, and TERMINATE; they never close on
+# themselves. No threshold on a level set can produce that, because the
+# closure is a property of the method, not of the tuning.
+#
+# So: walk them. Paths are propagated once into a world-sized depth mask at
+# module init, seeded from a fixed constant. Heading is steered by a
+# low-frequency noise field, so neighbouring cracks share a regional grain
+# instead of wandering independently, with a small deterministic jitter on
+# top. Every path carries a finite life and tapers to nothing at the tip;
+# branches inherit a turned heading and half the remaining life, which is
+# what produces the Y-junctions that read as concrete.
+#
+# Integer math throughout and a fixed seed, so the pattern is identical on
+# every platform and every match — exactly like the field it replaces. The
+# arena layout does not affect it; the board is baked once.
+
+const
+  CrackSeeds = 260          ## candidate roots; most are rejected by the
+                            ## region gate below, so the survivors cluster
+  CrackLife = 26 * RS       ## max steps a root path walks — short, because
+                            ## a crack that crosses half the board reads as
+                            ## a hair lying on the floor, not a fracture
+  CrackDeep = 44            ## depth at a path's root (FloorLo bounds it)
+  CrackFaint = 13           ## depth of the 1px soft shoulder
+
+proc crackNext(state: var uint64): int =
+  ## xorshift64*, local to the crack bake — deliberately not the sim PRNG:
+  ## the floor must not shift when the match seed changes.
+  state = state xor (state shl 13)
+  state = state xor (state shr 7)
+  state = state xor (state shl 17)
+  int(state and 0x3FFFFFFF'u64)
+
+let CrackDepthMask = block:
+  var m = newSeq[uint8](WorldPxR * WorldPxR)
+
+  proc stamp(x, y, depth: int) =
+    if x < 0 or y < 0 or x >= WorldPxR or y >= WorldPxR: return
+    let i = y * WorldPxR + x
+    if depth > int(m[i]): m[i] = uint8(depth)
+
+  var rng = 0x9E3779B97F4A7C15'u64
+  # (x256, y256) are fixed-point positions; (hx, hy) a heading vector of
+  # roughly constant magnitude, rotated a little each step.
+  var stack: seq[(int, int, int, int, int)] = @[]
+  for _ in 0 ..< CrackSeeds:
+    let sx = (crackNext(rng) mod WorldPxR) * 256
+    let sy = (crackNext(rng) mod WorldPxR) * 256
+    let hx = (crackNext(rng) mod 512) - 256
+    let hy = (crackNext(rng) mod 512) - 256
+    if hx == 0 and hy == 0: continue
+    # Region gate: concrete cracks cluster where the slab settled, and clean
+    # slabs between them are most of what makes the cracked areas read. A
+    # root that lands on uncracked ground is simply dropped.
+    if noiseAt(sx div 256 + 4093, sy div 256 + 2251, 22 * RS) < 6: continue
+    stack.add((sx, sy, hx, hy, CrackLife))
+
+  while stack.len > 0:
+    var (x256, y256, hx, hy, life) = stack.pop()
+    let life0 = max(1, life)
+    while life > 0:
+      let x = x256 div 256
+      let y = y256 div 256
+      if x < -8 or y < -8 or x >= WorldPxR + 8 or y >= WorldPxR + 8: break
+      # taper: full depth at the root, hairline as the path runs out
+      let t = (life * 256) div life0
+      let core = CrackFaint + ((CrackDeep - CrackFaint) * t) div 256
+      stamp(x, y, core)
+      # 1px shoulder perpendicular to travel keeps the line from aliasing
+      # into a dotted diagonal without widening it into a trench
+      if hx * hx > hy * hy:
+        stamp(x, y - 1, CrackFaint); stamp(x, y + 1, CrackFaint)
+      else:
+        stamp(x - 1, y, CrackFaint); stamp(x + 1, y, CrackFaint)
+      # steer: regional grain from the noise field, plus a small jitter
+      let grain = noiseAt(x + 1013, y + 7717, 40 * RS)   # -128..127
+      let jitter = (crackNext(rng) mod 161) - 80
+      let k = (grain div 8) + jitter                     # rotation numerator
+      let nhx = hx - (hy * k) div 512
+      let nhy = hy + (hx * k) div 512
+      hx = nhx; hy = nhy
+      # renormalise so the step length stays ~1px however the rotation drifts
+      let mag = abs(hx) + abs(hy)
+      if mag > 0 and (mag < 200 or mag > 400):
+        hx = (hx * 300) div mag
+        hy = (hy * 300) div mag
+      x256 += hx
+      y256 += hy
+      dec life
+      # branch: a Y-junction, the thing a level set can never make
+      if life > 16 and (crackNext(rng) mod 1000) < 14:
+        let bk = (if (crackNext(rng) and 1) == 0: 210 else: -210)
+        stack.add((x256, y256,
+                   hx - (hy * bk) div 512, hy + (hx * bk) div 512,
+                   life div 2))
+  m
+
 proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
   ## Rasterized in render space: at RS=2 the octaves resolve twice as
   ## finely and a third, sub-world octave appears that 1x had no room for.
@@ -530,14 +633,11 @@ proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
       elif jx < RS * 2 or jy < RS * 2: d += 6
       # (the per-tile etch grid is gone: ctf's floor has no tile-rate lines,
       # and it is exactly what made the board read as graph paper)
-      # organic cracks (ctf arena_floor): a ridged octave pair — the zero
-      # band of value noise traces closed meandering contours, exactly the
-      # look of settled concrete. Gated by a coarse mask so slabs of clean
-      # floor survive; deterministic in world coords like everything else.
-      let crackV = noiseAt(wx, wy, 48 * RS) * 2 + noiseAt(wx, wy, 8 * RS)
-      let crackHere = noiseAt(wx + 4093, wy + 2251, 64 * RS) > 12
-      if crackHere and abs(crackV) < 6:
-        d -= (if abs(crackV) < 3: 42 else: 12)
+      # organic cracks: sampled from the propagated mask above (open,
+      # branching, terminating paths) rather than a noise level set, which
+      # could only ever draw closed rings. See CrackDepthMask.
+      if wx >= 0 and wy >= 0 and wx < WorldPxR and wy < WorldPxR:
+        d -= int(CrackDepthMask[wy * WorldPxR + wx])
       # Tier B (ART_UPGRADE_PLAN §4.3): the base is the baked floor field —
       # generated stone sampled at absolute world coordinates, so the floor
       # stays non-tiling — and every delta above rides on it unchanged.
@@ -2047,30 +2147,46 @@ proc textPixels(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
   (w, h, px)
 
 proc tagPixels(text: string): (int, int, seq[uint8]) =
-  ## PAINTBOT identity tag: bone-bright glyphs in a full ink outline and no
-  ## plate — ctf's name labels float over the board and stay readable on any
-  ## material without boxing off half the arena. Same layout economy as
-  ## textPixels (2px margin + 4px advance), so plateX/plateWidth and the
-  ## tagCrowded geometry stay honest without change.
+  ## Identity tag: bone glyphs over a 1px ink drop shadow, no plate.
+  ##
+  ## The PAINTBOT pass filled every non-glyph pixel with ink at alpha 165 and
+  ## called it a translucent chip. At that alpha it is functionally a solid
+  ## plate, and because the floor is now warm daylight concrete rather than
+  ## cold slate, the plate went from blending in to being the loudest thing
+  ## on the board — the opposite of the intent. Over the de-rez overlay it
+  ## had the inverse failure: a dark chip on a dark field, and the name
+  ## disappeared exactly when the endgame most needs it.
+  ##
+  ## A plate was never needed. Bone (244,242,234) measures ~7:1 against the
+  ## warm floor's median pixel and better against the cold de-rez ramp, so
+  ## the glyphs carry themselves on both. All they lack is an edge where
+  ## they cross a light prop, and a 1px offset shadow supplies that without
+  ## the plate — the ordinary broadcast lower-third treatment.
+  ##
+  ## A full outline is still not available at this face's 4px advance: a 1px
+  ## dilation closes the 1px inter-glyph gap and rebuilds the plate by
+  ## another route. An OFFSET shadow has no such problem, because it never
+  ## grows the mark in more than one direction. Layout economy is unchanged
+  ## (2px margin + 4px advance), so plateX/plateWidth and the tagCrowded
+  ## geometry stay honest.
   let w = 2 + text.len * 4
   let h = 7
   var px = newSeq[uint8](w * h * 4)
-  for i, ch in text:
-    let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
-    let bits = Glyphs.getOrDefault(up, 0)
-    for gy in 0 ..< 5:
-      for gx in 0 ..< 3:
-        if ((bits shr ((4 - gy) * 3 + (2 - gx))) and 1) == 1:
-          px.put(w, 1 + i * 4 + gx, 1 + gy, (244'u8, 242'u8, 234'u8))
-  # translucent ink chip behind the glyphs — the board reads through it. A
-  # true 1px outline is not available at this face's 4px advance (dilation
-  # fills every gap and rebuilds the solid plate), so the chip carries the
-  # contrast and its transparency is what makes the tag float, ctf-style.
-  let ink = (26'u8, 22'u8, 16'u8)
-  for y in 0 ..< h:
-    for x in 0 ..< w:
-      if alphaAt(px, w, x, y) < 128:
-        px.put(w, x, y, ink, 165)
+  const Ink = (26'u8, 22'u8, 16'u8)
+  const Bone = (244'u8, 242'u8, 234'u8)
+  # shadow first, offset one px down-right, so the glyph pass overwrites any
+  # overlap and the shadow survives only where it actually reads as an edge
+  for pass in 0 .. 1:
+    for i, ch in text:
+      let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
+      let bits = Glyphs.getOrDefault(up, 0)
+      for gy in 0 ..< 5:
+        for gx in 0 ..< 3:
+          if ((bits shr ((4 - gy) * 3 + (2 - gx))) and 1) == 1:
+            if pass == 0:
+              px.put(w, 2 + i * 4 + gx, 2 + gy, Ink, 200)
+            else:
+              px.put(w, 1 + i * 4 + gx, 1 + gy, Bone)
   (w, h, px)
 
 # ------------------------------------------------- phosphor persistence
