@@ -102,4 +102,31 @@ for lbl in ["A1", "RELH", "RYAN SCH", "BASELI12"]:
   let centre = plateX(10, lbl) + (2 + lbl.len * 4) div 2
   doAssert centre == 10 * 6 + 3, "plate off-centre for " & lbl
 
+# ---- plate collision is geometric, not a fixed tile radius. Regression from
+# league round 1851: slot 2 ("B1") and slot 6 ("BASELIN2") sat 3 tiles apart,
+# outside the old 2-tile radius, and their plates still overlapped.
+doAssert plateWidth("A1") == 10
+doAssert plateWidth("BASELIN2") == 34          # 5.7 tiles at TileSize 6
+
+# the exact 1851 case: two full plates 3 tiles apart DO collide
+doAssert platesOverlap(27, "RYAN SCH", 30, "BASELIN2"),
+  "the round-1851 overlap must be detected"
+# and the old radius would have missed it
+doAssert abs(30 - 27) > 2
+
+# far enough apart in x, no collision
+doAssert not platesOverlap(10, "BASELIN2", 20, "BASELIN2")
+# a full plate spans ~6 tiles, so 6 tiles of separation is the boundary
+doAssert platesOverlap(10, "BASELIN2", 15, "BASELIN2")
+doAssert not platesOverlap(10, "BASELIN2", 16, "BASELIN2")
+# short plates are narrow enough to sit two tiles apart cleanly
+doAssert not platesOverlap(10, "A1", 12, "B1")
+doAssert platesOverlap(10, "A1", 11, "B1")
+# symmetric: both sides of a pair must agree
+for (x1, l1, x2, l2) in [(27, "RYAN SCH", 30, "BASELIN2"),
+                         (10, "A1", 11, "B1"),
+                         (10, "BASELIN2", 16, "BASELIN2")]:
+  doAssert platesOverlap(x1, l1, x2, l2) == platesOverlap(x2, l2, x1, l1),
+    "overlap must be symmetric for " & l1 & "/" & l2
+
 echo "t_slot_labels ok"
