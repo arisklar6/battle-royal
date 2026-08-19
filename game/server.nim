@@ -671,15 +671,18 @@ proc runLive(rc: RuntimeConfig) =
       try:
         let j = parseJson(req.payload)
         if j{"type"}.getStr() == "gift_request":
-          # v0.2 audience pivot: sponsors target a TILE. recipient_slot kept
-          # for wire back-compat; target wins when both are present.
+          # v0.2 audience pivot: sponsors target a TILE. recipient_slot is
+          # accepted for wire back-compat but no longer selects a mode — a
+          # live request MUST carry `target` (requireTile), otherwise it is
+          # rejected as target_required. Without that, omitting `target` fell
+          # through to the lockout-free legacy recipient path.
           var tgt = Pos(x: -1, y: -1)
           if j.hasKey("target") and j["target"].kind == JArray and
              j["target"].len == 2:
             tgt = Pos(x: j["target"][0].getInt(-1), y: j["target"][1].getInt(-1))
           let outc = s.requestGift("live:" & TeamNames[req.teamIdx],
             req.teamIdx, j{"recipient_slot"}.getInt(-1), j{"item_id"}.getStr(""),
-            tgt)
+            tgt, requireTile = true)
           let reqId = j{"request_id"}.getStr("")
           reply =
             if outc.accepted:

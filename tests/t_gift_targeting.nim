@@ -55,4 +55,24 @@ let l2 = s.requestGift("script", 3, 6, "rations")
 doAssert l1.accepted and l2.accepted,
   "legacy recipient gifts must stay lockout-free: " & l1.reason & "/" & l2.reason
 
+# ---- live ingress must carry a tile: the legacy recipient path is closed to
+# it, so a live socket cannot use the lockout-free mode to drain the budget
+let balE = s.teamBudget[4]
+let logLen = s.sponsorLog.len
+let n1 = s.requestGift("live:E", 4, 8, "rations", requireTile = true)
+doAssert not n1.accepted and n1.reason == "target_required", $n1.reason
+doAssert s.teamBudget[4] == balE, "rejected live request must burn no coin"
+doAssert s.sponsorLog.len == logLen + 1, "reject must stay in the audit log"
+doAssert s.sponsorLog[^1].status == gsRejected
+doAssert s.sponsorLog[^1].reason == "target_required"
+
+# a targetless live request must not arm the lockout either
+let n2 = s.requestGift("live:E", 4, -1, "rations", Pos(x: 12, y: 12),
+                       requireTile = true)
+doAssert n2.accepted, "target_required reject armed the lockout: " & n2.reason
+
+# ---- requireTile is opt-in: scripted config gifts keep both modes
+let n3 = s.requestGift("script", 5, 10, "rations")
+doAssert n3.accepted, "scripted recipient gift broke: " & n3.reason
+
 echo "t_gift_targeting ok"

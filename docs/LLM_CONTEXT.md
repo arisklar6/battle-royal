@@ -102,8 +102,9 @@ softcoin budget (300 league-standard). Gifts are bought from a fixed catalog
 `blowgun` 100, `sword` 120, `bow` 150 — and are TILE-TARGETED: the sponsor
 picks the landing tile, the drop snaps to the nearest free tile by spiral
 search, and it lands 5 seconds after purchase. One package at a time per
-team: a 60 s lockout separates purchases. The shop opens
-60 s after ignition. Critical properties:
+team: a 60 s lockout separates purchases. A live request must name a tile —
+there is NO direct-to-teammate delivery; one sent without a tile is rejected
+`target_required`. The shop opens 60 s after ignition. Critical properties:
 - Drops are announced ARENA-WIDE with landing tile AND contents.
 - Once landed, ANY agent may loot the crate — contested airdrops are a core
   mechanic; steal enemy deliveries.

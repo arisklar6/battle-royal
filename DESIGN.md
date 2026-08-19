@@ -212,7 +212,7 @@ LOCKED frame: no platform economy exists — softcoin is a per-team budget fully
 
 ### 9.1 Accounting
 - Budget: `sponsor.budget_per_team` softcoin per team per match (DECIDED: **300**). v1: one sponsor token per team.
-- A request is atomically validated → accepted (full cost deducted at accept tick) or rejected (zero effect). Never partially applied (LOCKED). Rejection reasons: `insufficient_funds`, `shop_locked`, `recipient_dead`, `not_own_team`, `unknown_item`, `sponsor_disabled`, `malformed`.
+- A request is atomically validated → accepted (full cost deducted at accept tick) or rejected (zero effect). Never partially applied (LOCKED). Rejection reasons: `insufficient_funds`, `shop_locked`, `recipient_dead`, `not_own_team`, `unknown_item`, `sponsor_disabled`, `malformed`, `lockout` (§9.6), `target_required` (§9.6).
 - All accepts AND rejects logged to `sponsor_log.json` (§14) and echoed to stdout.
 
 ### 9.2 Catalog & prices (catalog/prices approved with DESIGN; DECIDED: fixed prices, no escalation)
@@ -247,6 +247,7 @@ LOCKED frame: no platform economy exists — softcoin is a per-team budget fully
 - Purchases are **tile-targeted**: the sponsor picks any tile; landing = nearest free tile by the pinned spiral (same spiral as §9.3 step 3, origin = the chosen tile instead of the recipient's position).
 - **One purchase at a time per team**: 60 s lockout (`GiftLockoutTicks = 1440`; new reject reason `lockout`).
 - The lockout applies ONLY to tile-mode purchases. Recipient-mode scripted gifts remain under their original rules (including `recipient_dead` and `not_own_team`) with no lockout.
+- **Recipient mode is closed to live ingress** (DECIDED 2026-08-18): a `/sponsor` `gift_request` MUST carry `target`; one without it is rejected `target_required` (logged, zero effect, lockout untouched). `recipient_slot` is still accepted on the wire but no longer selects a mode. Rationale: the lockout is the whole pacing mechanism of this pivot, and recipient mode is deliberately lockout-free — a live socket omitting `target` could otherwise drop directly onto a teammate as fast as the budget allowed. `sim.requestGift` takes `requireTile`; live ingress passes it, `sponsor.scripted_gifts` does not.
 - Wire deltas (§11): `gift_request` gains `target: [x,y]`; `sponsor_welcome` now carries `static_map` + `lockout_ticks`; `sponsor_state` carries `lockout_remaining`.
 - Artifact deltas (§14): `GiftRecord` and `sponsor_log.json` gain `target`; `recipient_slot` is `-1` for tile gifts.
 - New **read-only WS `/watch?slot=N`**: `player_config` + that slot's observation stream + `final`. No token, no inputs — leaks nothing `/global` does not already show. `/client/player` is now the read-only **Agent Cam** built on it.
@@ -331,7 +332,7 @@ Reconnects: a second connection with a valid token for an occupied slot **replac
 ```json
 S→C {"type":"sponsor_welcome","team":"B","budget":300,"catalog":{"sword":120},"shop_opens_tick":1680,"tick":312}
 S→C {"type":"sponsor_state","tick":2400,"budget":180,"team_alive":[2,3]}   // every 24 ticks
-C→S {"type":"gift_request","request_id":"r1","recipient_slot":3,"item_id":"sword"}
+C→S {"type":"gift_request","request_id":"r1","target":[20,30],"item_id":"sword"}   // target REQUIRED (§9.6); omitting it -> reason "target_required"
 S→C {"type":"gift_result","request_id":"r1","accepted":true,"cost":120,"balance":60,"lands_tick":2520,"landing":[20,30]}
 S→C {"type":"gift_result","request_id":"r2","accepted":false,"reason":"insufficient_funds","balance":60}
 ```
