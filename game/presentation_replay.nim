@@ -48,7 +48,16 @@ proc addFrame*(replay: var PresentationReplay, tick: int,
     uint32(tick) >= replay.frames[^1].tick
   replay.frames.add(PresentationFrame(tick: uint32(tick), packet: packet))
 
-proc encodePresentationReplay*(replay: PresentationReplay): string =
+proc encodeFrames*(replay: PresentationReplay): string =
+  ## The framing layer on its own, before compression. Split out from
+  ## encodePresentationReplay so the round-trip we actually own can be tested
+  ## without going through zippy: zippy 0.10.19's `uncompress` miscomputes
+  ## adler32 on multi-MB buffers and rejects its OWN valid output (verified
+  ## 2026-08-19 — Python zlib reads the same artifact, and the trailer
+  ## checksum matches Python's adler32 of the result). Only inflate is
+  ## affected, and the game never inflates in production, so shipped replays
+  ## are correct; it is the in-process round-trip assertion that cannot use
+  ## it. 0.10.19 is the latest release, so there is no fix to pull.
   doAssert replay.frames.len > 0
   var raw = PresentationReplayMagic
   raw.addU16(PresentationReplayVersion)
@@ -59,10 +68,13 @@ proc encodePresentationReplay*(replay: PresentationReplay): string =
     raw.addU32(uint32(frame.packet.len))
     for value in frame.packet:
       raw.add(char(value))
-  compress(raw, BestCompression, dfZlib)
+  raw
 
-proc parsePresentationReplay*(artifact: string): PresentationReplay =
-  let raw = uncompress(artifact, dfZlib)
+proc encodePresentationReplay*(replay: PresentationReplay): string =
+  compress(encodeFrames(replay), BestCompression, dfZlib)
+
+proc decodeFrames*(raw: string): PresentationReplay =
+  ## Inverse of encodeFrames, on the uncompressed buffer.
   if raw.len < PresentationReplayMagic.len or
      raw[0 ..< PresentationReplayMagic.len] != PresentationReplayMagic:
     raise newException(ValueError, "not a Zero Sum presentation replay")
@@ -88,3 +100,6 @@ proc parsePresentationReplay*(artifact: string): PresentationReplay =
     result.frames.add(PresentationFrame(tick: tick, packet: packet))
   if offset != raw.len:
     raise newException(ValueError, "trailing presentation replay bytes")
+
+proc parsePresentationReplay*(artifact: string): PresentationReplay =
+  decodeFrames(uncompress(artifact, dfZlib))
