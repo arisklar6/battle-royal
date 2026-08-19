@@ -12,3 +12,14 @@ for f in game/server.nim game/headless.nim game/analyst.nim \
   nim check --hints:off "$f"
 done
 echo "all programs check clean"
+
+# ...and compile-check the tests the way CI invokes them: bare `nim c`, no
+# --path:src, no -p:game. A test that only builds with extra flags passes
+# locally and fails in CI — t_slot_labels reached master that way on 0.1.16,
+# using `import render` where the house pattern is `import ../game/render`.
+# Checking (not running) keeps the hook fast; CI still runs them.
+for t in tests/t_*.nim; do
+  echo "=== $t"
+  nim check --hints:off "$t"
+done
+echo "all tests check clean"
