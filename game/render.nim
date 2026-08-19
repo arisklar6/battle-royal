@@ -934,23 +934,23 @@ type StencilRef = tuple[px: ptr UncheckedArray[uint8],
 proc stencilFor(id: ItemId): StencilRef =
   ## One glyph vocabulary (world.json decision): the same mark identifies
   ## an item on the ground chip, on the crate, and in a hand.
-  template st(n): untyped =
-    (cast[ptr UncheckedArray[uint8]](unsafeAddr `n Px`[0]),
-     cast[ptr UncheckedArray[uint8]](unsafeAddr `n Mask`[0]), `n W`, `n H`)
+  template st(px4, m, w, h): untyped =
+    (cast[ptr UncheckedArray[uint8]](unsafeAddr px4[0]),
+     cast[ptr UncheckedArray[uint8]](unsafeAddr m[0]), w, h)
   case id
-  of iSword: st(StencilSword)
-  of iSpear: st(StencilSpear)
-  of iBow: st(StencilBow)
-  of iKnives: st(StencilKnives)
-  of iBlowgun: st(StencilBlowgun)
-  of iNet: st(StencilNet)
-  of iFirstAid: st(StencilFirstAid)
-  of iRations: st(StencilRations)
-  of iBackpack: st(StencilBackpack)
-  of iCamo: st(StencilCamo)
-  of iArrows: st(StencilArrows)
-  of iDarts: st(StencilDarts)
-  of iNone: st(StencilSword)   # never drawn; a valid ref keeps this total
+  of iSword: st(StencilSwordPx, StencilSwordMask, StencilSwordW, StencilSwordH)
+  of iSpear: st(StencilSpearPx, StencilSpearMask, StencilSpearW, StencilSpearH)
+  of iBow: st(StencilBowPx, StencilBowMask, StencilBowW, StencilBowH)
+  of iKnives: st(StencilKnivesPx, StencilKnivesMask, StencilKnivesW, StencilKnivesH)
+  of iBlowgun: st(StencilBlowgunPx, StencilBlowgunMask, StencilBlowgunW, StencilBlowgunH)
+  of iNet: st(StencilNetPx, StencilNetMask, StencilNetW, StencilNetH)
+  of iFirstAid: st(StencilFirstAidPx, StencilFirstAidMask, StencilFirstAidW, StencilFirstAidH)
+  of iRations: st(StencilRationsPx, StencilRationsMask, StencilRationsW, StencilRationsH)
+  of iBackpack: st(StencilBackpackPx, StencilBackpackMask, StencilBackpackW, StencilBackpackH)
+  of iCamo: st(StencilCamoPx, StencilCamoMask, StencilCamoW, StencilCamoH)
+  of iArrows: st(StencilArrowsPx, StencilArrowsMask, StencilArrowsW, StencilArrowsH)
+  of iDarts: st(StencilDartsPx, StencilDartsMask, StencilDartsW, StencilDartsH)
+  of iNone: st(StencilSwordPx, StencilSwordMask, StencilSwordW, StencilSwordH)   # never drawn; a valid ref keeps this total
 
 proc weaponGlyph(id: ItemId): seq[uint8] =
   ## Held-item glyph: the SAME stencil mark the chips and crates wear,
