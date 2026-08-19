@@ -119,6 +119,7 @@ const
   ## derived from the baked body at defs time — frame 0 IS the body.
   SpDecompBase = 1450      # + parity*8 + frame -> 1450..1465
   DecompFrames = 8
+  SpDeathFlashBase = 1470  # + parity: opaque peak-white body silhouette
 
   # object ids
   ObBackground = 1
@@ -1955,6 +1956,19 @@ proc spriteDefs(s: Sim): seq[uint8] =
       result.addSprite(SpDecompBase + parity * DecompFrames + f,
                        BodyWR, BodyHR, decompFrame(parity, f),
                        "decomp" & $parity & "_" & $f, native = true)
+    # opaque peak-white death frame, cut to THIS chassis: the flash is a
+    # solid silhouette, not a tinted body (the shared 185-alpha hit flash
+    # let the hull read through and the beat read as a white agent)
+    var flash = newSeq[uint8](BodyWR * BodyHR * 4)
+    let (_, mask) = chassisPx(parity, 0)
+    for k in 0 ..< BodyWR * BodyHR:
+      if mask[k] > 0:
+        flash[k * 4] = PhosphorPeak[0]
+        flash[k * 4 + 1] = PhosphorPeak[1]
+        flash[k * 4 + 2] = PhosphorPeak[2]
+        flash[k * 4 + 3] = 255
+    result.addSprite(SpDeathFlashBase + parity, BodyWR, BodyHR, flash,
+                     "death_flash" & $parity, native = true)
   result.addSprite(SpZoneFireA, TilePxR, TilePxR, plasmaPixels(0, false),
                    "plasmaA", native = true)
   result.addSprite(SpZoneFireB, TilePxR, TilePxR, plasmaPixels(1, false),
@@ -2433,7 +2447,8 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         let by = e.pos.y * TileSize - (BodyH - TileSize)
         let flashObj = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
         inc r.nextEffect
-        result.addObject(flashObj, bx, by, 21, LayerMap, SpHitFlash)
+        result.addObject(flashObj, bx, by, 21, LayerMap,
+                         SpDeathFlashBase + (e.slot mod 2))
         r.effects.add(Effect(objId: flashObj, dieTick: s.tick + 2))
         let decompObj = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
         inc r.nextEffect
