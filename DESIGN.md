@@ -318,8 +318,12 @@ Reconnects: a second connection with a valid token for an occupied slot **replac
 
 ### 10.5 `final` (server, at death or match end)
 ```json
-{"type": "final", "placement": 4, "kills": 2, "score": 10, "winner_slot": 2, "match_ticks": 8412, "reason": "eliminated"}
+{"type": "final", "placement": 4, "kills": 2, "score": 10, "score_final": false, "winner_slot": 2, "match_ticks": 8412, "reason": "eliminated"}
 ```
+
+An elimination message is a score snapshot: outstanding projectiles or poison
+can still earn posthumous credit, so `score_final` is false. Match-end messages
+set it true, and the results artifact is authoritative.
 
 ---
 

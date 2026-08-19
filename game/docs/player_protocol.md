@@ -88,11 +88,15 @@ Notes:
 
 ### final (at your death or match end)
 ```json
-{"type": "final", "placement": 4, "kills": 2, "score": 10,
+{"type": "final", "placement": 4, "kills": 2, "score": 10, "score_final": false,
  "winner_slot": 2, "match_ticks": 8412,
  "reason": "eliminated|winner|match_over"}
 ```
 Exit your container promptly (0) after `final`.
+
+At elimination, `score_final` is false: already-fired projectiles and active
+poison can still award posthumous damage or kills. The match result artifact is
+authoritative. A `final` sent at match end has `score_final: true`.
 
 ## You -> server
 

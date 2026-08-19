@@ -44,7 +44,11 @@ block duos_team_total_results:
   doAssert results["scores"][0].getInt() == teamATotal
   doAssert results["scores"][8].getInt() == teamATotal
   doAssert results["winner_slot"].getInt() == 8
-  doAssert parseJson(finalJson(s, 0))["score"].getInt() == teamATotal
+  let elimination = parseJson(finalJson(s, 0))
+  doAssert elimination["score"].getInt() == teamATotal
+  doAssert not elimination["score_final"].getBool()
+  s.phase = phEnded
+  doAssert parseJson(finalJson(s, 0))["score_final"].getBool()
 
 block solo_results_stay_individual:
   var s = initSim(parseSimConfig(%*{
