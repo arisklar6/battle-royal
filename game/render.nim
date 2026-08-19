@@ -1,11 +1,13 @@
-## sprite_v1 renderer — v0.2 art (DESIGN §21.1, DECIDED): 12px humanoid
-## figures with facing/walk/death, textured environment, animated hazards,
-## parachute drops. All pixel data code-generated; <=15 visible colors per
-## sprite (house convention).
+## sprite_v1 renderer — v0.3 art: baked generative carriers (two chassis,
+## ART_UPGRADE_PLAN Phase 3) over a code-generated board. Baked art lives
+## in game/art_baked.nim as const data — nothing loads at runtime, nothing
+## ships beside the binary — and code still stamps everything that carries
+## state: pupils, pips, team diamonds, HP, text. <=16 colors per sprite.
 
 import std/tables
 import bitworld/spriteprotocol
 import zero_sum/[types, arena, sim]
+import art_baked
 
 const
   LayerMap* = 0
@@ -339,6 +341,12 @@ const UiSpriteIds = {
   uint16(SpKillBase) .. uint16(SpKillBase + KillRows * 2 - 1),  # kill feed -> LayerHudTL
   uint16(SpLampRow)                                # lamp row  -> LayerHudTL
 }
+
+static:
+  ## Baked art is reduced for one specific RS; a mismatch would ship a
+  ## scaled-wrong carrier instead of failing the build (ART_UPGRADE_PLAN
+  ## risk 12).
+  doAssert BakeRS == RS and BakeTilePx == TileSize * RS
 
 proc isUiSprite(id: int): bool =
   ## The only sprites that live on UI layers; everything else is board art
@@ -707,72 +715,80 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
 
 # ---------------------------------------------------------------- humanoids
 
+## --- baked carrier blit (ART_UPGRADE_PLAN Phase 3, two-chassis) --------
+##
+## The hull is generated art (game/art_baked.nim); code stamps everything
+## that carries state or identity: the facing pupil, the parity pip, the
+## team ground diamond, the frame bob and the contact shadow. Chassis is
+## keyed to parity — every duo fields one slender A and one broad B.
+
+proc chassisPx(parity, facing: int):
+    tuple[px: ptr UncheckedArray[uint8], mask: ptr UncheckedArray[uint8]] =
+  template pick(px4, m): untyped =
+    (cast[ptr UncheckedArray[uint8]](unsafeAddr px4[0]),
+     cast[ptr UncheckedArray[uint8]](unsafeAddr m[0]))
+  if parity == 0:
+    case facing
+    of 1: pick(CarrierANPx, CarrierANMask)
+    of 2: pick(CarrierAEPx, CarrierAEMask)
+    of 3: pick(CarrierAWPx, CarrierAWMask)
+    else: pick(CarrierASPx, CarrierASMask)
+  else:
+    case facing
+    of 1: pick(CarrierBNPx, CarrierBNMask)
+    of 2: pick(CarrierBEPx, CarrierBEMask)
+    of 3: pick(CarrierBWPx, CarrierBWMask)
+    else: pick(CarrierBSPx, CarrierBSMask)
+
 proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
-  ## AFTERGLOW carrier, drawn on the 16x24 authoring canvas and scaled by
-  ## `ArtScale` into the BodyWR x BodyHR buffer. The 8x12 version had no
-  ## room for shape: at play size it read as a pale blob. With the doubled
-  ## canvas the chassis gets a shaded hull, a rim light from up-left, a
-  ## dark sensor visor that actually shows facing, and a ground diamond big
-  ## enough to carry team identity on its own.
-  ## Placement offsets stay in 1x tile space and are scaled by addObject.
+  ## Baked AFTERGLOW carrier. Placement offsets stay in 1x tile space and
+  ## are scaled by addObject; the buffer is BodyWR x BodyHR, exactly the
+  ## baked sprite's size, so the blit is a straight copy with the bob lift.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
   let tunic = TeamColors[team]
-  let hull = Phosphor
-  let lift = (if frame == 1: -1 else: 0)
-  ## Both templates take canvas coordinates and fill the ArtScale x ArtScale
-  ## render-space cell they name; `P` carries the hover bob, `PD` (the ground
-  ## diamond) deliberately does not.
+  let lift = (if frame == 1: -ArtScale else: 0)   # 1 authoring px of hover
+  let (art, _) = chassisPx(parity, facing)
+  # blit with the lift; source rows land lift px higher
+  for y in 0 ..< BodyHR:
+    let sy = y - lift
+    if sy < 0 or sy >= BodyHR:
+      continue
+    for x in 0 ..< BodyWR:
+      let si = (sy * BodyWR + x) * 4
+      if art[si + 3] == 0:
+        continue
+      let di = (y * BodyWR + x) * 4
+      result[di] = art[si]
+      result[di + 1] = art[si + 1]
+      result[di + 2] = art[si + 2]
+      result[di + 3] = art[si + 3]
+  # facing pupil, stamped at the sensor band's centroid: the band is baked
+  # art, but the pupil is a facing marker — state, so code draws it. The
+  # centroid rule needs no per-chassis constants and tracks any re-bake.
+  if facing != 1:
+    var sx, sy, n = 0
+    for y in 0 ..< BodyHR div 2:
+      for x in 0 ..< BodyWR:
+        let si = ((y - lift) * BodyWR + x) * 4
+        if (y - lift) >= 0 and art[si + 3] > 0 and
+           int(art[si]) + int(art[si + 1]) + int(art[si + 2]) < 190:
+          sx += x; sy += y; inc n
+    if n >= 8:
+      let cx = sx div n
+      let cy = sy div n
+      for oy in 0 ..< ArtScale:
+        for ox in 0 ..< ArtScale * 2:
+          result.put(BodyWR, cx - ArtScale + ox, cy - ArtScale div 2 + oy,
+                     PhosphorPeak)
   template PD(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
     for oy in 0 ..< ArtScale:
       for ox in 0 ..< ArtScale:
         result.put(BodyWR, x * ArtScale + ox, y * ArtScale + oy, c, a)
-  template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
-    PD(x, y + lift, c, a)
-
-  # --- hull: rows 5..17, an ovoid with a flat shoulder line ---
-  for y in 5 .. 17:
-    # half-width profile: narrow at the crown, widest mid-body, tucked base
-    let hw =
-      if y <= 6: 3
-      elif y <= 8: 5
-      elif y <= 14: 6
-      elif y == 15: 5
-      else: 4
-    for x in (8 - hw) ..< (8 + hw):
-      var c = hull
-      if y <= 7: c = shade(hull, 34)             # crown catches the key light
-      elif y >= 15: c = shade(hull, -76)         # underside in shadow
-      elif x < 8 - hw + 2: c = shade(hull, 18)   # left rim lit
-      elif x >= 8 + hw - 2: c = shade(hull, -40) # right flank falls off
-      P(x, y, c)
-  # crown specular and outline
-  for x in 6 .. 9:
-    P(x, 4, shade(hull, 52))
-  for y in 5 .. 17:
-    let hw = (if y <= 6: 3 elif y <= 8: 5 elif y <= 14: 6 elif y == 15: 5 else: 4)
-    P(8 - hw - 1, y, StoneInk, 190)
-    P(8 + hw, y, StoneInk, 190)
-
-  # --- sensor visor: dark band with a bright pupil, swung by facing ---
-  let sx = (if facing == 2: 2 elif facing == 3: -2 else: 0)
-  if facing == 1:                      # north: dorsal ridge, no visor
-    for x in 5 .. 10:
-      P(x, 9, shade(hull, -54))
-    for x in 6 .. 9:
-      P(x, 10, shade(hull, -34))
-  else:
-    for x in (5 + sx) .. (10 + sx):
-      P(x, 10, StoneInk)
-      P(x, 11, shade(StoneInk, 14))
-    P(7 + sx, 10, PhosphorPeak)
-    P(8 + sx, 10, PhosphorPeak)
   if parity == 1:                      # teammate pip on the shoulder
-    P(5, 7, PhosphorPeak)
-    P(6, 7, PhosphorPeak)
-
+    PD(5, 7 + lift div ArtScale, PhosphorPeak)
+    PD(6, 7 + lift div ArtScale, PhosphorPeak)
   # contact shadow before the diamond goes down
   result.addBacklight(BodyWR, BodyHR, StoneInk, 95, dx = RS, dy = RS)
-
   # --- ground diamond: the team mark, unaffected by the hover bob ---
   for dy in 0 .. 5:
     let wdt = (if dy <= 2: dy + 1 else: 6 - dy)
@@ -791,13 +807,12 @@ const
   CorpseH = TilePxR
 
 proc corpsePixels(team, parity: int): seq[uint8] =
-  ## Decommissioned carrier: the hull has toppled onto its side, so it
-  ## reads as the same object that was standing a moment ago — cold,
-  ## unlit, lying in its own shadow pool. Drawn on the same 24x12 canvas
-  ## the body uses, scaled by ArtScale (see BodyWR).
+  ## Decommissioned carrier: the baked chassis-neutral wreck (its width
+  ## sits between the two standing silhouettes), grounded in a code-drawn
+  ## shadow pool, with the darkened team diamond spilled clear of the hull
+  ## and the parity pixel — state stays code-stamped.
   result = newSeq[uint8](CorpseW * CorpseH * 4)
   let tunic = shade(TeamColors[team], -60)
-  let cold = shade(Phosphor, -96)
   template P(x, y: int, c: (uint8, uint8, uint8), a: uint8 = 255) =
     for oy in 0 ..< ArtScale:
       for ox in 0 ..< ArtScale:
@@ -807,19 +822,14 @@ proc corpsePixels(team, parity: int): seq[uint8] =
     let hw = (if y == 8 or y == 11: 8 else: 10)
     for x in (12 - hw) ..< (12 + hw):
       P(x, y, StoneInk, (if y >= 10: 150'u8 else: 110'u8))
-  # toppled hull, long axis horizontal
-  for y in 3 .. 9:
-    let hh = (if y <= 4 or y >= 9: 5 elif y <= 5 or y >= 8: 7 else: 8)
-    for x in (11 - hh) ..< (11 + hh):
-      var c = cold
-      if y <= 4: c = shade(cold, 20)            # residual light, upper flank
-      elif y >= 8: c = shade(cold, -22)
-      P(x, y, c)
-  for x in 3 .. 18:                             # ink outline along the top
-    P(x, 2, StoneInk, 200)
-  # dead visor, now facing sideways
-  for x in 6 .. 11:
-    P(x, 5, StoneInk)
+  # baked hull blit (CorpseW x CorpseH is exactly the baked size)
+  for k in 0 ..< CorpseW * CorpseH:
+    if CorpseWreckPx[k * 4 + 3] > 0:
+      let di = k * 4
+      result[di] = CorpseWreckPx[di]
+      result[di + 1] = CorpseWreckPx[di + 1]
+      result[di + 2] = CorpseWreckPx[di + 2]
+      result[di + 3] = CorpseWreckPx[di + 3]
   if parity == 1:
     P(14, 4, (170'u8, 180'u8, 190'u8))
   # team diamond gone dark, spilled clear of the hull
@@ -1045,38 +1055,44 @@ proc bushPixels(berries: int): seq[uint8] =
         result.put(TilePxR, bx + ox, by + oy, GoldTone)
     result.put(TilePxR, bx, by, AmberHot)
 
-proc hullHalfWidth(y: int): int =
-  ## The carrier's silhouette profile, shared by every body-sized overlay
-  ## so camo, glitch and hit flash trace the same shape the hull does.
-  ## Takes a row in the BodyWR x BodyHR buffer and answers a half width in
-  ## the same space; the table itself is on the 16x24 authoring canvas that
-  ## `bodyPixels` draws on, which is the only place it agrees with the hull.
-  ## TODO(Phase 3): delete outright. ART_UPGRADE_PLAN §4.3 and risk 3 —
-  ## once the carrier is a baked blit, camo/glitch/hit-flash must be derived
-  ## from *its* alpha mask, or the peak-white flash visibly misses the body
-  ## it is flashing. A hand-kept table cannot track generated art.
-  let ay = y div ArtScale
-  let hw =
-    if ay < 5 or ay > 17: 0
-    elif ay <= 6: 3
-    elif ay <= 8: 5
-    elif ay <= 14: 6
-    elif ay == 15: 5
-    else: 4
-  hw * ArtScale
+proc unionBodyMask(): array[BodyWR * BodyHR, uint8] =
+  ## Union of both chassis' front alpha masks. The camo glass, glitch tear
+  ## and hit flash are shared sprites worn by every agent, so they cover
+  ## the union — derived from the baked art itself (ART_UPGRADE_PLAN §4.3,
+  ## risk 3): the flash cannot miss the body it is flashing.
+  for k in 0 ..< BodyWR * BodyHR:
+    if CarrierASMask[k] > 0 or CarrierBSMask[k] > 0:
+      result[k] = 255
+
+let BodyMask = unionBodyMask()
+
+proc maskRowSpan(y: int): (int, int) =
+  ## Leftmost/rightmost masked column of a row, (-1, -1) when empty.
+  var lo = -1
+  var hi = -1
+  for x in 0 ..< BodyWR:
+    if BodyMask[y * BodyWR + x] > 0:
+      if lo < 0: lo = x
+      hi = x
+  (lo, hi)
 
 proc glassBodyPixels(): seq[uint8] =
-  ## Camo: refractive carrier silhouette — faint rim, near-clear fill.
+  ## Camo: refractive carrier silhouette — faint rim, near-clear fill,
+  ## traced from the baked bodies' union mask.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
-  let cx = BodyWR div 2
+  var top = BodyHR
+  var bot = -1
   for y in 0 ..< BodyHR:
-    let hw = hullHalfWidth(y)
-    if hw == 0:
+    if maskRowSpan(y)[0] >= 0:
+      if y < top: top = y
+      bot = y
+  for y in 0 ..< BodyHR:
+    let (lo, hi) = maskRowSpan(y)
+    if lo < 0:
       continue
-    let ay = y div ArtScale
-    for x in (cx - hw) ..< (cx + hw):
-      let edge = x < cx - hw + ArtScale or x >= cx + hw - ArtScale or
-                 ay == 5 or ay == 17
+    for x in lo .. hi:
+      let edge = x < lo + ArtScale or x > hi - ArtScale or
+                 y < top + ArtScale or y > bot - ArtScale
       result.put(BodyWR, x, y, (200'u8, 235'u8, 255'u8),
                  (if edge: 96'u8 else: 30'u8))
 
@@ -1149,18 +1165,18 @@ proc goldBeamPixels(): seq[uint8] =
 
 proc glitchPixels(): seq[uint8] =
   ## Camo-reveal artifact: horizontal tear bands across the hull, which
-  ## reads as a decode failure rather than confetti.
+  ## reads as a decode failure rather than confetti. Scanlines come from
+  ## the baked bodies' union mask, shifted sideways per row.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
-  let cx = BodyWR div 2
   for y in 0 ..< BodyHR:
-    let hw = hullHalfWidth(y)
-    if hw == 0:
+    let (lo, hi) = maskRowSpan(y)
+    if lo < 0:
       continue
     let band = pixHash(y * 13, 7) mod 100
     if band < 45:
       continue                       # untorn scanline
     let shift = (pixHash(y * 7, 3) mod (RS * 3)) - RS
-    for x in (cx - hw + shift) ..< (cx + hw + shift):
+    for x in (lo + shift) .. (hi + shift):
       let n = pixHash(x * 3 + 1, y * 5 + 2)
       result.put(BodyWR, x, y,
         (if n mod 3 == 0: Klaxon else: PhosphorPeak),
@@ -1483,15 +1499,15 @@ proc pingPixels(big: bool): seq[uint8] =
         result.put(Sz, x, y, GoldTone, uint8(a))
 
 proc hitFlashPixels(): seq[uint8] =
-  ## 1-frame peak-white carrier silhouette on any damage taken.
+  ## 1-frame peak-white carrier silhouette on any damage taken — the
+  ## union mask dilated by one authoring pixel, so the rim reads and the
+  ## flash covers either chassis by construction.
   result = newSeq[uint8](BodyWR * BodyHR * 4)
-  let cx = BodyWR div 2
   for y in 0 ..< BodyHR:
-    let hw = hullHalfWidth(y)
-    if hw == 0:
+    let (lo, hi) = maskRowSpan(y)
+    if lo < 0:
       continue
-    # one authoring pixel of dilation, so the flash reads as a rim
-    for x in (cx - hw - ArtScale) ..< (cx + hw + ArtScale):
+    for x in max(0, lo - ArtScale) .. min(BodyWR - 1, hi + ArtScale):
       result.put(BodyWR, x, y, PhosphorPeak, 185)
 
 # --- 3x5 pixel font ---

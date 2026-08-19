@@ -315,6 +315,11 @@ def _shift(a: np.ndarray, dy: int, dx: int, fill) -> np.ndarray:
     """out[y, x] = a[y + dy, x + dx], `fill` outside."""
     out = np.full_like(a, fill)
     h, w = a.shape
+    if abs(dy) >= h or abs(dx) >= w:
+        # A jump-flood step can exceed the SHORTER side of a non-square
+        # image; the raw slice arithmetic below would go negative and wrap
+        # from the end, pairing mismatched shapes. Everything is fill.
+        return out
     yd = slice(max(0, -dy), h - max(0, dy))
     ys = slice(max(0, dy), h - max(0, -dy))
     xd = slice(max(0, -dx), w - max(0, dx))

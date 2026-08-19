@@ -481,7 +481,7 @@ Remaining weapons (axe, sling, machete…), crafting, traps, trading, cross-team
   (dots = remaining charges, capped 3), wooden crate chips for ground loot,
   2-frame flickering fire ring, water-styled flood tiles, pods descend under
   a parachute sprite while inbound.
-- All art stays code-generated pixel data (no external asset pipeline);
+- All art is const pixel data compiled into the binary — code-generated or baked from the tools/art pipeline (ART_UPGRADE_PLAN); no runtime asset loading, no asset directory in the shipped image;
   palette discipline: <=15 visible colors per sprite (house convention).
 
 ### 21.3 Esports visual system (owner spec, 2026-07-31)
