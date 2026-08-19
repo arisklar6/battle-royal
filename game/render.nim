@@ -1544,6 +1544,17 @@ proc plateX*(tileX: int, label: string): int =
   ## sitting a full tile-and-a-half to the right of its carrier.
   tileX * TileSize + TileSize div 2 - (2 + label.len * 4) div 2
 
+proc plateWidth*(label: string): int =
+  ## textPixels lays out 2px of plate plus 4px per glyph.
+  2 + label.len * 4
+
+proc platesOverlap*(tileX1: int, label1: string,
+                    tileX2: int, label2: string): bool =
+  ## Do two identity plates on the same row band share any column?
+  let a = plateX(tileX1, label1)
+  let b = plateX(tileX2, label2)
+  a < b + plateWidth(label2) and b < a + plateWidth(label1)
+
 proc clipCols(line: string, cols: int): string =
   if line.len <= cols: line else: line[0 ..< cols]
 
@@ -2155,21 +2166,29 @@ proc bodySprite(r: Renderer, s: Sim, slot: int): int =
 proc camoHidden(s: Sim, slot: int): bool =
   s.agents[slot].body == iCamo and s.tick >= s.agents[slot].camoRevealedUntil
 
-const TagClearTiles = 2
+const TagRowSpan = 1     # plates are 7px tall on rows TileSize apart, so only
+                         # adjacent rows can share columns
 
 proc tagCrowded(s: Sim, slot: int): bool =
-  ## An 8-character plate is about two tiles wide, so neighbouring tags stack
-  ## into an unreadable block wherever agents bunch up — worst during the
-  ## Fortress scramble, where the whole courtyard vanishes behind text.
-  ## Swap to the 2-char plate instead of stacking names: a name is worth
-  ## drawing exactly when it can be read, and A1/A2 still separates the two
-  ## contestants of a duo when it cannot. (P-numbers had the same pile-up;
-  ## names just made it wide enough to notice.)
+  ## True when this agent's name plate would collide with a neighbour's, in
+  ## which case both fall back to the 2-char A1/A2 plate.
+  ##
+  ## Tests real plate geometry rather than a fixed tile radius, because the
+  ## radius has to track the label: an 8-character plate is 34px = 5.7 tiles
+  ## at TileSize 6, so the old 2-tile test left agents 3 tiles apart both
+  ## believing they were uncrowded while their plates overlapped by 16 render
+  ## pixels. Seen in league round 1851, where slot 2's "B1" and slot 6's
+  ## "BASELIN2" ran together into one unreadable token.
+  ##
+  ## Both sides decide from their FULL labels, so the answer never depends on
+  ## what was rendered — no oscillation, and the pair agrees.
   let p = s.agents[slot].pos
+  let mine = slotLabel(s, slot)
   for i in 0 .. 15:
     if i == slot or not s.agents[i].alive: continue
     let q = s.agents[i].pos
-    if abs(q.x - p.x) <= TagClearTiles and abs(q.y - p.y) <= TagClearTiles:
+    if abs(q.y - p.y) > TagRowSpan: continue
+    if platesOverlap(p.x, mine, q.x, slotLabel(s, i)):
       return true
   false
 
