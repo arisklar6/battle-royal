@@ -49,9 +49,9 @@ for want in ["contact0", "contact1", "contact2", "contact3", "contact_mark"]:
   doAssert want in defLabels, "missing sprite def: " & want
 
 # ---- a coordinate contact call pings the tile and marks the reporter
-doAssert s.submitTalk(AgentId(0), tcTeam, -1, "contact: P3 at (10,12)") ==
+doAssert s.submitTalk(AgentId(0), tcBroadcast, -1, "contact: P3 at (10,12)") ==
   tkAccepted
-doAssert s.submitTalk(AgentId(2), tcTeam, -1, "hello there") == tkAccepted
+doAssert s.submitTalk(AgentId(2), tcBroadcast, -1, "hello there") == tkAccepted
 s.step()
 var pingObj = -1
 var markObj = -1
@@ -99,7 +99,7 @@ doAssert pingDead, "sighting ring never expired"
 doAssert markDead, "reporter mark never expired"
 
 # ---- a coordinate-less call marks the reporter without a ping
-doAssert s.submitTalk(AgentId(4), tcTeam, -1, "contact nearby, regroup") ==
+doAssert s.submitTalk(AgentId(4), tcBroadcast, -1, "contact nearby, regroup") ==
   tkAccepted
 s.step()
 var newPing = false
