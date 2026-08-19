@@ -409,6 +409,20 @@ proc shade(c: (uint8, uint8, uint8), d: int): (uint8, uint8, uint8) =
    uint8(max(0, min(255, int(c[1]) + d))),
    uint8(max(0, min(255, int(c[2]) + d))))
 
+proc lumaOf(c: (uint8, uint8, uint8)): int =
+  (int(c[0]) * 30 + int(c[1]) * 59 + int(c[2]) * 11) div 100
+
+proc concreteGrade(c: (uint8, uint8, uint8), lift: int): (uint8, uint8, uint8) =
+  ## PAINTBOT pass: coworld-ctf's broadcast reads because its arena is warm
+  ## daylight concrete, not a cold instrument slate. The baked material keeps
+  ## every bit of its detail — the luma channel — and only the tone moves:
+  ## regraded onto a warm concrete ramp (r above luma, b below), lifted into
+  ## ctf's floor range. Live board only; the de-rez overlays deliberately
+  ## stay on the cold BgDark/Etch ramp, so reclaimed territory now reads as
+  ## the machine shutting the warm world off.
+  let l = min(255, lumaOf(c) * 9 div 8 + lift)
+  (uint8(min(255, l + l div 14 + 4)), uint8(l), uint8(max(0, l * 8 div 9 - 4)))
+
 proc tileHash(x, y: int): int = (x * 7 + y * 13 + (x * y) mod 11) mod 16
 
 proc alphaAt(px: seq[uint8], w, x, y: int): int =
@@ -448,7 +462,9 @@ proc addBacklight(px: var seq[uint8], w, h: int, c: (uint8, uint8, uint8),
 # from a texture so no asset ships.
 const
   PanelPeriodPx = 8 * TilePxR         # joints every 8 tiles, not every tile
-  FloorLo = -16                       # luminance envelope; wide enough to see
+  FloorLo = -52                       # luminance envelope; the low end is
+                                      # sized for the crack ink, which digs
+                                      # far deeper than the material noise
   FloorHi = 20
 
 proc pixHash(x, y: int): int =
@@ -493,11 +509,22 @@ proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
       let jy = wy mod PanelPeriodPx
       if jx < RS or jy < RS: d -= 10
       elif jx < RS * 2 or jy < RS * 2: d += 6
-      elif x < RS or y < RS: d -= 3     # faint per-tile etch grid
+      # (the per-tile etch grid is gone: ctf's floor has no tile-rate lines,
+      # and it is exactly what made the board read as graph paper)
+      # organic cracks (ctf arena_floor): a ridged octave pair — the zero
+      # band of value noise traces closed meandering contours, exactly the
+      # look of settled concrete. Gated by a coarse mask so slabs of clean
+      # floor survive; deterministic in world coords like everything else.
+      let crackV = noiseAt(wx, wy, 48 * RS) * 2 + noiseAt(wx, wy, 8 * RS)
+      let crackHere = noiseAt(wx + 4093, wy + 2251, 64 * RS) > 12
+      if crackHere and abs(crackV) < 6:
+        d -= (if abs(crackV) < 3: 42 else: 12)
       # Tier B (ART_UPGRADE_PLAN §4.3): the base is the baked floor field —
       # generated stone sampled at absolute world coordinates, so the floor
       # stays non-tiling — and every delta above rides on it unchanged.
-      let base = FloorField.rgbAt(wx mod FloorFieldW, wy mod FloorFieldH)
+      # PAINTBOT pass: regraded warm; the deltas ride on top unchanged.
+      let base = concreteGrade(
+        FloorField.rgbAt(wx mod FloorFieldW, wy mod FloorFieldH), 26)
       px.put(w, wx, wy, shade(base, max(FloorLo, min(FloorHi, d))))
 
 # --- structural material: shading derived from the collision mask ---
@@ -539,7 +566,12 @@ proc parapetColorAt(a: Arena, wx, wy: int, lift: int): (uint8, uint8, uint8) =
   let lf = openDistDir(a, wx, wy, -1, 0, MaxD)
   let rt = openDistDir(a, wx, wy, 1, 0, MaxD)
   let edge = min(min(up, dn), min(lf, rt))
-  let base = shade(WallFace.rgbAt(wx mod WallFaceW, wy mod WallFaceH), lift)
+  ## PAINTBOT pass: same warm grade as the floor, no lift of its own — the
+  ## rooftop reads as the same daylight material one storey up (ctf's
+  ## rooftops are its floor concrete, shaded by the collider), and the
+  ## Fortress keeps its `lift` on top.
+  let base = shade(concreteGrade(
+    WallFace.rgbAt(wx mod WallFaceW, wy mod WallFaceH), 0), lift)
   if edge <= 1:
     StoneInk
   elif edge <= WallBevelPx:
@@ -556,22 +588,31 @@ proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena, lift: int) =
       px.put(w, ox + x, oy + y, parapetColorAt(a, ox + x, oy + y, lift))
 
 proc compositeBaked(px: var seq[uint8], w, ox, oy: int,
-                    art: openArray[uint8], aw, ah: int) =
-  ## Alpha-over a baked sprite into a larger RGBA buffer.
+                    art: openArray[uint8], aw, ah: int, graded = false) =
+  ## Alpha-over a baked sprite into a larger RGBA buffer. `graded` runs the
+  ## source through the PAINTBOT concrete grade — for baked terrain (rock
+  ## clusters) that must sit on the regraded floor without re-baking the
+  ## assets; props that carry semantic colour (crates, chips, pedestals,
+  ## bushes) stay verbatim.
   for y in 0 ..< ah:
     for x in 0 ..< aw:
       let si = (y * aw + x) * 4
       let al = int(art[si + 3])
       if al == 0:
         continue
+      var src = (art[si], art[si + 1], art[si + 2])
+      if graded:
+        src = concreteGrade(src, 4)
       let di = ((oy + y) * w + ox + x) * 4
       if al == 255:
-        px[di] = art[si]; px[di+1] = art[si+1]; px[di+2] = art[si+2]
+        px[di] = src[0]; px[di+1] = src[1]; px[di+2] = src[2]
         px[di+3] = 255
       else:
-        for ch in 0 .. 2:
-          px[di + ch] = uint8((int(art[si + ch]) * al +
-                               int(px[di + ch]) * (255 - al)) div 255)
+        px[di] = uint8((int(src[0]) * al + int(px[di]) * (255 - al)) div 255)
+        px[di + 1] = uint8((int(src[1]) * al +
+                            int(px[di + 1]) * (255 - al)) div 255)
+        px[di + 2] = uint8((int(src[2]) * al +
+                            int(px[di + 2]) * (255 - al)) div 255)
         px[di + 3] = 255
 
 proc rockAt(px: var seq[uint8], w, ox, oy: int) =
@@ -773,11 +814,11 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int,
         claim(tx, ty, 3, 2)
         case pixHash(tx * 7 + 1, ty * 11 + 3) mod 3
         of 0: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                RockCluster32APx, RockCluster32AW, RockCluster32AH)
+                RockCluster32APx, RockCluster32AW, RockCluster32AH, graded = true)
         of 1: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                RockCluster32BPx, RockCluster32BW, RockCluster32BH)
+                RockCluster32BPx, RockCluster32BW, RockCluster32BH, graded = true)
         else: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                RockCluster32CPx, RockCluster32CW, RockCluster32CH)
+                RockCluster32CPx, RockCluster32CW, RockCluster32CH, graded = true)
   for ty in 0 ..< ArenaSize:
     for tx in 0 ..< ArenaSize:
       block fit22:
@@ -787,17 +828,17 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int,
         claim(tx, ty, 2, 2)
         case pixHash(tx * 5 + 2, ty * 13 + 1) mod 3
         of 0: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                RockCluster22APx, RockCluster22AW, RockCluster22AH)
+                RockCluster22APx, RockCluster22AW, RockCluster22AH, graded = true)
         of 1: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                RockCluster22BPx, RockCluster22BW, RockCluster22BH)
+                RockCluster22BPx, RockCluster22BW, RockCluster22BH, graded = true)
         else: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                RockCluster22CPx, RockCluster22CW, RockCluster22CH)
+                RockCluster22CPx, RockCluster22CW, RockCluster22CH, graded = true)
   for ty in 0 ..< ArenaSize:
     for tx in 0 ..< ArenaSize:
       if isRock(tx, ty):
         claimed[ty * ArenaSize + tx] = true
         result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
-                              RockOrphanPx, RockOrphanW, RockOrphanH)
+                              RockOrphanPx, RockOrphanW, RockOrphanH, graded = true)
 
 ## --- baked carrier blit (ART_UPGRADE_PLAN Phase 3, two-chassis) --------
 ##
@@ -832,7 +873,12 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
   let tunic = TeamColors[team]
   let lift = (if frame == 1: -ArtScale else: 0)   # 1 authoring px of hover
   let (art, _) = chassisPx(parity, facing)
-  # blit with the lift; source rows land lift px higher
+  # blit with the lift; source rows land lift px higher.
+  # PAINTBOT tint: ctf's soldiers are one rig recoloured per team, and that
+  # full-hull colour is why a rig reads at forty tiles where a neutral hull
+  # plus a ground diamond does not. Same move here — the baked shading
+  # (luma) keeps the volume, the team hue supplies the paint; dark sensor
+  # pixels stay dark, so the code-stamped pupil keeps its contrast.
   for y in 0 ..< BodyHR:
     let sy = y - lift
     if sy < 0 or sy >= BodyHR:
@@ -841,10 +887,13 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
       let si = (sy * BodyWR + x) * 4
       if art[si + 3] == 0:
         continue
+      let l = (int(art[si]) * 30 + int(art[si + 1]) * 59 +
+               int(art[si + 2]) * 11) div 100
       let di = (y * BodyWR + x) * 4
-      result[di] = art[si]
-      result[di + 1] = art[si + 1]
-      result[di + 2] = art[si + 2]
+      let tun = [int(tunic[0]), int(tunic[1]), int(tunic[2])]
+      for ch in 0 .. 2:
+        result[di + ch] = uint8((int(art[si + ch]) * 2 +
+                                 tun[ch] * l * 3 div 255) div 5)
       result[di + 3] = art[si + 3]
   # facing pupil, stamped at the sensor band's centroid: the band is baked
   # art, but the pupil is a facing marker — state, so code draws it. The
@@ -873,6 +922,10 @@ proc bodyPixels(team, parity, facing, frame: int): seq[uint8] =
     PD(6, 7 + lift div ArtScale, PhosphorPeak)
   # contact shadow before the diamond goes down
   result.addBacklight(BodyWR, BodyHR, StoneInk, 95, dx = RS, dy = RS)
+  # ...then ctf's warm amber backlight (pixie.shadow behind every rig): a
+  # 1px rim in whatever empty space the shadow left, so the silhouette pops
+  # off the daylight floor instead of dissolving into it
+  result.addBacklight(BodyWR, BodyHR, GoldTone, 66)
   # --- ground diamond: the team mark, unaffected by the hover bob ---
   for dy in 0 .. 5:
     let wdt = (if dy <= 2: dy + 1 else: 6 - dy)
@@ -906,13 +959,18 @@ proc corpsePixels(team, parity: int): seq[uint8] =
     let hw = (if y == 8 or y == 11: 8 else: 10)
     for x in (12 - hw) ..< (12 + hw):
       P(x, y, StoneInk, (if y >= 10: 150'u8 else: 110'u8))
-  # baked hull blit (CorpseW x CorpseH is exactly the baked size)
+  # baked hull blit (CorpseW x CorpseH is exactly the baked size), with the
+  # living hull's team tint at half strength — dead paint, still theirs
   for k in 0 ..< CorpseW * CorpseH:
     if CorpseWreckPx[k * 4 + 3] > 0:
       let di = k * 4
-      result[di] = CorpseWreckPx[di]
-      result[di + 1] = CorpseWreckPx[di + 1]
-      result[di + 2] = CorpseWreckPx[di + 2]
+      let l = (int(CorpseWreckPx[di]) * 30 + int(CorpseWreckPx[di + 1]) * 59 +
+               int(CorpseWreckPx[di + 2]) * 11) div 100
+      let tun = [int(TeamColors[team][0]), int(TeamColors[team][1]),
+                 int(TeamColors[team][2])]
+      for ch in 0 .. 2:
+        result[di + ch] = uint8((int(CorpseWreckPx[di + ch]) * 7 +
+                                 tun[ch] * l * 3 div 255) div 10)
       result[di + 3] = CorpseWreckPx[di + 3]
   if parity == 1:
     P(14, 4, (170'u8, 180'u8, 190'u8))
@@ -1139,6 +1197,8 @@ proc podCratePixels(id: ItemId): seq[uint8] =
     for x in 0 ..< TilePxR:
       if x < stn.w and y < stn.h and stn.mask[y * stn.w + x] > 0:
         result.put(TilePxR, x, y, StoneInk)
+  # grounded like every ctf prop: contact shadow first, warm rim after
+  result.addBacklight(TilePxR, TilePxR, StoneInk, 110, dx = RS, dy = RS)
   result.addBacklight(TilePxR, TilePxR, GoldTone, 80)
 
 proc bushPixels(berries: int): seq[uint8] =
@@ -1146,6 +1206,7 @@ proc bushPixels(berries: int): seq[uint8] =
   ## gameplay state and must stay countable (ART_UPGRADE_PLAN §2).
   result = newSeq[uint8](TilePxR * TilePxR * 4)
   result.compositeBaked(TilePxR, 0, 0, BushClumpPx, BushClumpW, BushClumpH)
+  result.addBacklight(TilePxR, TilePxR, StoneInk, 100, dx = RS, dy = RS)
   const spots = [(2, 4), (7, 2), (5, 8)]
   for i in 0 ..< min(berries, 3):
     let bx = spots[i][0] * ArtScale
@@ -1394,6 +1455,9 @@ proc itemPixels(id: ItemId): seq[uint8] =
       if x < stn.w and y < stn.h and stn.mask[y * stn.w + x] > 0 and
          result[(y * TilePxR + x) * 4 + 3] > 0:
         result.put(TilePxR, x, y, StoneInk)
+  # amber on warm concrete needs the ink edge the cold slate gave for free
+  result.addBacklight(TilePxR, TilePxR, StoneInk, 120, dx = ArtScale,
+                      dy = ArtScale)
 
 const ProjPx = 4 * RS
 
@@ -1416,20 +1480,25 @@ proc projPixels(id: ItemId): seq[uint8] =
                  (if x < t: 150'u8 else: 255'u8))
 
 proc hpBandPixels(band: int): seq[uint8] =
-  ## 10x3 semaphore bar over each agent: color AND fill length encode the
-  ## wire's hp_band (healthy/hurt/critical) — no green anywhere.
+  ## Three pips over each agent (ctf's under-name health pips): count AND
+  ## colour encode the wire's hp_band (healthy/hurt/critical) — no green
+  ## anywhere. Pips read as discrete state on the daylight floor where the
+  ## old solid bar read as a smear; spent pips keep an ink socket so the
+  ## gauge's full extent stays visible.
   result = newSeq[uint8](10 * 3 * 4)
-  for y in 0 ..< 3:
-    for x in 0 ..< 10:
-      result.put(10, x, y, (10'u8, 13'u8, 17'u8), 210)
-  let (fill, c) =
+  let (lit, c) =
     case band
-    of 0: (10, (165'u8, 227'u8, 238'u8))   # healthy: phosphor
-    of 1: (6, (255'u8, 180'u8, 84'u8))     # hurt: amber
-    else: (3, (255'u8, 74'u8, 54'u8))      # critical: klaxon
-  for y in 0 ..< 3:
-    for x in 0 ..< fill:
-      result.put(10, x, y, c)
+    of 0: (3, (165'u8, 227'u8, 238'u8))    # healthy: phosphor
+    of 1: (2, (255'u8, 180'u8, 84'u8))     # hurt: amber
+    else: (1, (255'u8, 74'u8, 54'u8))      # critical: klaxon
+  for p in 0 ..< 3:
+    let ox = p * 4
+    for y in 0 ..< 2:
+      for x in 0 ..< 2:
+        if p < lit:
+          result.put(10, ox + x, y, (if y == 0: shade(c, 40) else: c))
+        else:
+          result.put(10, ox + x, y, (10'u8, 13'u8, 17'u8), 190)
 
 proc ringGhostPixels(): seq[uint8] =
   ## Faint bone outline tile; every-other tile placement dashes the circle.
@@ -1759,6 +1828,33 @@ proc textPixels(text: string, r, g, b: uint8): (int, int, seq[uint8]) =
       for gx in 0 ..< 3:
         if ((bits shr ((4 - gy) * 3 + (2 - gx))) and 1) == 1:
           px.put(w, 1 + i * 4 + gx, 1 + gy, (r, g, b))
+  (w, h, px)
+
+proc tagPixels(text: string): (int, int, seq[uint8]) =
+  ## PAINTBOT identity tag: bone-bright glyphs in a full ink outline and no
+  ## plate — ctf's name labels float over the board and stay readable on any
+  ## material without boxing off half the arena. Same layout economy as
+  ## textPixels (2px margin + 4px advance), so plateX/plateWidth and the
+  ## tagCrowded geometry stay honest without change.
+  let w = 2 + text.len * 4
+  let h = 7
+  var px = newSeq[uint8](w * h * 4)
+  for i, ch in text:
+    let up = (if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32) else: ch)
+    let bits = Glyphs.getOrDefault(up, 0)
+    for gy in 0 ..< 5:
+      for gx in 0 ..< 3:
+        if ((bits shr ((4 - gy) * 3 + (2 - gx))) and 1) == 1:
+          px.put(w, 1 + i * 4 + gx, 1 + gy, (244'u8, 242'u8, 234'u8))
+  # translucent ink chip behind the glyphs — the board reads through it. A
+  # true 1px outline is not available at this face's 4px advance (dilation
+  # fills every gap and rebuilds the solid plate), so the chip carries the
+  # contrast and its transparency is what makes the tag float, ctf-style.
+  let ink = (26'u8, 22'u8, 16'u8)
+  for y in 0 ..< h:
+    for x in 0 ..< w:
+      if alphaAt(px, w, x, y) < 128:
+        px.put(w, x, y, ink, 165)
   (w, h, px)
 
 # ------------------------------------------------- phosphor persistence
@@ -2136,9 +2232,9 @@ proc spriteDefs(s: Sim): seq[uint8] =
     result.addSprite(SpProjBase + ord(id), ProjPx, ProjPx, projPixels(id),
                        "proj_" & $id, native = true)
   for slot in 0 .. 15:
-    let (w, h, px) = textPixels(slotLabel(s, slot), 205, 214, 220)
+    let (w, h, px) = tagPixels(slotLabel(s, slot))
     result.addSprite(SpSlotLabelBase + slot, w, h, px, "tag" & $slot)
-    let (sw, sh, spx) = textPixels(shortLabel(slot), 205, 214, 220)
+    let (sw, sh, spx) = tagPixels(shortLabel(slot))
     result.addSprite(SpSlotShortBase + slot, sw, sh, spx, "tagshort" & $slot)
   for band in 0 .. 2:
     result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
