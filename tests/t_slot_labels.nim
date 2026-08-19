@@ -75,23 +75,18 @@ for i in 0 .. 15:
   doAssert ("USER" & $i) in got, "injected name lost: user" & $i
 doAssert got.len == 16
 
-# ---- crowded fallback: team letter + which contestant of the duo. Must be
+# ---- crowded fallback: the seat number (FFA — no team letters). Must be
 # unique per seat, drawable, and narrow (VISUAL_REDESIGN Part 8.1).
 var shorts: seq[string] = @[]
 for i in 0 .. 15:
   let sl = shortLabel(i)
-  doAssert sl.len == 2, "short plate must stay 2 chars: " & $i & " -> " & sl
+  doAssert sl.len <= 3, "short plate must stay narrow: " & $i & " -> " & sl
   doAssert sl notin shorts, "short plates collided at slot " & $i & ": " & sl
   for ch in sl:
     doAssert ch in Drawable, "undrawable short-plate char " & $ch
   shorts.add(sl)
-doAssert shortLabel(0) == "A1" and shortLabel(1) == "A2"
-doAssert shortLabel(2) == "B1" and shortLabel(15) == "H2"
+doAssert shortLabel(0) == "P1" and shortLabel(15) == "P16"
 doAssert shortLabel(-1) == "??" and shortLabel(16) == "??"
-
-# both plates of a duo share the team letter, so hue is never the only cue
-for t in 0 .. 7:
-  doAssert shortLabel(t * 2)[0] == shortLabel(t * 2 + 1)[0]
 
 # ---- plates centre on the tile rather than sitting at a fixed offset: the
 # old -3 was tuned for "P<n>" and left an 8-char name a tile and a half right

@@ -1,12 +1,13 @@
 # Battle Royal
 
-A battle royale for sixteen agents. Eight teams of two spawn empty-handed on a
-ring of pedestals around a loot-stocked central **Fortress**. A countdown, a
-burst of fireworks — then the scramble. The best weapons sit in the most
-dangerous place, a ring of fire closes on a fixed schedule, human sponsors
-airdrop supplies to their teams, and every death is a black firework the whole
-arena sees. Last contestant standing wins. When only one team remains, the
-finale turns teammates against each other.
+A free-for-all battle royale for up to sixteen agents. Everyone spawns
+empty-handed on a ring of pedestals around a loot-stocked central
+**Fortress**. A countdown, a burst of fireworks — then the scramble. The best
+weapons sit in the most dangerous place, a ring of fire closes on a fixed
+schedule, human sponsors airdrop supplies to their player, and every death is
+a black firework the whole arena sees. There are no teams — every alliance is
+talked into existence and betrayed the same way. Last contestant standing
+wins.
 
 ## The match
 
@@ -56,32 +57,38 @@ fall.
 
 ## Sponsors and softcoin
 
-Each team has a softcoin budget (default 300). Mid-match, sponsors buy from a
-fixed catalog (prices in `player_config.sponsor.catalog`); the gift airdrops
-near the recipient 5 seconds later. **Every drop is announced arena-wide with
-its landing tile and contents — and once landed, ANYONE can loot it.** The
-shop opens 60 s after ignition. Sponsor spending never affects score. In
-league play, sponsorship is an equal scripted schedule per team.
+Each player has a softcoin purse (default 150). Mid-match, sponsors buy from
+a fixed catalog (prices in `player_config.sponsor.catalog`); the gift
+airdrops near the sponsored player 5 seconds later. **Every drop is announced
+arena-wide with its landing tile and contents — and once landed, ANYONE can
+loot it.** The shop opens 60 s after ignition. Sponsor spending never affects
+score. In league play, sponsorship is an equal scripted schedule per
+player.
 
 ## Scoring
 
-`score = placement points + kills`. Placement is reverse death order
-(same-tick ties: more damage dealt, then lower slot).
+Survival is the only currency: `score = (players - placement) + podium
+bonus`. Placement is reverse death order (same-tick ties: more damage dealt,
+then lower slot) — outlast one more opponent, earn one more point. The podium
+carries the extra weight:
 
-| Place | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Pts | 15 | 12 | 10 | 8 | 7 | 6 | 5 | 4 | 3 | 3 | 2 | 2 | 1 | 1 | 0 | 0 |
+| Place | 1 | 2 | 3 |
+|---|---|---|---|
+| Bonus | +10 | +5 | +2 |
 
-Kill credit goes to the last damager (poison counts for the shooter). Zone,
-mines, and hazards credit nobody. Friendly fire is always on — the finale
-needs no rule change; betrayal is always legal.
+In a 16-player match the winner banks 15 + 10 = 25. **Kills score nothing**
+— they are tracked and broadcast, but the only way to earn is to outlive the
+field. Kill credit still goes to the last damager for the record. Attacking
+anyone is always legal; there is nobody you are not allowed to fight.
 
 ## Talk
 
-Open text channels: `broadcast` (everyone), `team` (your partner), `dm`
-(anyone). 1 message per second, 120 printable-ASCII chars. Alliances and
-betrayals happen in the chat — there is no pact mechanic. The full transcript
-is a public artifact of every match; play accordingly.
+Open text channels: `broadcast` (every living agent) and `dm` (any one
+agent). **Both carry at any distance** — you can negotiate with a player on
+the far side of the arena you have never seen. 1 message per second, 120
+printable-ASCII chars. Alliances and betrayals happen in the chat — there is
+no pact mechanic and no team channel, because there are no teams. The full
+transcript is a public artifact of every match; play accordingly.
 
 ## Protocol
 

@@ -15,7 +15,7 @@ disconnect you — the input is treated as `none` and the next observation's
 ### player_config (once, on connect)
 ```json
 {"type": "player_config", "protocol": "battle_royal.player.v1",
- "slot": 3, "team": "B", "teammate_slot": 2, "name": "P03",
+ "slot": 3, "mode": "ffa", "num_players": 16, "name": "P03",
  "arena": {"size": 48, "static_map": ["48 rows of 48 tile chars"],
             "legend": {".": "ground", "#": "wall", "R": "rock",
                         "F": "fortress_wall", "P": "pedestal", "B": "berry_bush"},
@@ -28,7 +28,7 @@ disconnect you — the input is treated as `none` and the next observation's
              "use_ticks": 0, "heal": 0}, "..."],
  "zone_schedule": [[1440,1632,2064,24,19,1], "...(warn, shrink, done, r0, r1, dmg/s)"],
  "tick_rate": 24, "max_ticks": 9120, "ignition_tick": 240,
- "sponsor": {"enabled": true, "budget_per_team": 300, "shop_opens_tick": 1680,
+ "sponsor": {"enabled": true, "budget_per_player": 150, "shop_opens_tick": 1680,
               "catalog": {"sword": 120, "rations": 20, "...": 0}}}
 ```
 
@@ -53,7 +53,7 @@ safe (`duplicate` echoes what you already have).
          "kills": 1, "damage_dealt": 214,
          "move_ready_in": 0, "attack_ready_in": 6,
          "action_result": "ok"},
- "visible": {"agents": [{"slot":7,"team":"D","pos":[15,38],"hp_band":"hurt",
+ "visible": {"agents": [{"slot":7,"pos":[15,38],"hp_band":"hurt",
                           "hand":"sword","body":null,"netted":false,
                           "poisoned":true,"channeling":false}],
               "items": [{"id":"arrows","n":6,"pos":[13,44]}],
@@ -67,7 +67,7 @@ safe (`duplicate` echoes what you already have).
              {"type":"boom","direction":"NE"},
              {"type":"gift_incoming","slot":4,"pos":[20,30],
               "item":"first_aid","lands_tick":4320,"recipient":4}],
- "chat": [{"tick":4196,"from":2,"channel":"team","to":null,"text":"push the mouth"}]}
+ "chat": [{"tick":4196,"from":2,"channel":"broadcast","to":null,"text":"push the mouth"}]}
 ```
 Notes:
 - Fog: `visible.*` is line-of-sight limited by your INT vision radius; walls,
@@ -115,7 +115,9 @@ and rate-limited to 1 per 24 ticks.
 {"type": "action", "do": "interact"}                // forage the bush you stand on
 {"type": "action", "do": "none"}
 
-{"type": "talk", "channel": "broadcast|team|dm", "to": 9, "text": "<=120 printable ASCII"}
+{"type": "talk", "channel": "broadcast|dm", "to": 9, "text": "<=120 printable ASCII"}
+// both channels carry at ANY distance: broadcast reaches every living
+// agent, dm reaches exactly one — negotiate across the whole arena
 ```
 
 Movement is 8-directional on the grid (diagonals cost the same). Attacks are

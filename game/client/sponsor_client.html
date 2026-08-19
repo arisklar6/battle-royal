@@ -109,7 +109,7 @@
 <body>
 <header>
   <div id="teamchip"></div>
-  <div id="teamname">TEAM ?</div>
+  <div id="teamname">PLAYER ?</div>
   <div id="alive"></div>
   <div class="spacer"></div>
   <div id="budget">&mdash;</div>
@@ -161,7 +161,7 @@ function websocketAddress(path) {
   if (target.protocol === 'http:') target.protocol = 'ws:';
   if (target.protocol === 'https:') target.protocol = 'wss:';
   if (!address) target.pathname = target.pathname.replace(/\/client\/sponsor$/, path);
-  for (const key of ['team', 'token']) {
+  for (const key of ['player', 'token']) {
     const v = pageUrl.searchParams.get(key);
     if (v !== null) target.searchParams.set(key, v);
   }
@@ -169,8 +169,13 @@ function websocketAddress(path) {
   return target;
 }
 
-const TEAM_ACCENTS = {A:'#FF8FA8', B:'#49C7E8', C:'#E8C558', D:'#9B7BFF',
-                      E:'#E85D75', F:'#9FB8D8', G:'#E8975D', H:'#D97BE8'};
+const HUES = ['#FF8FA8','#49C7E8','#E8C558','#9B7BFF',
+              '#E85D75','#9FB8D8','#E8975D','#D97BE8'];
+const shadeHex = (hex, d) => '#' + [1, 3, 5].map(i =>
+  Math.max(0, Math.min(255, parseInt(hex.slice(i, i + 2), 16) + d))
+    .toString(16).padStart(2, '0')).join('');
+const playerColor = s => (s % 2 ? shadeHex(HUES[(s >> 1) % 8], -56)
+                                : HUES[(s >> 1) % 8]);
 const TILE_COLORS = {'#':'#3a4552', 'F':'#4a5867', 'R':'#5a4a3a',
                      'P':'#FFB454', 'B':'#1e5c28'};
 const TPS = 24;           // ticks per second
@@ -181,7 +186,7 @@ let CATALOG = {rations: 20, knives: 30, arrows: 30, darts: 35, net: 50,
                first_aid: 60, backpack: 70, camouflage: 80, spear: 90,
                blowgun: 100, sword: 120, bow: 150};
 
-let team = null;
+let player = null;
 let budget = null;
 let shopOpensTick = null;
 let lockoutTicks = 1440;
@@ -195,7 +200,7 @@ let selected = null;      // [x, y] target tile
 let staged = null;        // {item, price} awaiting explicit confirm
 let zone = null;          // {radius, next_radius, shrink_tick}
 let pods = [];            // public pod list: {pos, item, landed}
-let mates = [];           // own team: {slot, pos, hp_band}
+let mates = [];           // the sponsored player: {slot, pos, hp_band}
 const BAND_COLORS = {healthy: '#A5E3EE', hurt: '#FFB454', critical: '#FF4A36'};
 const markers = [];       // {x, y, item, landsTick} persisted for the match
 const pending = {};       // request_id -> {item, target}
@@ -323,11 +328,11 @@ ws.onmessage = (ev) => {
   let m;
   try { m = JSON.parse(ev.data); } catch (e) { return; }
   if (m.type === 'sponsor_welcome') {
-    team = m.team;
-    const accent = TEAM_ACCENTS[team] || '#A5E3EE';
+    player = m.player;
+    const accent = player === null ? '#A5E3EE' : playerColor(player);
     document.getElementById('teamchip').style.background = accent;
     const tn = document.getElementById('teamname');
-    tn.textContent = 'TEAM ' + team;
+    tn.textContent = 'PLAYER P' + player;
     tn.style.color = accent;
     setBudget(m.budget);
     if (m.catalog) CATALOG = m.catalog;
@@ -346,13 +351,13 @@ ws.onmessage = (ev) => {
     if (typeof m.lockout_remaining === 'number') {
       lockoutEndTick = m.tick + m.lockout_remaining;  // server is authoritative
     }
-    if (Array.isArray(m.team_alive)) {
+    if (Array.isArray(m.player_alive)) {
       document.getElementById('alive').textContent =
-        'alive ' + m.team_alive.length;
+        'alive ' + m.player_alive.length;
     }
     if (m.zone) zone = m.zone;
     if (Array.isArray(m.pods)) pods = m.pods;
-    if (Array.isArray(m.teammates)) mates = m.teammates;
+    if (Array.isArray(m.players)) mates = m.players;
   } else if (m.type === 'gift_result') {
     const req = pending[m.request_id] || {};
     delete pending[m.request_id];
@@ -464,7 +469,7 @@ function draw() {
     ctx.fillText(itemLabel(p.item), cx, p.pos[1] > 1 ? cy - 8 : cy + 15);
   }
   // your agents: accent dot, hp-band ring, slot tag
-  const accent = TEAM_ACCENTS[team] || '#A5E3EE';
+  const accent = player === null ? '#A5E3EE' : playerColor(player);
   for (const a of mates) {
     const cx = a.pos[0] * TILE + TILE / 2, cy = a.pos[1] * TILE + TILE / 2;
     ctx.fillStyle = accent;

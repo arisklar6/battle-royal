@@ -34,12 +34,10 @@ CONFIG_SCHEMA = {
             "type": "array", "minItems": 16, "maxItems": 16,
             "items": {"type": "string", "minLength": 1},
         },
-        "league_mode": {
-            "enum": ["solo", "duos"],
-            "description": "Policy seating and result attribution. solo maps one "
-                           "external seat to one contestant. duos remaps platform "
-                           "team_n seats i/i+8 onto adjacent teammates and reports "
-                           "their shared team-total score to both seats.",
+        "num_players": {
+            "type": "integer", "minimum": 2, "maximum": 16,
+            "description": "Seats in the free-for-all (default 16). Seat i is "
+                           "slot i; every other agent is an opponent.",
         },
         "seed": {
             "type": "integer",
@@ -93,17 +91,18 @@ CONFIG_SCHEMA = {
                     "description": "Live sponsor websocket ingress. Local play "
                                    "only; league/certification configs keep this false.",
                 },
-                "budget_per_team": {"type": "integer", "minimum": 0, "maximum": 10000},
+                "budget_per_player": {"type": "integer", "minimum": 0, "maximum": 10000},
                 "shop_opens_tick": {"type": "integer", "minimum": 0},
                 "scripted_gifts": {
                     "type": "array",
                     "items": {
                         "type": "object", "additionalProperties": False,
-                        "required": ["tick", "team", "recipient_slot", "item_id"],
+                        "required": ["tick", "player", "item_id"],
                         "properties": {
                             "tick": {"type": "integer", "minimum": 0},
-                            "team": {"enum": list("ABCDEFGH")},
-                            "recipient_slot": {"type": "integer", "minimum": 0, "maximum": 15},
+                            "player": {"type": "integer", "minimum": 0, "maximum": 15},
+                            "target": {"type": "array", "minItems": 2, "maxItems": 2,
+                                        "items": {"type": "integer"}},
                             "item_id": {"type": "string", "minLength": 1},
                         },
                     },
@@ -111,9 +110,9 @@ CONFIG_SCHEMA = {
                 "sponsor_tokens": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},
-                    "description": "team letter -> sponsor auth token. Runtime-"
-                                   "supplied for live local play only; never "
-                                   "authored in manifests.",
+                    "description": "player slot (\"0\"..\"15\") -> sponsor auth "
+                                   "token. Runtime-supplied for live local play "
+                                   "only; never authored in manifests.",
                 },
             },
         },
@@ -132,7 +131,7 @@ RESULTS_SCHEMA = {
     "additionalProperties": False,
     "required": ["scores", "placements", "kills", "damage_dealt",
                  "survival_ticks", "gifts_received", "winner_slot",
-                 "winner_team", "match_ticks", "seed"],
+                 "match_ticks", "seed"],
     "properties": {
         "scores": {"type": "array", "minItems": 16, "maxItems": 16,
                     "items": {"type": "number"}},
@@ -142,7 +141,6 @@ RESULTS_SCHEMA = {
         "survival_ticks": INT16,
         "gifts_received": INT16,
         "winner_slot": {"type": "integer", "minimum": -1, "maximum": 15},
-        "winner_team": {"type": ["string", "null"]},
         "match_ticks": {"type": "integer", "minimum": 0},
         "seed": {"type": "integer"},
     },
@@ -157,53 +155,48 @@ FULL_ZONE = [
     [6912, 7104, 7536, 3, 0, 24],
 ]
 
-# League fairness (DESIGN 9.4/D3): IDENTICAL scripted schedule per team,
+# League fairness (DESIGN 9.4/D3): IDENTICAL scripted schedule per player,
 # staggered 24 ticks so pods never contend on the same tick.
 LEAGUE_GIFTS = []
-for t, team in enumerate("ABCDEFGH"):
-    LEAGUE_GIFTS.append({"tick": 2016 + 24 * t, "team": team,
-                         "recipient_slot": 2 * t, "item_id": "rations"})
-    LEAGUE_GIFTS.append({"tick": 4608 + 24 * t, "team": team,
-                         "recipient_slot": 2 * t + 1, "item_id": "first_aid"})
+for t in range(16):
+    LEAGUE_GIFTS.append({"tick": 2016 + 24 * t, "player": t,
+                         "item_id": "rations"})
+    LEAGUE_GIFTS.append({"tick": 4608 + 24 * t, "player": t,
+                         "item_id": "first_aid"})
 
 COMPETITION = {
-    "league_mode": "solo", "max_ticks": 9120, "freeze_ticks": 240,
+    "max_ticks": 9120, "freeze_ticks": 240,
     "stat_budget": 20,
     "zone": {"schedule": FULL_ZONE},
     "events": [{"kind": "flood", "rect": [10, 22, 14, 26],
                 "from_tick": 4400, "duration": 720}],
-    "sponsor": {"live": False, "budget_per_team": 300,
+    "sponsor": {"live": False, "budget_per_player": 150,
                 "shop_opens_tick": 1680, "scripted_gifts": LEAGUE_GIFTS},
     "players": DEFAULT_NAMES,
 }
 
 CASUAL = {
-    "league_mode": "solo", "max_ticks": 9120, "freeze_ticks": 240,
+    "max_ticks": 9120, "freeze_ticks": 240,
     "stat_budget": 20,
     "zone": {"schedule": FULL_ZONE},
     "events": [],
-    "sponsor": {"live": True, "budget_per_team": 300,
+    "sponsor": {"live": True, "budget_per_player": 150,
                 "shop_opens_tick": 1680, "scripted_gifts": []},
     "players": DEFAULT_NAMES,
 }
 
 FIXTURE = {
-    "league_mode": "solo", "seed": 42, "max_ticks": 480,
+    "seed": 42, "max_ticks": 480,
     "freeze_ticks": 48, "stat_budget": 20,
     "zone": {"schedule": [[96, 120, 288, 24, 12, 4], [336, 360, 384, 12, 0, 40]]},
     "events": [],
-    "sponsor": {"live": False, "budget_per_team": 300, "shop_opens_tick": 96,
+    "sponsor": {"live": False, "budget_per_player": 150, "shop_opens_tick": 96,
                 "scripted_gifts": [
-                    {"tick": 120, "team": "A", "recipient_slot": 0, "item_id": "rations"},
-                    {"tick": 200, "team": "C", "recipient_slot": 5, "item_id": "sword"},
+                    {"tick": 120, "player": 0, "item_id": "rations"},
+                    {"tick": 200, "player": 5, "item_id": "sword"},
                 ]},
     "players": DEFAULT_NAMES,
 }
-
-DUOS_COMPETITION = deepcopy(COMPETITION)
-DUOS_COMPETITION["league_mode"] = "duos"
-DUOS_FIXTURE = deepcopy(FIXTURE)
-DUOS_FIXTURE["league_mode"] = "duos"
 
 MANIFEST = {
     "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
@@ -211,11 +204,13 @@ MANIFEST = {
     "game": {
         "name": "battle-royal",
         "replay_viewer": {"bundle": "build/static-replay-viewer"},
-        "description": "Battle royale for 16 agents in 8 teams of 2: a "
+        "description": "Free-for-all battle royale for up to 16 agents: a "
                        "loot-stocked central Fortress, a shrinking ring of "
-                       "fire, open talk channels, sponsor softcoin airdrops "
-                       "anyone can steal, and a finale that turns the last "
-                       "team against itself. Every death is a black firework.",
+                       "fire, arena-wide diplomacy (broadcast and dm carry at "
+                       "any distance), per-player sponsor airdrops anyone can "
+                       "steal, and scoring that only pays survival — with "
+                       "podium bonuses for the top three. Every death is a "
+                       "black firework.",
         "owner": "arisklar6@gmail.com",
         "runnable": {
             "type": "game",
@@ -239,10 +234,13 @@ MANIFEST = {
         "source_url": SOURCE_URL,
         "image": "{{BATTLE_ROYAL_IMAGE}}",
         "run": ["/app/battle_royal_baseline"],
-        "description": "Bundled reference policy: allocates 6/6/4/4, loots "
-                       "nearby crates, fights when armed and healthy, flees "
-                       "weak, heals when safe, obeys the ring, claims its "
-                       "team's sponsor drops, forages.",
+        "description": "Bundled reference policy for the FFA survival "
+                       "meta: allocates 7/3/5/5 (speed and athleticism over "
+                       "blade), obeys the ring first, keeps its distance, "
+                       "heals early, fights only cornered or to finish an "
+                       "adjacent critical threat, goes maximum-caution once "
+                       "the podium is in reach, and talks its way out of "
+                       "zero-point fights on the arena-wide channels.",
     }],
     "variants": [
         {
@@ -250,19 +248,19 @@ MANIFEST = {
             "name": "Competition",
             "game_config": COMPETITION,
             "description": "League standard: full 9120-tick match, fast "
-                           "5-minute ring, one scripted flood, equal per-team "
-                           "softcoin budgets delivered as an identical "
-                           "scripted gift schedule (no live sponsorship in "
-                           "hosted play).",
+                           "5-minute ring, one scripted flood, equal "
+                           "per-player softcoin budgets delivered as an "
+                           "identical scripted gift schedule (no live "
+                           "sponsorship in hosted play).",
         },
         {
             "id": "casual-live",
             "name": "Casual (live sponsors)",
             "game_config": CASUAL,
             "description": "Local play with the live sponsor console enabled: "
-                           "supply per-team sponsor tokens via runtime config "
-                           "(sponsor.sponsor_tokens) and open /client/sponsor. "
-                           "Not intended for hosted runs.",
+                           "supply per-player sponsor tokens via runtime "
+                           "config (sponsor.sponsor_tokens) and open "
+                           "/client/sponsor. Not intended for hosted runs.",
         },
     ],
     "certification": {
@@ -270,24 +268,6 @@ MANIFEST = {
         "players": [{"player_id": "battle-royal-baseline"} for _ in range(16)],
     },
 }
-
-DUOS_MANIFEST = deepcopy(MANIFEST)
-DUOS_MANIFEST["game"]["name"] = "battle-royal-duos"
-DUOS_MANIFEST["game"]["description"] = (
-    "Self-paired Battle Royal for 8 policies controlling adjacent teams of 2. "
-    "The game remaps the platform team_n seat pattern onto the canonical "
-    "arena layout and attributes each policy its two contestants' team-total "
-    "score."
-)
-DUOS_MANIFEST["variants"] = [{
-    "id": "competition-duos",
-    "name": "Competition Duos",
-    "game_config": DUOS_COMPETITION,
-    "description": "League standard for 8 self-paired entrants. Use platform "
-                   "team_n seating with team_count 8; external seats i and "
-                   "i+8 become adjacent teammates inside the game.",
-}]
-DUOS_MANIFEST["certification"]["game_config"] = DUOS_FIXTURE
 
 def assert_source_urls(name: str, manifest: dict) -> None:
     """Fail loudly rather than write a template that cannot certify.
@@ -312,7 +292,6 @@ def assert_source_urls(name: str, manifest: dict) -> None:
 
 for filename, manifest in [
     ("coworld_manifest_template.json", MANIFEST),
-    ("coworld_manifest_duos_template.json", DUOS_MANIFEST),
 ]:
     assert_source_urls(filename, manifest)
     out = ROOT / filename

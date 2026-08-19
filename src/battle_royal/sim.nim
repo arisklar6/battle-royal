@@ -38,21 +38,21 @@ type
 
   ScriptedGift* = object
     tick*: int
-    team*: int                 # 0..7
-    recipientSlot*: int        # legacy targeting (v0.1 replay compat)
+    player*: int               # sponsored seat: pays, and receives when the
+                               # gift has no tile target
     target*: Pos               # tile targeting (v0.2); x = -1 when unused
     itemId*: string            # catalog key
 
   SponsorConfig* = object
     live*: bool
-    budgetPerTeam*: int
+    budgetPerPlayer*: int
     shopOpensTick*: int
     scriptedGifts*: seq[ScriptedGift]
 
   SimConfig* = object
     seed*: uint64
     seedWasMinted*: bool
-    leagueMode*: LeagueMode
+    numPlayers*: int           # active seats 0..<numPlayers; 2..16
     maxTicks*: int
     freezeTicks*: int
     zone*: seq[ZoneStage]
@@ -67,7 +67,7 @@ type
     tickRequested*: int
     tickLanded*: int           # -1 until landed / for rejects
     sponsor*: string
-    team*: int
+    player*: int               # the sponsored seat whose purse paid
     recipientSlot*: int        # -1 for tile-targeted (v0.2) gifts
     target*: Pos               # requested tile; x = -1 for legacy gifts
     itemId*: string
@@ -92,8 +92,11 @@ type
     landsTick*: int
     landing*: Pos
 
+  ## FFA diplomacy: both channels carry at ANY distance — broadcast
+  ## reaches every living agent, a dm reaches one. Talk is never
+  ## range-gated; alliances are made and broken across the whole arena.
   TalkChannel* = enum
-    tcBroadcast = "broadcast", tcTeam = "team", tcDm = "dm"
+    tcBroadcast = "broadcast", tcDm = "dm"
 
   TalkMsg* = object
     tick*: int
@@ -125,8 +128,8 @@ type
     inputLog*: seq[AppliedInput]
     hashes*: seq[(int, uint64)]
     winnerSlot*: int
-    teamBudget*: array[8, int]
-    lastGiftTick*: array[8, int]   # tile-gift lockout bookkeeping (v0.2)
+    playerBudget*: array[16, int]
+    lastGiftTick*: array[16, int]  # tile-gift lockout bookkeeping (v0.2)
     sponsorLog*: seq[GiftRecord]
     pods*: seq[Pod]
     finaleEmitted*: bool
@@ -138,9 +141,9 @@ type
     pendingSet: array[16, bool]
 
 proc allocDeadlineTick*(s: Sim): int = s.cfg.freezeTicks - 24
-proc giftLockoutRemaining*(s: Sim, teamIdx: int): int =
-  ## Ticks until the team may buy the next tile-targeted package.
-  max(0, GiftLockoutTicks - (s.tick - s.lastGiftTick[teamIdx]))
+proc giftLockoutRemaining*(s: Sim, slot: int): int =
+  ## Ticks until this player's sponsor may buy the next tile package.
+  max(0, GiftLockoutTicks - (s.tick - s.lastGiftTick[slot]))
 proc moveCooldown*(a: Agent): int = 16 - a.stats.speed
 proc visionRadius*(a: Agent): int = 5 + (a.stats.intelligence + 1) div 2
 proc hazardScaled*(a: Agent, centi: int): int =
@@ -188,14 +191,12 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   # from the same object, and a guard that flagged those would cry wolf on
   # our own shipped configs/*.json -- which is the failure mode this guard
   # exists to prevent, not to reproduce.
-  warnUnknownKeys(node, "", ["league_mode", "max_ticks", "freeze_ticks",
+  warnUnknownKeys(node, "", ["num_players", "max_ticks", "freeze_ticks",
                              "seed", "zone", "sponsor", "events", "players",
                              "tokens", "player_connect_timeout_seconds"])
-  case node{"league_mode"}.getStr("solo")
-  of "solo": result.leagueMode = lmSolo
-  of "duos": result.leagueMode = lmDuos
-  else:
-    raise newException(ValueError, "config: league_mode must be solo or duos")
+  result.numPlayers = node{"num_players"}.getInt(16)
+  if result.numPlayers < 2 or result.numPlayers > 16:
+    raise newException(ValueError, "config: num_players must be 2..16")
   result.maxTicks = node{"max_ticks"}.getInt(9120)
   result.freezeTicks = node{"freeze_ticks"}.getInt(240)
   if node.hasKey("seed"):
@@ -233,35 +234,28 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
     if st.rEnd < 0 or st.rEnd > st.rStart:
       raise newException(ValueError,
         "config: zone stage needs 0 <= r_end <= r_start")
-  result.sponsor.budgetPerTeam = 300
+  result.sponsor.budgetPerPlayer = 150
   result.sponsor.shopOpensTick = 1680
   if node.hasKey("sponsor"):
     let sp = node["sponsor"]
     # `sponsor_tokens` is server.nim's, not this proc's -- same reason as above
-    warnUnknownKeys(sp, "sponsor.", ["live", "budget_per_team",
+    warnUnknownKeys(sp, "sponsor.", ["live", "budget_per_player",
                                      "shop_opens_tick", "scripted_gifts",
                                      "sponsor_tokens"])
     result.sponsor.live = sp{"live"}.getBool(false)
-    result.sponsor.budgetPerTeam = sp{"budget_per_team"}.getInt(300)
+    result.sponsor.budgetPerPlayer = sp{"budget_per_player"}.getInt(150)
     result.sponsor.shopOpensTick = sp{"shop_opens_tick"}.getInt(1680)
     if sp.hasKey("scripted_gifts"):
       for g in sp["scripted_gifts"]:
         warnUnknownKeys(g, "sponsor.scripted_gifts[].",
-                        ["tick", "team", "recipient_slot", "target",
-                         "item_id"])
-        var teamIdx = -1
-        let teamStr = g{"team"}.getStr("")
-        for ti, tn in TeamNames:
-          if tn == teamStr:
-            teamIdx = ti
+                        ["tick", "player", "target", "item_id"])
         var tgt = Pos(x: -1, y: -1)
         if g.hasKey("target") and g["target"].kind == JArray and
            g["target"].len == 2:
           tgt = Pos(x: g["target"][0].getInt(-1), y: g["target"][1].getInt(-1))
         result.sponsor.scriptedGifts.add(ScriptedGift(
           tick: g{"tick"}.getInt(),
-          team: (if teamIdx >= 0: teamIdx else: g{"team"}.getInt(-1)),
-          recipientSlot: g{"recipient_slot"}.getInt(-1),
+          player: g{"player"}.getInt(-1),
           target: tgt,
           itemId: g{"item_id"}.getStr("")))
   const DefaultNames = [
@@ -277,9 +271,9 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
     result.playerNames.add(DefaultNames[i])
   if node.hasKey("players"):
     for i, p in node["players"].elems:
-      if i < 16 and p.kind == JObject and p{"name"}.getStr("").len > 0:
-        let slot = internalSlot(result.leagueMode, AgentId(i))
-        result.playerNames[slot] = p["name"].getStr()
+      if i < result.numPlayers and p.kind == JObject and
+         p{"name"}.getStr("").len > 0:
+        result.playerNames[i] = p["name"].getStr()
   if node.hasKey("events"):
     for e in node["events"]:
       var ev = ScriptedEvent(fromTick: e{"from_tick"}.getInt(),
@@ -302,7 +296,7 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
         ev.center = Pos(x: e["center"][0].getInt(), y: e["center"][1].getInt())
         ev.radius = e{"radius"}.getInt()
       result.events.add(ev)
-  if result.sponsor.budgetPerTeam < 0 or result.sponsor.shopOpensTick < 0:
+  if result.sponsor.budgetPerPlayer < 0 or result.sponsor.shopOpensTick < 0:
     raise newException(ValueError,
       "config: sponsor budget/shop_opens_tick must be >= 0")
 
@@ -500,17 +494,27 @@ proc initSim*(cfg: SimConfig): Sim =
   result.phase = phCountdown
   result.ignitionTick = cfg.freezeTicks
   result.winnerSlot = -1
+  # FFA seating: active seats spread evenly around the full pedestal ring
+  # whatever the head count — everyone equidistant from every neighbour,
+  # nobody spawns beside an ally because there are none. At numPlayers =
+  # 16 the stride is 1 and the seating is the classic ring. Inactive
+  # seats are dead from birth — never spawned, never scored
+  # (computePlacements sinks them below every real death), never drawn.
+  let pedestalStride = 16 div cfg.numPlayers
   for i in 0 .. 15:
+    let active = i < cfg.numPlayers
     result.agents[i] = Agent(
-      slot: AgentId(i), alive: true, pos: Pedestals[i],
-      hpCenti: MaxHpCenti,
+      slot: AgentId(i), alive: active,
+      pos: (if active: Pedestals[i * pedestalStride] else: Pedestals[i]),
+      hpCenti: (if active: MaxHpCenti else: 0),
       stats: Stats(speed: 5, strength: 5, intelligence: 5, athleticism: 5),
       moveReadyTick: 0, attackReadyTick: 0, deathTick: -1,
       lastDamager: -1)
     result.lastTalkTick[i] = -24
     result.lastActionResult[i] = "ok"
-  for t in 0 .. 7:
-    result.teamBudget[t] = cfg.sponsor.budgetPerTeam
+  for t in 0 .. 15:
+    result.playerBudget[t] = (if t < cfg.numPlayers: cfg.sponsor.budgetPerPlayer
+                              else: 0)
     result.lastGiftTick[t] = -GiftLockoutTicks
   result.generateLoot()
 
@@ -1077,61 +1081,61 @@ proc findLandingTile(s: Sim, origin: Pos): Pos =
           best = q
   best
 
-proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
-                  recipientSlot: int, itemId: string,
+proc requestGift*(s: var Sim, sponsor: string, playerIdx: int,
+                  itemId: string,
                   target: Pos = Pos(x: -1, y: -1),
                   requireTile: bool = false): GiftOutcome =
-  ## Atomic (DESIGN §9.1): full-cost accept or zero-effect reject. Both logged.
-  ## Two targeting modes:
-  ##  - tile (v0.2, target.x >= 0): sponsor picks the landing tile; the pinned
-  ##    spiral finds the nearest free tile. One purchase per team per
-  ##    GiftLockoutTicks. recipientSlot is recorded as -1.
-  ##  - recipient (v0.1 legacy, target.x < 0): pod lands near the recipient.
-  ##    NO lockout — scripted recipient gifts keep their original semantics.
-  ## requireTile refuses the legacy mode outright. Live sponsor ingress passes
-  ## it: the lockout is the whole budget-pacing mechanism of the v0.2 pivot,
-  ## and a live socket omitting `target` would otherwise fall through to the
-  ## lockout-free recipient path and drain the budget as fast as it can send.
-  ## Scripted gifts (config) leave it false and keep both modes.
-  let tileMode = target.x >= 0
+  ## Atomic (DESIGN §9.1): full-cost accept or zero-effect reject. Both
+  ## logged. FFA sponsorship: every seat has its own purse. Two modes:
+  ##  - tile (v0.2, target.x >= 0): sponsor picks the landing tile; the
+  ##    pinned spiral finds the nearest free tile. One purchase per player
+  ##    per GiftLockoutTicks. recipientSlot is recorded as -1.
+  ##  - recipient (v0.1 legacy, target.x < 0): pod lands near the
+  ##    sponsored player. NO lockout — scripted recipient gifts keep their
+  ##    original semantics.
+  ## requireTile refuses the legacy mode outright. Live sponsor ingress
+  ## passes it: the lockout is the whole budget-pacing mechanism of the
+  ## v0.2 pivot, and a live socket omitting `target` would otherwise fall
+  ## through to the lockout-free recipient path and drain the budget as
+  ## fast as it can send. Scripted gifts (config) leave it false.
+  ## Any non-negative coordinate is tile INTENT: a half-corrupt target
+  ## (x = -3, y = 900) must reject as malformed, not silently fall
+  ## through to the lockout-free legacy mode.
+  let tileMode = target.x >= 0 or target.y >= 0
   var rec = GiftRecord(tickRequested: s.tick, tickLanded: -1, sponsor: sponsor,
-                       team: teamIdx,
-                       recipientSlot: (if tileMode: -1 else: recipientSlot),
+                       player: playerIdx,
+                       recipientSlot: (if tileMode: -1 else: playerIdx),
                        target: (if tileMode: target else: Pos(x: -1, y: -1)),
                        itemId: itemId, status: gsRejected)
   template reject(why: string): GiftOutcome =
     rec.reason = why
-    rec.balanceAfter = (if teamIdx in 0 .. 7: s.teamBudget[teamIdx] else: 0)
+    rec.balanceAfter =
+      (if playerIdx in 0 .. 15: s.playerBudget[playerIdx] else: 0)
     s.sponsorLog.add(rec)
     GiftOutcome(accepted: false, reason: why, balance: rec.balanceAfter)
-  if s.phase == phEnded or teamIdx notin 0 .. 7:
+  if s.phase == phEnded or playerIdx notin 0 ..< s.cfg.numPlayers:
     return reject("malformed")
   if requireTile and not tileMode:
     return reject("target_required")
   if tileMode:
     if not inBounds(target):
       return reject("malformed")
-  elif recipientSlot notin 0 .. 15:
-    return reject("malformed")
   let (known, gift) = giftLookup(itemId)
   if not known:
     return reject("unknown_item")
   if s.tick < s.cfg.sponsor.shopOpensTick:
     return reject("shop_locked")
-  if tileMode and s.tick - s.lastGiftTick[teamIdx] < GiftLockoutTicks:
+  if tileMode and s.tick - s.lastGiftTick[playerIdx] < GiftLockoutTicks:
     return reject("lockout")
-  if not tileMode:
-    if not s.agents[recipientSlot].alive:
-      return reject("recipient_dead")
-    if team(AgentId(recipientSlot)) != teamIdx:
-      return reject("not_own_team")
-  if s.teamBudget[teamIdx] < gift.price:
+  if not tileMode and not s.agents[playerIdx].alive:
+    return reject("recipient_dead")
+  if s.playerBudget[playerIdx] < gift.price:
     return reject("insufficient_funds")
 
-  s.teamBudget[teamIdx] -= gift.price
+  s.playerBudget[playerIdx] -= gift.price
   if tileMode:
-    s.lastGiftTick[teamIdx] = s.tick
-  let origin = (if tileMode: target else: s.agents[recipientSlot].pos)
+    s.lastGiftTick[playerIdx] = s.tick
+  let origin = (if tileMode: target else: s.agents[playerIdx].pos)
   let landing = s.findLandingTile(origin)
   let landsTick = s.tick + 120
   s.pods.add(Pod(landing: landing, itemId: itemId,
@@ -1139,12 +1143,13 @@ proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
                  landsTick: landsTick))
   rec.status = gsAccepted
   rec.cost = gift.price
-  rec.balanceAfter = s.teamBudget[teamIdx]
+  rec.balanceAfter = s.playerBudget[playerIdx]
   s.sponsorLog.add(rec)
   s.emit(evGiftIncoming, rec.recipientSlot, landing,
     """{"item":"""" & itemId & """","lands_tick":""" & $landsTick &
     ""","recipient":""" & $rec.recipientSlot & "}")
-  GiftOutcome(accepted: true, cost: gift.price, balance: s.teamBudget[teamIdx],
+  GiftOutcome(accepted: true, cost: gift.price,
+              balance: s.playerBudget[playerIdx],
               landsTick: landsTick, landing: landing)
 
 proc resolvePods(s: var Sim) =
@@ -1178,8 +1183,7 @@ proc processScriptedGifts(s: var Sim) =
   ## Scripted gifts pass the IDENTICAL validation pipeline (DESIGN §9.3.1).
   for g in s.cfg.sponsor.scriptedGifts:
     if g.tick == s.tick:
-      discard s.requestGift("script", g.team, g.recipientSlot, g.itemId,
-                            g.target)
+      discard s.requestGift("script", g.player, g.itemId, g.target)
 
 # ---------------------------------------------------------------- deaths
 
@@ -1213,19 +1217,14 @@ proc aliveCount*(s: Sim): int =
   for a in s.agents:
     if a.alive: inc result
 
-proc aliveTeamCount*(s: Sim): int =
-  var seen: array[8, bool]
-  for a in s.agents:
-    if a.alive:
-      seen[team(a.slot)] = true
-  for t in seen:
-    if t: inc result
-
 # ---------------------------------------------------------------- scoring
 
-# DESIGN §12.1 (DECIDED: standard table, +1/kill).
-const PlacementPoints*: array[16, int] =
-  [15, 12, 10, 8, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1, 0, 0]
+## FFA scoring: survival credit plus a podium bonus, nothing else. Kills
+## are tracked and broadcast but never scored — the only way to earn is to
+## outlast. Placement is reverse death order, so survival credit IS the
+## placement ladder: one point per opponent outlasted. The podium carries
+## the extra weight, heaviest at the top.
+const PodiumBonus*: array[3, int] = [10, 5, 2]
 
 proc computePlacements*(s: Sim): array[16, int] =
   ## Placement 1..16: reverse death order; same-tick ties broken by higher
@@ -1250,14 +1249,12 @@ proc computePlacements*(s: Sim): array[16, int] =
   for place, slot in order:
     result[slot] = place + 1
 
-proc scoreFor*(placement, kills: int): int =
-  PlacementPoints[placement - 1] + kills
+proc scoreFor*(s: Sim, placement: int): int =
+  s.cfg.numPlayers - placement +
+    (if placement <= 3: PodiumBonus[placement - 1] else: 0)
 
 proc episodeScore*(s: Sim, placements: array[16, int], slot: AgentId): int =
-  result = scoreFor(placements[slot], s.agents[slot].kills)
-  if s.cfg.leagueMode == lmDuos:
-    let mate = teammate(slot)
-    result += scoreFor(placements[mate], s.agents[mate].kills)
+  s.scoreFor(placements[slot])
 
 # ---------------------------------------------------------------- hash
 
@@ -1307,8 +1304,8 @@ proc tickHash*(s: Sim): uint64 =
   for i in 0 .. 15:
     fnv1a(h, uint64(cast[uint32](int32(s.lastTalkTick[i]))))
   fnv1a(h, uint64(s.talkLog.len))
-  for t in 0 .. 7:
-    fnv1a(h, uint64(cast[uint32](int32(s.teamBudget[t]))))
+  for t in 0 .. 15:
+    fnv1a(h, uint64(cast[uint32](int32(s.playerBudget[t]))))
   for pod in s.pods:
     fnv1a(h, uint64(pod.landing.x))
     fnv1a(h, uint64(pod.landing.y))
@@ -1317,7 +1314,7 @@ proc tickHash*(s: Sim): uint64 =
   # NOTE: sponsorLog deliberately NOT hashed — rejected requests are audit
   # records, not sim state, and rejects are not input-logged; hashing them
   # would make live-vs-replay hashes diverge on any rejected live request.
-  # Accepted-gift effects are fully covered by teamBudget + pods + ground.
+  # Accepted-gift effects are fully covered by playerBudget + pods + ground.
   for w in s.rng.state():
     fnv1a(h, w)
   h
@@ -1351,10 +1348,6 @@ proc step*(s: var Sim) =
       of tcBroadcast:
         for i in 0 .. 15:
           if s.agents[i].alive:
-            s.inbox[i].add(msg)
-      of tcTeam:
-        for i in 0 .. 15:
-          if s.agents[i].alive and team(AgentId(i)) == team(AgentId(msg.slot)):
             s.inbox[i].add(msg)
       of tcDm:
         if s.agents[msg.to].alive:
@@ -1419,9 +1412,8 @@ proc step*(s: var Sim) =
   # 8. deaths
   s.resolveDeaths()
 
-  # 9. win check + bookkeeping (FFA finale: one team left, >=2 alive)
-  if s.phase == phLive and not s.finaleEmitted and
-     s.aliveTeamCount() == 1 and s.aliveCount() >= 2:
+  # 9. win check + bookkeeping (FFA finale: the last-two showdown)
+  if s.phase == phLive and not s.finaleEmitted and s.aliveCount() == 2:
     s.finaleEmitted = true
     s.emit(evFinale, -1, Pos(x: ArenaSize div 2, y: ArenaSize div 2))
   if s.aliveCount() <= 1 and s.phase == phLive:
@@ -1460,8 +1452,7 @@ proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
   if wireType == "talk" and j.hasKey("channel"):
     let chStr = j{"channel"}.getStr("")
     var ch = tcBroadcast
-    if chStr == $tcTeam: ch = tcTeam
-    elif chStr == $tcDm: ch = tcDm
+    if chStr == $tcDm: ch = tcDm
     elif chStr != $tcBroadcast: return
     discard s.submitTalk(slot, ch, j{"to"}.getInt(-1), j{"text"}.getStr(""))
     return

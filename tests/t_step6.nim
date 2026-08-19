@@ -31,22 +31,18 @@ block talk_validation:
   doAssert s.submitTalk(AgentId(4), tcBroadcast, -1, "\x01\x02") == tkRejected
 
 block delivery_sets:
-  var s = mkSim()
-  doAssert s.submitTalk(AgentId(4), tcTeam, -1, "team ho") == tkAccepted # team C = slots 4,5
-  doAssert s.submitTalk(AgentId(6), tcDm, 9, "psst") == tkAccepted
-  doAssert s.submitTalk(AgentId(8), tcBroadcast, -1, "everyone") == tkAccepted
-  s.step() # delivery happens next tick
-  s.step()
-  # inbox contents at the delivery tick were consumed; use a fresh exchange
+  # FFA: broadcast and dm are the only channels, and both carry at ANY
+  # distance — slots 6 and 9 spawn on far sides of the pedestal ring, and
+  # the dm lands as if they were adjacent. Diplomacy is arena-wide.
   var s2 = mkSim()
-  discard s2.submitTalk(AgentId(4), tcTeam, -1, "team ho")
+  let far = abs(s2.agents[6].pos.x - s2.agents[9].pos.x) +
+            abs(s2.agents[6].pos.y - s2.agents[9].pos.y)
+  doAssert far > 20, "test premise: dm endpoints must be far apart"
   discard s2.submitTalk(AgentId(6), tcDm, 9, "psst")
   discard s2.submitTalk(AgentId(8), tcBroadcast, -1, "everyone")
   s2.step() # tick 0 executes; delivery happens inside the NEXT step
   s2.step() # tick 1: inboxes now hold tick-0 messages
-  doAssert s2.inbox[5].len == 2 # teammate: team msg + broadcast
-  doAssert s2.inbox[4].len == 2 # sender echo + broadcast
-  doAssert s2.inbox[9].len == 2 # dm + broadcast
+  doAssert s2.inbox[9].len == 2 # dm + broadcast, across the whole arena
   doAssert s2.inbox[6].len == 2 # dm sender echo + broadcast
   doAssert s2.inbox[0].len == 1 # broadcast only
   var texts0: seq[string] = @[]

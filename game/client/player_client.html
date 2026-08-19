@@ -47,7 +47,6 @@
   #inv b { color: var(--gold); }
   #hdr { color: var(--teal); font-size: 13px; letter-spacing: .12em;
          text-transform: uppercase; }
-  .chatrow.team { color: #A5E3EE; }
   .chatrow.dm { color: #FFB454; }
   #note { color: #8a95a3; font-size: 10px; }
   @media (prefers-reduced-motion: reduce) {
@@ -110,7 +109,13 @@ const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const el = id => document.getElementById(id);
 let cfg = null;
 // Team accents (DESIGN §21.3) — index = slot>>1
-const TEAM = ['#FF8FA8','#49C7E8','#E8C558','#9B7BFF','#E85D75','#9FB8D8','#E8975D','#D97BE8'];
+// FFA: sixteen fills from eight hues — odd seats wear the deep value
+const HUES = ['#FF8FA8','#49C7E8','#E8C558','#9B7BFF','#E85D75','#9FB8D8','#E8975D','#D97BE8'];
+const shadeHex = (hex, d) => '#' + [1, 3, 5].map(i =>
+  Math.max(0, Math.min(255, parseInt(hex.slice(i, i + 2), 16) + d))
+    .toString(16).padStart(2, '0')).join('');
+const playerColor = s => (s % 2 ? shadeHex(HUES[(s >> 1) % 8], -56)
+                                : HUES[(s >> 1) % 8]);
 const BAND = { healthy: '#A5E3EE', hurt: '#FFB454', critical: '#FF4A36' };
 const WEAPON_GLYPH = { sword:'S', spear:'P', bow:'B', knives:'K', blowgun:'G', net:'N',
                        first_aid:'+', rations:'R', backpack:'Δ', camouflage:'C', arrows:'a', darts:'d' };
@@ -278,7 +283,7 @@ ws.onmessage = (ev) => {
     blockMap = cfg.arena.static_map.map(row => [...row].map(ch => ch === '#' || ch === 'R' || ch === 'F'));
     hatchPat = ctx.createPattern(hatch, 'repeat');
     el('ident').textContent =
-      'P' + cfg.slot + ' ' + String(cfg.name || '').toUpperCase() + ' · TEAM ' + cfg.team;
+      'P' + cfg.slot + ' ' + String(cfg.name || '').toUpperCase() + ' · FFA';
     renderLamps();
     return;
   }
@@ -324,8 +329,8 @@ ws.onmessage = (ev) => {
       // agent-authored text: textContent only, never innerHTML
       const row = document.createElement('div');
       row.className = 'chatrow' +
-        (c.channel === 'team' ? ' team' : c.channel === 'dm' ? ' dm' : '');
-      row.textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : c.channel === 'team' ? '·team' : ''}] ${c.text}`;
+        (c.channel === 'dm' ? ' dm' : '');
+      row.textContent = `[P${c.from}${c.channel === 'dm' ? '→' + c.to : ''}] ${c.text}`;
       log.insertBefore(row, log.firstChild);   // newest-first
     }
     while (log.children.length > 120) log.removeChild(log.lastChild);
@@ -456,14 +461,13 @@ ws.onmessage = (ev) => {
     ctx.beginPath(); ctx.moveTo(cx - v[0]*8, cy - v[1]*8); ctx.lineTo(cx, cy); ctx.stroke();
     ctx.fillStyle = '#EBF5FF'; ctx.fillRect(cx-1, cy-1, 3, 3);
   }
-  // enemy/teammate tokens: team accent core, hp-band ring, weapon glyph, status pips
+  // opponent tokens (FFA: everyone is one): accent core, hp-band ring,
+  // weapon glyph, status pips
   for (const a of m.visible.agents) {
     const cx = a.pos[0]*S + S/2, cy = a.pos[1]*S + S/2;
-    const mate = (a.slot >> 1) === (cfg.slot >> 1);
-    ctx.fillStyle = TEAM[a.slot >> 1];
+    ctx.fillStyle = playerColor(a.slot);
     ctx.beginPath();
-    if (mate) { ctx.moveTo(cx, cy-6); ctx.lineTo(cx+6, cy); ctx.lineTo(cx, cy+6); ctx.lineTo(cx-6, cy); ctx.closePath(); }
-    else ctx.arc(cx, cy, 5, 0, 7);
+    ctx.arc(cx, cy, 5, 0, 7);
     ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = BAND[a.hp_band] || '#fff';
     ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, 7); ctx.stroke(); ctx.lineWidth = 1;

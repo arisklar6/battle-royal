@@ -11,7 +11,7 @@ proc name(s: Sim, slot: int): string =
     "P?" & $slot
 
 proc tag(s: Sim, slot: int): string =
-  s.name(slot) & " (" & teamName(AgentId(slot)) & ")"
+  s.name(slot)
 
 proc pad5(t: int): string =
   result = $t
@@ -22,7 +22,6 @@ proc talkLine*(s: Sim, m: TalkMsg): string =
   let ch =
     case m.channel
     of tcBroadcast: "[broadcast]"
-    of tcTeam: "[team]"
     of tcDm: "[dm->" & s.name(m.to) & "]"
   "[t=" & pad5(m.tick) & "] " & ch & " " & s.tag(m.slot) & ": " & m.text
 
@@ -36,7 +35,7 @@ proc systemLine(s: Sim, e: Event, remainAfter: int): string =
   of evEventWarning: t & "HAZARD WARNING: " & e.data & " *"
   of evGiftIncoming: t & "SPONSOR DROP INBOUND: " & e.data & " *"
   of evGiftLanded: t & "SPONSOR DROP LANDED at (" & $e.pos.x & "," & $e.pos.y & ") *"
-  of evFinale: t & "FINALE - one team left, no allies now *"
+  of evFinale: t & "FINALE - two remain - the last-two showdown *"
   of evMatchEnd:
     if e.slot >= 0: t & s.tag(e.slot) & " WINS *"
     else: t & "MATCH OVER *"
@@ -110,7 +109,6 @@ proc buildTranscriptJson*(s: Sim): string =
   for m in s.talkLog:
     flushEventsUpTo(m.tick - 1)
     arr.add(%*{"tick": m.tick, "slot": m.slot,
-               "team": teamName(AgentId(m.slot)),
                "channel": $m.channel,
                "to": (if m.channel == tcDm: %m.to else: newJNull()),
                "text": m.text})

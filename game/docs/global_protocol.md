@@ -21,11 +21,11 @@ One zoomable world layer (288x288 px, 6 px per tile) plus anchored HUD
 layers:
 
 - top-left: `ALIVE n  RING r  T m:ss`
-- bottom-left: per-team softcoin ticker (`COIN A300 B180 ...`)
-- center-top banners: `IGNITION`, `FINALE`, `WINNER <team> P<slot>`
+- bottom-left: remaining sponsor softcoin pool (`COIN POOL 2400`)
+- center-top banners: `IGNITION`, `FINAL 2`, `WINNER <name>`
 
-On the map: team-colored agent chips (two per team, pip marks the second
-slot), loot chips color-coded by item, projectile tracers, the advancing
+On the map: per-player colored agent chips (sixteen fills — eight hues,
+each at a bright and a deep value), loot chips color-coded by item, projectile tracers, the advancing
 orange fire ring at the safe-zone boundary, hazard region tints (firestorm
 orange, flood blue), sponsor pods (blinking red target while inbound, white
 crate with red stripe once landed), and fireworks: gold bursts for ignition

@@ -11,13 +11,20 @@ proc mkSim(): Sim =
                          fixedSeed))
 
 block scoring_table:
-  doAssert PlacementPoints.len == 16
-  doAssert PlacementPoints == [15, 12, 10, 8, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1, 0, 0]
-  doAssert scoreFor(1, 0) == 15
-  doAssert scoreFor(1, 5) == 20
-  doAssert scoreFor(4, 2) == 10       # DESIGN worked example
-  doAssert scoreFor(12, 0) == 2
-  doAssert scoreFor(16, 3) == 3
+  # FFA scoring: survival credit (one point per opponent outlasted) plus
+  # the podium bonus 10/5/2 — and NOTHING for kills.
+  let s = mkSim()
+  doAssert PodiumBonus == [10, 5, 2]
+  doAssert s.scoreFor(1) == 15 + 10   # 16 players: outlasted 15, gold bonus
+  doAssert s.scoreFor(2) == 14 + 5
+  doAssert s.scoreFor(3) == 13 + 2
+  doAssert s.scoreFor(4) == 12        # off the podium: survival only
+  doAssert s.scoreFor(16) == 0
+  var s4 = initSim(parseSimConfig(%*{
+    "seed": 42, "max_ticks": 9120, "freeze_ticks": 48, "num_players": 4},
+    fixedSeed))
+  doAssert s4.scoreFor(1) == 3 + 10   # scales with the head count
+  doAssert s4.scoreFor(4) == 0
 
 block placement_ordering:
   var s = mkSim()
@@ -49,10 +56,10 @@ block placement_ordering:
   doAssert p2[0] == 1 and p2[15] == 16
 
 block finale_event:
+  # FFA finale: the last-two showdown, emitted once when 2 remain.
   var s = mkSim()
   while s.phase == phCountdown:
     s.step()
-  # kill everyone except team A (slots 0, 1)
   for i in 2 .. 15:
     s.agents[i].hpCenti = 0
   s.step()
@@ -61,12 +68,11 @@ block finale_event:
     if e.kind == evFinale:
       sawFinale = true
   doAssert sawFinale
-  doAssert s.phase == phLive          # match continues: teammates must fight
+  doAssert s.phase == phLive          # match continues to a single winner
   # only emitted once
   s.step()
   for e in s.events:
     doAssert e.kind != evFinale
-  # kill one teammate -> match ends, survivor wins
   s.agents[1].hpCenti = 0
   s.step()
   doAssert s.phase == phEnded
@@ -75,10 +81,10 @@ block finale_event:
 block gifts_received_and_scores_align:
   var s = initSim(parseSimConfig(%*{
     "seed": 42, "max_ticks": 2000, "freeze_ticks": 48,
-    "sponsor": {"live": false, "budget_per_team": 300, "shop_opens_tick": 60,
+    "sponsor": {"live": false, "budget_per_player": 300, "shop_opens_tick": 60,
                  "scripted_gifts": [
-                   {"tick": 70, "team": "A", "recipient_slot": 0, "item_id": "rations"},
-                   {"tick": 100, "team": "A", "recipient_slot": 0, "item_id": "net"}]}},
+                   {"tick": 70, "player": 0, "item_id": "rations"},
+                   {"tick": 100, "player": 0, "item_id": "net"}]}},
     fixedSeed))
   while s.tick < 150:
     s.step()
@@ -87,6 +93,6 @@ block gifts_received_and_scores_align:
     if r.status == gsAccepted and r.recipientSlot == 0:
       inc accepted
   doAssert accepted == 2
-  doAssert s.teamBudget[0] == 300 - 20 - 50
+  doAssert s.playerBudget[0] == 300 - 20 - 50
 
 echo "t_step8 ok"

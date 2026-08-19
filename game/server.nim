@@ -28,7 +28,7 @@ type
 
   SponsorReq = object
     ws: WebSocket
-    teamIdx: int
+    playerIdx: int
     payload: string
 
   AppState = object
@@ -39,9 +39,8 @@ type
     sponsorQueue: seq[SponsorReq]
     sponsorJoined: seq[WebSocket]
     sponsorLive: bool
-    sponsorTokens: Table[string, string] # team name -> token (runtime config only)
+    sponsorTokens: Table[string, string] # player slot ("0".."15") -> token
     playerTokens: seq[string]            # per-slot, runner-injected
-    leagueMode: LeagueMode
     players: Table[WebSocket, int]       # ws -> slot
     playerBySlot: array[16, WebSocket]   # valid only when slotConnected
     slotConnected: array[16, bool]
@@ -150,14 +149,11 @@ proc httpHandler(request: Request) =
       var ok = false
       try:
         let j = parseJson(request.body)
-        let teamName = j{"team"}.getStr("")
-        var teamIdx = -1
-        for i, tn in TeamNames:
-          if tn == teamName: teamIdx = i
-        if teamIdx >= 0:
-          var clean = %*{"team": teamName, "slots": newJObject(),
+        let playerIdx = j{"player"}.getInt(-1)
+        if playerIdx in 0 .. 15:
+          var clean = %*{"player": playerIdx, "slots": newJObject(),
                           "policy": newJObject(), "notes": ""}
-          for slot in [teamIdx * 2, teamIdx * 2 + 1]:
+          for slot in [playerIdx]:
             let ss = j{"slots"}{$slot}
             var stats = %*{"speed": 6, "strength": 6,
                             "intelligence": 4, "athleticism": 4}
@@ -274,7 +270,7 @@ proc httpHandler(request: Request) =
           request.respond(200, headers, "battle_royal player websocket endpoint")
           return
         let websocket = request.upgradeToWebSocket()
-        let slot = int(internalSlot(appState.leagueMode, AgentId(externalSlot)))
+        let slot = externalSlot          # FFA: platform seat i IS slot i
         # reconnect policy (DESIGN §10): a valid second connection replaces
         # the seat; the old socket is queued for closure
         if appState.slotConnected[slot]:
@@ -290,18 +286,21 @@ proc httpHandler(request: Request) =
     {.gcsafe.}:
       withLock appState.lock:
         let live = appState.sponsorLive
-        let teamName = queryParam(request.uri, "team")
+        let playerStr = queryParam(request.uri, "player")
         let token = queryParam(request.uri, "token")
-        var teamIdx = -1
-        for i, tn in TeamNames:
-          if tn == teamName: teamIdx = i
-        if not live or teamIdx < 0 or teamName notin appState.sponsorTokens or
-           token.len == 0 or appState.sponsorTokens[teamName] != token:
+        var playerIdx = -1
+        try:
+          playerIdx = parseInt(playerStr)
+        except CatchableError:
+          discard
+        if not live or playerIdx notin 0 .. 15 or
+           playerStr notin appState.sponsorTokens or
+           token.len == 0 or appState.sponsorTokens[playerStr] != token:
           headers["Content-Type"] = "text/plain"
           request.respond(403, headers, "sponsor ingress disabled or bad token")
           return
         let websocket = request.upgradeToWebSocket()
-        appState.sponsors[websocket] = teamIdx
+        appState.sponsors[websocket] = playerIdx
         appState.sponsorJoined.add(websocket)
     return
   case path
@@ -363,7 +362,7 @@ proc websocketHandler(websocket: WebSocket, event: WebSocketEvent,
         if websocket in appState.sponsors:
           if appState.sponsorQueue.len < 256:
             appState.sponsorQueue.add(SponsorReq(
-              ws: websocket, teamIdx: appState.sponsors[websocket],
+              ws: websocket, playerIdx: appState.sponsors[websocket],
               payload: message.data))
         elif websocket in appState.players:
           # ingress cap (review §1.6): a flooding bot cannot grow the queue
@@ -580,11 +579,10 @@ proc runLive(rc: RuntimeConfig) =
   {.gcsafe.}:
     withLock appState.lock:
       appState.sponsorLive = cfg.sponsor.live
-      appState.leagueMode = cfg.leagueMode
       if original.hasKey("sponsor") and
          original["sponsor"].hasKey("sponsor_tokens"):
-        for teamName, tok in original["sponsor"]["sponsor_tokens"].pairs:
-          appState.sponsorTokens[teamName] = tok.getStr()
+        for playerKey, tok in original["sponsor"]["sponsor_tokens"].pairs:
+          appState.sponsorTokens[playerKey] = tok.getStr()
       if original.hasKey("tokens"):
         for tok in original["tokens"]:
           appState.playerTokens.add(tok.getStr())
@@ -656,8 +654,8 @@ proc runLive(rc: RuntimeConfig) =
         rows.add(escapeJson(row))
       rows.add("]")
       try:
-        ws.send("""{"type":"sponsor_welcome","team":"""" & TeamNames[ti] &
-                """","budget":""" & $s.teamBudget[ti] &
+        ws.send("""{"type":"sponsor_welcome","player":""" & $ti &
+                ""","budget":""" & $s.playerBudget[ti] &
                 ""","catalog":""" & catalog &
                 ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
                 ""","lockout_ticks":""" & $GiftLockoutTicks &
@@ -680,8 +678,8 @@ proc runLive(rc: RuntimeConfig) =
           if j.hasKey("target") and j["target"].kind == JArray and
              j["target"].len == 2:
             tgt = Pos(x: j["target"][0].getInt(-1), y: j["target"][1].getInt(-1))
-          let outc = s.requestGift("live:" & TeamNames[req.teamIdx],
-            req.teamIdx, j{"recipient_slot"}.getInt(-1), j{"item_id"}.getStr(""),
+          let outc = s.requestGift("live:P" & $(req.playerIdx + 1),
+            req.playerIdx, j{"item_id"}.getStr(""),
             tgt, requireTile = true)
           let reqId = j{"request_id"}.getStr("")
           reply =
@@ -806,26 +804,23 @@ proc runLive(rc: RuntimeConfig) =
       for (ws, ti) in sponsorConns:
         var aliveArr = ""
         var mates = ""
-        for i in 0 .. 15:
-          if s.agents[i].alive and team(AgentId(i)) == ti:
-            if aliveArr.len > 0: aliveArr.add(",")
-            aliveArr.add($i)
-            # own-team positions only; /global is public anyway, so this
-            # leaks nothing the sponsor could not already watch
-            let band = (if s.agents[i].hpCenti > 6600: "healthy"
-              elif s.agents[i].hpCenti >= 3300: "hurt"
-              else: "critical")
-            if mates.len > 0: mates.add(",")
-            mates.add("""{"slot":""" & $i & ""","pos":[""" &
-                      $s.agents[i].pos.x & "," & $s.agents[i].pos.y &
-                      """],"hp_band":"""" & band & """"}""")
+        if s.agents[ti].alive:
+          aliveArr.add($ti)
+          # own player's position only; /global is public anyway, so this
+          # leaks nothing the sponsor could not already watch
+          let band = (if s.agents[ti].hpCenti > 6600: "healthy"
+            elif s.agents[ti].hpCenti >= 3300: "hurt"
+            else: "critical")
+          mates.add("""{"slot":""" & $ti & ""","pos":[""" &
+                    $s.agents[ti].pos.x & "," & $s.agents[ti].pos.y &
+                    """],"hp_band":"""" & band & """"}""")
         try:
           ws.send("""{"type":"sponsor_state","tick":""" & $s.tick &
-                  ""","budget":""" & $s.teamBudget[ti] &
+                  ""","budget":""" & $s.playerBudget[ti] &
                   ""","shop_opens_tick":""" & $s.cfg.sponsor.shopOpensTick &
                   ""","lockout_remaining":""" & $s.giftLockoutRemaining(ti) &
-                  ""","team_alive":[""" & aliveArr &
-                  """],"teammates":[""" & mates &
+                  ""","player_alive":[""" & aliveArr &
+                  """],"players":[""" & mates &
                   """],"zone":{"radius":""" & $s.zoneRadius() &
                   ""","next_radius":""" & $nextR &
                   ""","shrink_tick":""" & $shrinkT &
@@ -835,8 +830,8 @@ proc runLive(rc: RuntimeConfig) =
     while echoedGifts < s.sponsorLog.len:
       let g = s.sponsorLog[echoedGifts]
       echo "SPONSOR [t=", g.tickRequested, "] ", g.sponsor, " ", $g.status,
-           " ", g.itemId, " -> P", g.recipientSlot, " (team ",
-           (if g.team in 0 .. 7: TeamNames[g.team] else: "?"), ") cost=", g.cost,
+           " ", g.itemId, " -> P", g.recipientSlot, " (player ",
+           (if g.player in 0 .. 15: $g.player else: "?"), ") cost=", g.cost,
            (if g.reason.len > 0: " reason=" & g.reason else: ""),
            " balance=", g.balanceAfter
       inc echoedGifts

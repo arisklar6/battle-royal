@@ -76,10 +76,14 @@ block wire_shapes:
   s.applyInputJson(AgentId(0), parseJson(
     """{"type":"allocate_stats","speed":7,"strength":5,"intelligence":4,"athleticism":4}"""))
   doAssert s.agents[0].statsLocked and s.agents[0].stats.speed == 7
-  # flat wire talk
+  # flat wire talk (FFA: broadcast and dm are the only channels; both
+  # carry at any distance)
   s.applyInputJson(AgentId(1), parseJson(
-    """{"type":"talk","channel":"team","text":"wire format"}"""))
-  doAssert s.talkLog.len == 1 and s.talkLog[0].channel == tcTeam
+    """{"type":"talk","channel":"broadcast","text":"wire format"}"""))
+  doAssert s.talkLog.len == 1 and s.talkLog[0].channel == tcBroadcast
+  s.applyInputJson(AgentId(1), parseJson(
+    """{"type":"talk","channel":"team","text":"gone"}"""))
+  doAssert s.talkLog.len == 1, "removed team channel must not parse"
   # wire action: applied for real (cleared ground, must move)
   while s.phase == phCountdown: s.step()
   s.clearRect(9, 11, 29, 31)
@@ -90,12 +94,25 @@ block wire_shapes:
   s.step()
   doAssert s.agents[2].pos == Pos(x: 10, y: 29)
 
+block provisional_final_score:
+  ## #23 (relh): an elimination `final` carries score_final=false — the
+  ## placement ladder can still shift under a dead agent until the match
+  ## ends. Coverage lived in t_league_modes, deleted with the league modes.
+  var s = mkSim()
+  s.agents[5].alive = false
+  s.agents[5].deathTick = 100
+  let elimination = parseJson(finalJson(s, 5))
+  doAssert not elimination["score_final"].getBool()
+  s.phase = phEnded
+  doAssert parseJson(finalJson(s, 5))["score_final"].getBool()
+
 block player_config_shape:
   var s = mkSim()
   let c = parseJson(playerConfigJson(s, 3))
   doAssert c["protocol"].getStr() == "battle_royal.player.v1"
   doAssert c["slot"].getInt() == 3
-  doAssert c["teammate_slot"].getInt() == 2
+  doAssert c["mode"].getStr() == "ffa"
+  doAssert c["num_players"].getInt() == 16
   doAssert c["arena"]["static_map"].len == ArenaSize
   doAssert c["arena"]["legend"].hasKey("P")
   doAssert c["stats"]["budget"].getInt() == 20

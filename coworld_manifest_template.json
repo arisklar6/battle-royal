@@ -12,7 +12,7 @@
     "replay_viewer": {
       "bundle": "build/static-replay-viewer"
     },
-    "description": "Battle royale for 16 agents in 8 teams of 2: a loot-stocked central Fortress, a shrinking ring of fire, open talk channels, sponsor softcoin airdrops anyone can steal, and a finale that turns the last team against itself. Every death is a black firework.",
+    "description": "Free-for-all battle royale for up to 16 agents: a loot-stocked central Fortress, a shrinking ring of fire, arena-wide diplomacy (broadcast and dm carry at any distance), per-player sponsor airdrops anyone can steal, and scoring that only pays survival \u2014 with podium bonuses for the top three. Every death is a black firework.",
     "owner": "arisklar6@gmail.com",
     "runnable": {
       "type": "game",
@@ -39,12 +39,11 @@
             "minLength": 1
           }
         },
-        "league_mode": {
-          "enum": [
-            "solo",
-            "duos"
-          ],
-          "description": "Policy seating and result attribution. solo maps one external seat to one contestant. duos remaps platform team_n seats i/i+8 onto adjacent teammates and reports their shared team-total score to both seats."
+        "num_players": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16,
+          "description": "Seats in the free-for-all (default 16). Seat i is slot i; every other agent is an opponent."
         },
         "seed": {
           "type": "integer",
@@ -146,7 +145,7 @@
               "type": "boolean",
               "description": "Live sponsor websocket ingress. Local play only; league/certification configs keep this false."
             },
-            "budget_per_team": {
+            "budget_per_player": {
               "type": "integer",
               "minimum": 0,
               "maximum": 10000
@@ -162,8 +161,7 @@
                 "additionalProperties": false,
                 "required": [
                   "tick",
-                  "team",
-                  "recipient_slot",
+                  "player",
                   "item_id"
                 ],
                 "properties": {
@@ -171,22 +169,18 @@
                     "type": "integer",
                     "minimum": 0
                   },
-                  "team": {
-                    "enum": [
-                      "A",
-                      "B",
-                      "C",
-                      "D",
-                      "E",
-                      "F",
-                      "G",
-                      "H"
-                    ]
-                  },
-                  "recipient_slot": {
+                  "player": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 15
+                  },
+                  "target": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "integer"
+                    }
                   },
                   "item_id": {
                     "type": "string",
@@ -200,7 +194,7 @@
               "additionalProperties": {
                 "type": "string"
               },
-              "description": "team letter -> sponsor auth token. Runtime-supplied for live local play only; never authored in manifests."
+              "description": "player slot (\"0\"..\"15\") -> sponsor auth token. Runtime-supplied for live local play only; never authored in manifests."
             }
           }
         },
@@ -236,7 +230,6 @@
         "survival_ticks",
         "gifts_received",
         "winner_slot",
-        "winner_team",
         "match_ticks",
         "seed"
       ],
@@ -294,12 +287,6 @@
           "minimum": -1,
           "maximum": 15
         },
-        "winner_team": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "match_ticks": {
           "type": "integer",
           "minimum": 0
@@ -312,18 +299,18 @@
     "protocols": {
       "player": {
         "type": "text",
-        "value": "# battle_royal.player.v1 \u2014 player protocol\n\nJSON text messages over WebSocket. Connect to\n`ws://<game>:8080/player?slot=<0..15>&token=<token>` \u2014 your container gets the\nfull URL in `COWORLD_PLAYER_WS_URL` (legacy alias `COGAMES_ENGINE_WS_URL`).\nA bad token fails the connection. Reconnecting with a valid token replaces\nyour previous socket; your agent state is untouched.\n\nUnknown query params are ignored. Malformed JSON or unknown fields never\ndisconnect you \u2014 the input is treated as `none` and the next observation's\n`you.action_result` is `\"malformed\"`.\n\n## Server -> you\n\n### player_config (once, on connect)\n```json\n{\"type\": \"player_config\", \"protocol\": \"battle_royal.player.v1\",\n \"slot\": 3, \"team\": \"B\", \"teammate_slot\": 2, \"name\": \"P03\",\n \"arena\": {\"size\": 48, \"static_map\": [\"48 rows of 48 tile chars\"],\n            \"legend\": {\".\": \"ground\", \"#\": \"wall\", \"R\": \"rock\",\n                        \"F\": \"fortress_wall\", \"P\": \"pedestal\", \"B\": \"berry_bush\"},\n            \"pedestals\": [[40,24], \"...\"]},\n \"freeze\": {\"ends_tick\": 240, \"alloc_deadline_tick\": 216,\n             \"pedestal_mine_rule\": \"leaving your pedestal tile before ignition is instant death\"},\n \"stats\": {\"budget\": 20, \"min\": 1, \"max\": 10, \"default\": [5,5,5,5]},\n \"items\": [{\"id\": \"sword\", \"kind\": \"ikMelee\", \"damage\": 18, \"range\": 1,\n             \"cooldown\": 18, \"durability\": 40, \"stack_max\": 1,\n             \"use_ticks\": 0, \"heal\": 0}, \"...\"],\n \"zone_schedule\": [[1440,1632,2064,24,19,1], \"...(warn, shrink, done, r0, r1, dmg/s)\"],\n \"tick_rate\": 24, \"max_ticks\": 9120, \"ignition_tick\": 240,\n \"sponsor\": {\"enabled\": true, \"budget_per_team\": 300, \"shop_opens_tick\": 1680,\n              \"catalog\": {\"sword\": 120, \"rations\": 20, \"...\": 0}}}\n```\n\n### alloc_result (reply to allocate_stats)\n```json\n{\"type\": \"alloc_result\", \"applied\": {\"speed\":6,\"strength\":6,\"intelligence\":4,\"athleticism\":4}, \"defaulted\": false}\n{\"type\": \"alloc_result\", \"rejected\": true, \"reason\": \"duplicate|invalid|late\", \"applied\": {\"...current stats...\"}}\n```\nFirst valid allocation wins and is immutable \u2014 a retry after a lost ack is\nsafe (`duplicate` echoes what you already have).\n\n### observation (every tick while you live)\n```json\n{\"type\": \"observation\", \"tick\": 4200, \"phase\": \"countdown|live|ended\",\n \"you\": {\"pos\": [12,40], \"hp\": 86,\n         \"stats\": {\"speed\":6,\"strength\":6,\"intelligence\":4,\"athleticism\":4},\n         \"hand\": {\"id\": \"spear\", \"durability\": 31},\n         \"body\": \"backpack\",\n         \"pack\": [{\"id\":\"rations\",\"n\":2}, {\"id\":\"sword\",\"durability\":12}, null, null],\n         \"effects\": [{\"id\":\"poison\",\"ticks_left\":96}],\n         \"damage_taken\": [{\"source\":\"zone\",\"amount\":0.85}],\n         \"kills\": 1, \"damage_dealt\": 214,\n         \"move_ready_in\": 0, \"attack_ready_in\": 6,\n         \"action_result\": \"ok\"},\n \"visible\": {\"agents\": [{\"slot\":7,\"team\":\"D\",\"pos\":[15,38],\"hp_band\":\"hurt\",\n                          \"hand\":\"sword\",\"body\":null,\"netted\":false,\n                          \"poisoned\":true,\"channeling\":false}],\n              \"items\": [{\"id\":\"arrows\",\"n\":6,\"pos\":[13,44]}],\n              \"pods\": [{\"pos\":[20,30],\"item\":\"first_aid\",\"landed\":true,\n                         \"lands_tick\":4320,\"recipient_slot\":4}],\n              \"bushes\": [{\"pos\":[13,42],\"charges\":2}],\n              \"projectiles\": [{\"pos\":[14,39],\"dir\":\"W\",\"kind\":\"arrow\",\"shooter\":9}]},\n \"zone\": {\"center\":[24,24],\"radius\":15,\"next_radius\":11,\n           \"warn_tick\":4080,\"shrink_tick\":4320,\"damage_per_s\":4},\n \"events\": [{\"type\":\"death_fireworks\",\"slot\":9,\"pos\":[30,22]},\n             {\"type\":\"boom\",\"direction\":\"NE\"},\n             {\"type\":\"gift_incoming\",\"slot\":4,\"pos\":[20,30],\n              \"item\":\"first_aid\",\"lands_tick\":4320,\"recipient\":4}],\n \"chat\": [{\"tick\":4196,\"from\":2,\"channel\":\"team\",\"to\":null,\"text\":\"push the mouth\"}]}\n```\nNotes:\n- Fog: `visible.*` is line-of-sight limited by your INT vision radius; walls,\n  rocks, and the Fortress block sight. Camouflaged agents are absent unless\n  within their detection cap or revealed by attacking.\n- `hp_band` on others: `healthy` (>66), `hurt` (33-66), `critical` (<33).\n  Exact HP is private. Your own `kills`/`damage_dealt` are visible so the\n  placement tiebreak is computable.\n- Arena-wide regardless of fog: `ignition`, `death_fireworks`,\n  `boom` (rough direction only), `mine_explosion`, `zone_warning`,\n  `event_warning` (hazard geometry), `gift_incoming` (landing tile + item +\n  recipient \u2014 public by design), `gift_landed`, `finale`, `match_end`.\n- Sponsor pods (`visible.pods` and the events) show their contents. Once\n  landed, any agent may take the pod's items \u2014 contested airdrops are the\n  point.\n- `action_result` enumeration: `ok`, `cooldown`, `blocked`, `no_target`,\n  `no_ammo`, `inventory_full`, `frozen`, `rate_limited`, `malformed`.\n\n### final (at your death or match end)\n```json\n{\"type\": \"final\", \"placement\": 4, \"kills\": 2, \"score\": 10,\n \"winner_slot\": 2, \"match_ticks\": 8412,\n \"reason\": \"eliminated|winner|match_over\"}\n```\nExit your container promptly (0) after `final`.\n\n## You -> server\n\nOne `action` per tick (the first received in a tick wins). `talk` is separate\nand rate-limited to 1 per 24 ticks.\n\n```json\n{\"type\": \"allocate_stats\", \"speed\": 6, \"strength\": 6, \"intelligence\": 4, \"athleticism\": 4}\n\n{\"type\": \"action\", \"do\": \"move\",   \"dir\": \"N|NE|E|SE|S|SW|W|NW\"}\n{\"type\": \"action\", \"do\": \"attack\", \"dir\": \"N|NE|E|SE|S|SW|W|NW\"}\n{\"type\": \"action\", \"do\": \"pickup\"}\n{\"type\": \"action\", \"do\": \"drop\", \"slot\": -1}        // -1 hand, -2 body, 0..3 pack\n{\"type\": \"action\", \"do\": \"use\",  \"slot\": 0}         // pack slot: weapon=equip swap,\n                                                    // gear=wear, consumable=start channel\n{\"type\": \"action\", \"do\": \"interact\"}                // forage the bush you stand on\n{\"type\": \"action\", \"do\": \"none\"}\n\n{\"type\": \"talk\", \"channel\": \"broadcast|team|dm\", \"to\": 9, \"text\": \"<=120 printable ASCII\"}\n```\n\nMovement is 8-directional on the grid (diagonals cost the same). Attacks are\ndirectional: melee hits the first agent along your facing within weapon range;\nranged spawns a projectile travelling 2 tiles/tick, blocked by walls/rocks,\ndodgeable. Bow/blowgun consume `arrows`/`darts` from your pack; knives/net\nthrow from your hand stack. Spent projectiles land as lootable items at max\nrange.\n"
+        "value": "# battle_royal.player.v1 \u2014 player protocol\n\nJSON text messages over WebSocket. Connect to\n`ws://<game>:8080/player?slot=<0..15>&token=<token>` \u2014 your container gets the\nfull URL in `COWORLD_PLAYER_WS_URL` (legacy alias `COGAMES_ENGINE_WS_URL`).\nA bad token fails the connection. Reconnecting with a valid token replaces\nyour previous socket; your agent state is untouched.\n\nUnknown query params are ignored. Malformed JSON or unknown fields never\ndisconnect you \u2014 the input is treated as `none` and the next observation's\n`you.action_result` is `\"malformed\"`.\n\n## Server -> you\n\n### player_config (once, on connect)\n```json\n{\"type\": \"player_config\", \"protocol\": \"battle_royal.player.v1\",\n \"slot\": 3, \"mode\": \"ffa\", \"num_players\": 16, \"name\": \"P03\",\n \"arena\": {\"size\": 48, \"static_map\": [\"48 rows of 48 tile chars\"],\n            \"legend\": {\".\": \"ground\", \"#\": \"wall\", \"R\": \"rock\",\n                        \"F\": \"fortress_wall\", \"P\": \"pedestal\", \"B\": \"berry_bush\"},\n            \"pedestals\": [[40,24], \"...\"]},\n \"freeze\": {\"ends_tick\": 240, \"alloc_deadline_tick\": 216,\n             \"pedestal_mine_rule\": \"leaving your pedestal tile before ignition is instant death\"},\n \"stats\": {\"budget\": 20, \"min\": 1, \"max\": 10, \"default\": [5,5,5,5]},\n \"items\": [{\"id\": \"sword\", \"kind\": \"ikMelee\", \"damage\": 18, \"range\": 1,\n             \"cooldown\": 18, \"durability\": 40, \"stack_max\": 1,\n             \"use_ticks\": 0, \"heal\": 0}, \"...\"],\n \"zone_schedule\": [[1440,1632,2064,24,19,1], \"...(warn, shrink, done, r0, r1, dmg/s)\"],\n \"tick_rate\": 24, \"max_ticks\": 9120, \"ignition_tick\": 240,\n \"sponsor\": {\"enabled\": true, \"budget_per_player\": 150, \"shop_opens_tick\": 1680,\n              \"catalog\": {\"sword\": 120, \"rations\": 20, \"...\": 0}}}\n```\n\n### alloc_result (reply to allocate_stats)\n```json\n{\"type\": \"alloc_result\", \"applied\": {\"speed\":6,\"strength\":6,\"intelligence\":4,\"athleticism\":4}, \"defaulted\": false}\n{\"type\": \"alloc_result\", \"rejected\": true, \"reason\": \"duplicate|invalid|late\", \"applied\": {\"...current stats...\"}}\n```\nFirst valid allocation wins and is immutable \u2014 a retry after a lost ack is\nsafe (`duplicate` echoes what you already have).\n\n### observation (every tick while you live)\n```json\n{\"type\": \"observation\", \"tick\": 4200, \"phase\": \"countdown|live|ended\",\n \"you\": {\"pos\": [12,40], \"hp\": 86,\n         \"stats\": {\"speed\":6,\"strength\":6,\"intelligence\":4,\"athleticism\":4},\n         \"hand\": {\"id\": \"spear\", \"durability\": 31},\n         \"body\": \"backpack\",\n         \"pack\": [{\"id\":\"rations\",\"n\":2}, {\"id\":\"sword\",\"durability\":12}, null, null],\n         \"effects\": [{\"id\":\"poison\",\"ticks_left\":96}],\n         \"damage_taken\": [{\"source\":\"zone\",\"amount\":0.85}],\n         \"kills\": 1, \"damage_dealt\": 214,\n         \"move_ready_in\": 0, \"attack_ready_in\": 6,\n         \"action_result\": \"ok\"},\n \"visible\": {\"agents\": [{\"slot\":7,\"pos\":[15,38],\"hp_band\":\"hurt\",\n                          \"hand\":\"sword\",\"body\":null,\"netted\":false,\n                          \"poisoned\":true,\"channeling\":false}],\n              \"items\": [{\"id\":\"arrows\",\"n\":6,\"pos\":[13,44]}],\n              \"pods\": [{\"pos\":[20,30],\"item\":\"first_aid\",\"landed\":true,\n                         \"lands_tick\":4320,\"recipient_slot\":4}],\n              \"bushes\": [{\"pos\":[13,42],\"charges\":2}],\n              \"projectiles\": [{\"pos\":[14,39],\"dir\":\"W\",\"kind\":\"arrow\",\"shooter\":9}]},\n \"zone\": {\"center\":[24,24],\"radius\":15,\"next_radius\":11,\n           \"warn_tick\":4080,\"shrink_tick\":4320,\"damage_per_s\":4},\n \"events\": [{\"type\":\"death_fireworks\",\"slot\":9,\"pos\":[30,22]},\n             {\"type\":\"boom\",\"direction\":\"NE\"},\n             {\"type\":\"gift_incoming\",\"slot\":4,\"pos\":[20,30],\n              \"item\":\"first_aid\",\"lands_tick\":4320,\"recipient\":4}],\n \"chat\": [{\"tick\":4196,\"from\":2,\"channel\":\"broadcast\",\"to\":null,\"text\":\"push the mouth\"}]}\n```\nNotes:\n- Fog: `visible.*` is line-of-sight limited by your INT vision radius; walls,\n  rocks, and the Fortress block sight. Camouflaged agents are absent unless\n  within their detection cap or revealed by attacking.\n- `hp_band` on others: `healthy` (>66), `hurt` (33-66), `critical` (<33).\n  Exact HP is private. Your own `kills`/`damage_dealt` are visible so the\n  placement tiebreak is computable.\n- Arena-wide regardless of fog: `ignition`, `death_fireworks`,\n  `boom` (rough direction only), `mine_explosion`, `zone_warning`,\n  `event_warning` (hazard geometry), `gift_incoming` (landing tile + item +\n  recipient \u2014 public by design), `gift_landed`, `finale`, `match_end`.\n- Sponsor pods (`visible.pods` and the events) show their contents. Once\n  landed, any agent may take the pod's items \u2014 contested airdrops are the\n  point.\n- `action_result` enumeration: `ok`, `cooldown`, `blocked`, `no_target`,\n  `no_ammo`, `inventory_full`, `frozen`, `rate_limited`, `malformed`.\n\n### final (at your death or match end)\n```json\n{\"type\": \"final\", \"placement\": 4, \"kills\": 2, \"score\": 10,\n \"winner_slot\": 2, \"match_ticks\": 8412,\n \"reason\": \"eliminated|winner|match_over\"}\n```\nExit your container promptly (0) after `final`.\n\n## You -> server\n\nOne `action` per tick (the first received in a tick wins). `talk` is separate\nand rate-limited to 1 per 24 ticks.\n\n```json\n{\"type\": \"allocate_stats\", \"speed\": 6, \"strength\": 6, \"intelligence\": 4, \"athleticism\": 4}\n\n{\"type\": \"action\", \"do\": \"move\",   \"dir\": \"N|NE|E|SE|S|SW|W|NW\"}\n{\"type\": \"action\", \"do\": \"attack\", \"dir\": \"N|NE|E|SE|S|SW|W|NW\"}\n{\"type\": \"action\", \"do\": \"pickup\"}\n{\"type\": \"action\", \"do\": \"drop\", \"slot\": -1}        // -1 hand, -2 body, 0..3 pack\n{\"type\": \"action\", \"do\": \"use\",  \"slot\": 0}         // pack slot: weapon=equip swap,\n                                                    // gear=wear, consumable=start channel\n{\"type\": \"action\", \"do\": \"interact\"}                // forage the bush you stand on\n{\"type\": \"action\", \"do\": \"none\"}\n\n{\"type\": \"talk\", \"channel\": \"broadcast|dm\", \"to\": 9, \"text\": \"<=120 printable ASCII\"}\n// both channels carry at ANY distance: broadcast reaches every living\n// agent, dm reaches exactly one \u2014 negotiate across the whole arena\n```\n\nMovement is 8-directional on the grid (diagonals cost the same). Attacks are\ndirectional: melee hits the first agent along your facing within weapon range;\nranged spawns a projectile travelling 2 tiles/tick, blocked by walls/rocks,\ndodgeable. Bow/blowgun consume `arrows`/`darts` from your pack; knives/net\nthrow from your hand stack. Spent projectiles land as lootable items at max\nrange.\n"
       },
       "global": {
         "type": "text",
-        "value": "# Battle Royal \u2014 global/spectator protocol\n\nThe spectator surfaces speak the engine's binary sprite protocol\n(`sprite_v1`): the server pushes sprite/object/layer definition messages over\nWebSocket and the bundled browser client renders them. You normally never\nparse this yourself \u2014 open the client pages.\n\n## Endpoints\n\n- `GET /client/global` \u2014 live spectator page (pan/zoom the arena).\n- `WS /global` \u2014 the sprite_v1 stream behind it.\n- `GET /client/admin` + `WS /admin` \u2014 read-only ops view of the same stream.\n- `GET /healthz` \u2014 liveness.\n\nAll client pages honor an optional `?address=` query parameter (proxied\nhosting) and otherwise derive their WebSocket URL from the page origin.\n\n## What a spectator sees\n\nOne zoomable world layer (288x288 px, 6 px per tile) plus anchored HUD\nlayers:\n\n- top-left: `ALIVE n  RING r  T m:ss`\n- bottom-left: per-team softcoin ticker (`COIN A300 B180 ...`)\n- center-top banners: `IGNITION`, `FINALE`, `WINNER <team> P<slot>`\n\nOn the map: team-colored agent chips (two per team, pip marks the second\nslot), loot chips color-coded by item, projectile tracers, the advancing\norange fire ring at the safe-zone boundary, hazard region tints (firestorm\norange, flood blue), sponsor pods (blinking red target while inbound, white\ncrate with red stripe once landed), and fireworks: gold bursts for ignition\nand the winner, black bursts + shock ring for every death, orange flash for\npedestal mines.\n\n## Static replay artifact\n\nThe replay written to `COGAME_SAVE_REPLAY_URI` is a zlib-compressed sequence\nof timestamped `sprite_v1` packets. It records the exact public presentation\nstream generated for the live global viewer. The game-owned static bundle\nfetches those bytes through its `?replay=` parameter and provides autoplay,\npause, speed, seek, and looping without starting the game image.\n\nHuman-readable transcripts, sponsor logs, event history, and fairness reports\nremain separate match artifacts. The replay intentionally contains no auth\ntokens or private player observations.\n"
+        "value": "# Battle Royal \u2014 global/spectator protocol\n\nThe spectator surfaces speak the engine's binary sprite protocol\n(`sprite_v1`): the server pushes sprite/object/layer definition messages over\nWebSocket and the bundled browser client renders them. You normally never\nparse this yourself \u2014 open the client pages.\n\n## Endpoints\n\n- `GET /client/global` \u2014 live spectator page (pan/zoom the arena).\n- `WS /global` \u2014 the sprite_v1 stream behind it.\n- `GET /client/admin` + `WS /admin` \u2014 read-only ops view of the same stream.\n- `GET /healthz` \u2014 liveness.\n\nAll client pages honor an optional `?address=` query parameter (proxied\nhosting) and otherwise derive their WebSocket URL from the page origin.\n\n## What a spectator sees\n\nOne zoomable world layer (288x288 px, 6 px per tile) plus anchored HUD\nlayers:\n\n- top-left: `ALIVE n  RING r  T m:ss`\n- bottom-left: remaining sponsor softcoin pool (`COIN POOL 2400`)\n- center-top banners: `IGNITION`, `FINAL 2`, `WINNER <name>`\n\nOn the map: per-player colored agent chips (sixteen fills \u2014 eight hues,\neach at a bright and a deep value), loot chips color-coded by item, projectile tracers, the advancing\norange fire ring at the safe-zone boundary, hazard region tints (firestorm\norange, flood blue), sponsor pods (blinking red target while inbound, white\ncrate with red stripe once landed), and fireworks: gold bursts for ignition\nand the winner, black bursts + shock ring for every death, orange flash for\npedestal mines.\n\n## Static replay artifact\n\nThe replay written to `COGAME_SAVE_REPLAY_URI` is a zlib-compressed sequence\nof timestamped `sprite_v1` packets. It records the exact public presentation\nstream generated for the live global viewer. The game-owned static bundle\nfetches those bytes through its `?replay=` parameter and provides autoplay,\npause, speed, seek, and looping without starting the game image.\n\nHuman-readable transcripts, sponsor logs, event history, and fairness reports\nremain separate match artifacts. The replay intentionally contains no auth\ntokens or private player observations.\n"
       },
       "engine_runtime": "bitworld"
     },
     "docs": {
       "readme": {
         "type": "text",
-        "value": "# Battle Royal\n\nA battle royale for sixteen agents. Eight teams of two spawn empty-handed on a\nring of pedestals around a loot-stocked central **Fortress**. A countdown, a\nburst of fireworks \u2014 then the scramble. The best weapons sit in the most\ndangerous place, a ring of fire closes on a fixed schedule, human sponsors\nairdrop supplies to their teams, and every death is a black firework the whole\narena sees. Last contestant standing wins. When only one team remains, the\nfinale turns teammates against each other.\n\n## The match\n\n- **Arena**: 48x48 tile grid, walls on the border. The Fortress (9x9, four\n  2-tile mouths) sits at the center (24,24). Rock clusters block movement,\n  sight, and projectiles. Berry bushes in the outer ring can be foraged.\n- **Countdown** (240 ticks at 24 ticks/second, 10 s): you stand on your\n  pedestal. You may talk and you must allocate your stats. **Stepping off your\n  pedestal before ignition detonates a hidden mine \u2014 instant death.**\n- **Ignition** at tick 240: mines disarm, everything is allowed.\n- **The ring**: from ~1:00 a circular safe zone shrinks in 7 scheduled stages\n  (full schedule in your `player_config`), fully closing about 5 minutes after\n  ignition. Outside the ring you take escalating damage (1 -> 24 HP/s,\n  athleticism-reduced). Scripted hazards (floods, firestorms) may trigger with\n  a 5-second arena-wide warning.\n- **End**: match ends when one contestant is alive (or at the hard tick cap;\n  survivors are then ranked by tiebreak). No draws.\n\n## Stats \u2014 allocate before the deadline\n\nFour stats, integers 1..10, sum at most 20. Send `allocate_stats` during the\ncountdown (deadline: 24 ticks before ignition). Miss it or send garbage and\nyou play the default 5/5/5/5. First valid allocation is immutable.\n\n| Stat | Effect |\n|---|---|\n| speed | move cooldown = 16 - SPD ticks per tile |\n| strength | melee damage x(5+STR)/10 |\n| intelligence | vision radius 5+(INT+1)/2; poison duration 12x(20-INT); forage double-yield 5%xINT |\n| athleticism | projectile dodge 2%xATH; zone/hazard damage x(100-3xATH)%; bow draw 18-ATH/2 |\n\n## Items\n\nEveryone starts with bare hands (5 dmg, always available). Everything else is\nlooted, foraged, or sponsor-dropped. Tier-1 loot (swords, bow, blowgun, camo)\nis deep in the Fortress chamber; tier-2 in its mouths; 20 lesser crates are\nscattered mid-ring; bushes yield rations.\n\nWeapons: sword (18 dmg melee), spear (12 dmg, reach 2), bow+arrows (14 dmg,\nrange 8), throwing knives (8 dmg, range 5, consumable), blowgun+darts (4 dmg +\npoison: 2 HP per second pulse, INT-scaled duration, blocks first-aid), net\n(immobilizes 3 s). Gear: backpack (2 -> 4 pack slots), camouflage (undetected\nbeyond 4 tiles standing / 7 moving until you attack), first-aid kit (50 HP,\n2 s channel, cancelled by any damage), rations (15 HP). Melee weapons wear\nout: durability counts swings. Dead contestants drop everything where they\nfall.\n\n## Sponsors and softcoin\n\nEach team has a softcoin budget (default 300). Mid-match, sponsors buy from a\nfixed catalog (prices in `player_config.sponsor.catalog`); the gift airdrops\nnear the recipient 5 seconds later. **Every drop is announced arena-wide with\nits landing tile and contents \u2014 and once landed, ANYONE can loot it.** The\nshop opens 60 s after ignition. Sponsor spending never affects score. In\nleague play, sponsorship is an equal scripted schedule per team.\n\n## Scoring\n\n`score = placement points + kills`. Placement is reverse death order\n(same-tick ties: more damage dealt, then lower slot).\n\n| Place | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n| Pts | 15 | 12 | 10 | 8 | 7 | 6 | 5 | 4 | 3 | 3 | 2 | 2 | 1 | 1 | 0 | 0 |\n\nKill credit goes to the last damager (poison counts for the shooter). Zone,\nmines, and hazards credit nobody. Friendly fire is always on \u2014 the finale\nneeds no rule change; betrayal is always legal.\n\n## Talk\n\nOpen text channels: `broadcast` (everyone), `team` (your partner), `dm`\n(anyone). 1 message per second, 120 printable-ASCII chars. Alliances and\nbetrayals happen in the chat \u2014 there is no pact mechanic. The full transcript\nis a public artifact of every match; play accordingly.\n\n## Protocol\n\nJSON over WebSocket, protocol `battle_royal.player.v1` \u2014 see the player protocol\ndocument for every message shape. Your policy container receives the game URL\nin `COWORLD_PLAYER_WS_URL`.\n"
+        "value": "# Battle Royal\n\nA free-for-all battle royale for up to sixteen agents. Everyone spawns\nempty-handed on a ring of pedestals around a loot-stocked central\n**Fortress**. A countdown, a burst of fireworks \u2014 then the scramble. The best\nweapons sit in the most dangerous place, a ring of fire closes on a fixed\nschedule, human sponsors airdrop supplies to their player, and every death is\na black firework the whole arena sees. There are no teams \u2014 every alliance is\ntalked into existence and betrayed the same way. Last contestant standing\nwins.\n\n## The match\n\n- **Arena**: 48x48 tile grid, walls on the border. The Fortress (9x9, four\n  2-tile mouths) sits at the center (24,24). Rock clusters block movement,\n  sight, and projectiles. Berry bushes in the outer ring can be foraged.\n- **Countdown** (240 ticks at 24 ticks/second, 10 s): you stand on your\n  pedestal. You may talk and you must allocate your stats. **Stepping off your\n  pedestal before ignition detonates a hidden mine \u2014 instant death.**\n- **Ignition** at tick 240: mines disarm, everything is allowed.\n- **The ring**: from ~1:00 a circular safe zone shrinks in 7 scheduled stages\n  (full schedule in your `player_config`), fully closing about 5 minutes after\n  ignition. Outside the ring you take escalating damage (1 -> 24 HP/s,\n  athleticism-reduced). Scripted hazards (floods, firestorms) may trigger with\n  a 5-second arena-wide warning.\n- **End**: match ends when one contestant is alive (or at the hard tick cap;\n  survivors are then ranked by tiebreak). No draws.\n\n## Stats \u2014 allocate before the deadline\n\nFour stats, integers 1..10, sum at most 20. Send `allocate_stats` during the\ncountdown (deadline: 24 ticks before ignition). Miss it or send garbage and\nyou play the default 5/5/5/5. First valid allocation is immutable.\n\n| Stat | Effect |\n|---|---|\n| speed | move cooldown = 16 - SPD ticks per tile |\n| strength | melee damage x(5+STR)/10 |\n| intelligence | vision radius 5+(INT+1)/2; poison duration 12x(20-INT); forage double-yield 5%xINT |\n| athleticism | projectile dodge 2%xATH; zone/hazard damage x(100-3xATH)%; bow draw 18-ATH/2 |\n\n## Items\n\nEveryone starts with bare hands (5 dmg, always available). Everything else is\nlooted, foraged, or sponsor-dropped. Tier-1 loot (swords, bow, blowgun, camo)\nis deep in the Fortress chamber; tier-2 in its mouths; 20 lesser crates are\nscattered mid-ring; bushes yield rations.\n\nWeapons: sword (18 dmg melee), spear (12 dmg, reach 2), bow+arrows (14 dmg,\nrange 8), throwing knives (8 dmg, range 5, consumable), blowgun+darts (4 dmg +\npoison: 2 HP per second pulse, INT-scaled duration, blocks first-aid), net\n(immobilizes 3 s). Gear: backpack (2 -> 4 pack slots), camouflage (undetected\nbeyond 4 tiles standing / 7 moving until you attack), first-aid kit (50 HP,\n2 s channel, cancelled by any damage), rations (15 HP). Melee weapons wear\nout: durability counts swings. Dead contestants drop everything where they\nfall.\n\n## Sponsors and softcoin\n\nEach player has a softcoin purse (default 150). Mid-match, sponsors buy from\na fixed catalog (prices in `player_config.sponsor.catalog`); the gift\nairdrops near the sponsored player 5 seconds later. **Every drop is announced\narena-wide with its landing tile and contents \u2014 and once landed, ANYONE can\nloot it.** The shop opens 60 s after ignition. Sponsor spending never affects\nscore. In league play, sponsorship is an equal scripted schedule per\nplayer.\n\n## Scoring\n\nSurvival is the only currency: `score = (players - placement) + podium\nbonus`. Placement is reverse death order (same-tick ties: more damage dealt,\nthen lower slot) \u2014 outlast one more opponent, earn one more point. The podium\ncarries the extra weight:\n\n| Place | 1 | 2 | 3 |\n|---|---|---|---|\n| Bonus | +10 | +5 | +2 |\n\nIn a 16-player match the winner banks 15 + 10 = 25. **Kills score nothing**\n\u2014 they are tracked and broadcast, but the only way to earn is to outlive the\nfield. Kill credit still goes to the last damager for the record. Attacking\nanyone is always legal; there is nobody you are not allowed to fight.\n\n## Talk\n\nOpen text channels: `broadcast` (every living agent) and `dm` (any one\nagent). **Both carry at any distance** \u2014 you can negotiate with a player on\nthe far side of the arena you have never seen. 1 message per second, 120\nprintable-ASCII chars. Alliances and betrayals happen in the chat \u2014 there is\nno pact mechanic and no team channel, because there are no teams. The full\ntranscript is a public artifact of every match; play accordingly.\n\n## Protocol\n\nJSON over WebSocket, protocol `battle_royal.player.v1` \u2014 see the player protocol\ndocument for every message shape. Your policy container receives the game URL\nin `COWORLD_PLAYER_WS_URL`.\n"
       }
     }
   },
@@ -337,7 +324,7 @@
       "run": [
         "/app/battle_royal_baseline"
       ],
-      "description": "Bundled reference policy: allocates 6/6/4/4, loots nearby crates, fights when armed and healthy, flees weak, heals when safe, obeys the ring, claims its team's sponsor drops, forages."
+      "description": "Bundled reference policy for the FFA survival meta: allocates 7/3/5/5 (speed and athleticism over blade), obeys the ring first, keeps its distance, heals early, fights only cornered or to finish an adjacent critical threat, goes maximum-caution once the podium is in reach, and talks its way out of zero-point fights on the arena-wide channels."
     }
   ],
   "variants": [
@@ -345,7 +332,6 @@
       "id": "competition",
       "name": "Competition",
       "game_config": {
-        "league_mode": "solo",
         "max_ticks": 9120,
         "freeze_ticks": 240,
         "stat_budget": 20,
@@ -424,103 +410,167 @@
         ],
         "sponsor": {
           "live": false,
-          "budget_per_team": 300,
+          "budget_per_player": 150,
           "shop_opens_tick": 1680,
           "scripted_gifts": [
             {
               "tick": 2016,
-              "team": "A",
-              "recipient_slot": 0,
+              "player": 0,
               "item_id": "rations"
             },
             {
               "tick": 4608,
-              "team": "A",
-              "recipient_slot": 1,
+              "player": 0,
               "item_id": "first_aid"
             },
             {
               "tick": 2040,
-              "team": "B",
-              "recipient_slot": 2,
+              "player": 1,
               "item_id": "rations"
             },
             {
               "tick": 4632,
-              "team": "B",
-              "recipient_slot": 3,
+              "player": 1,
               "item_id": "first_aid"
             },
             {
               "tick": 2064,
-              "team": "C",
-              "recipient_slot": 4,
+              "player": 2,
               "item_id": "rations"
             },
             {
               "tick": 4656,
-              "team": "C",
-              "recipient_slot": 5,
+              "player": 2,
               "item_id": "first_aid"
             },
             {
               "tick": 2088,
-              "team": "D",
-              "recipient_slot": 6,
+              "player": 3,
               "item_id": "rations"
             },
             {
               "tick": 4680,
-              "team": "D",
-              "recipient_slot": 7,
+              "player": 3,
               "item_id": "first_aid"
             },
             {
               "tick": 2112,
-              "team": "E",
-              "recipient_slot": 8,
+              "player": 4,
               "item_id": "rations"
             },
             {
               "tick": 4704,
-              "team": "E",
-              "recipient_slot": 9,
+              "player": 4,
               "item_id": "first_aid"
             },
             {
               "tick": 2136,
-              "team": "F",
-              "recipient_slot": 10,
+              "player": 5,
               "item_id": "rations"
             },
             {
               "tick": 4728,
-              "team": "F",
-              "recipient_slot": 11,
+              "player": 5,
               "item_id": "first_aid"
             },
             {
               "tick": 2160,
-              "team": "G",
-              "recipient_slot": 12,
+              "player": 6,
               "item_id": "rations"
             },
             {
               "tick": 4752,
-              "team": "G",
-              "recipient_slot": 13,
+              "player": 6,
               "item_id": "first_aid"
             },
             {
               "tick": 2184,
-              "team": "H",
-              "recipient_slot": 14,
+              "player": 7,
               "item_id": "rations"
             },
             {
               "tick": 4776,
-              "team": "H",
-              "recipient_slot": 15,
+              "player": 7,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2208,
+              "player": 8,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4800,
+              "player": 8,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2232,
+              "player": 9,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4824,
+              "player": 9,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2256,
+              "player": 10,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4848,
+              "player": 10,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2280,
+              "player": 11,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4872,
+              "player": 11,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2304,
+              "player": 12,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4896,
+              "player": 12,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2328,
+              "player": 13,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4920,
+              "player": 13,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2352,
+              "player": 14,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4944,
+              "player": 14,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2376,
+              "player": 15,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4968,
+              "player": 15,
               "item_id": "first_aid"
             }
           ]
@@ -576,13 +626,12 @@
           }
         ]
       },
-      "description": "League standard: full 9120-tick match, fast 5-minute ring, one scripted flood, equal per-team softcoin budgets delivered as an identical scripted gift schedule (no live sponsorship in hosted play)."
+      "description": "League standard: full 9120-tick match, fast 5-minute ring, one scripted flood, equal per-player softcoin budgets delivered as an identical scripted gift schedule (no live sponsorship in hosted play)."
     },
     {
       "id": "casual-live",
       "name": "Casual (live sponsors)",
       "game_config": {
-        "league_mode": "solo",
         "max_ticks": 9120,
         "freeze_ticks": 240,
         "stat_budget": 20,
@@ -649,7 +698,7 @@
         "events": [],
         "sponsor": {
           "live": true,
-          "budget_per_team": 300,
+          "budget_per_player": 150,
           "shop_opens_tick": 1680,
           "scripted_gifts": []
         },
@@ -704,12 +753,11 @@
           }
         ]
       },
-      "description": "Local play with the live sponsor console enabled: supply per-team sponsor tokens via runtime config (sponsor.sponsor_tokens) and open /client/sponsor. Not intended for hosted runs."
+      "description": "Local play with the live sponsor console enabled: supply per-player sponsor tokens via runtime config (sponsor.sponsor_tokens) and open /client/sponsor. Not intended for hosted runs."
     }
   ],
   "certification": {
     "game_config": {
-      "league_mode": "solo",
       "seed": 42,
       "max_ticks": 480,
       "freeze_ticks": 48,
@@ -737,19 +785,17 @@
       "events": [],
       "sponsor": {
         "live": false,
-        "budget_per_team": 300,
+        "budget_per_player": 150,
         "shop_opens_tick": 96,
         "scripted_gifts": [
           {
             "tick": 120,
-            "team": "A",
-            "recipient_slot": 0,
+            "player": 0,
             "item_id": "rations"
           },
           {
             "tick": 200,
-            "team": "C",
-            "recipient_slot": 5,
+            "player": 5,
             "item_id": "sword"
           }
         ]
