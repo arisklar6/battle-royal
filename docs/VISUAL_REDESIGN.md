@@ -108,7 +108,7 @@ Agent authors, AI-curious spectators, and strategy players who love Into the Bre
 | **Phosphor** | `#A5E3EE` | Live signal. Agents' silhouette light, vision circles, traces, healthy HP, live text, LOS lines. Peak-white `#EAF7FA` for 1-frame flashes. Hue-locked at ~190° — Tektronix blue-phosphor lineage, explicitly not terminal green. |
 | **Amber** | `#FFB454` | Matter & economy. All loot, crates, pedestals, berries, airdrops, softcoin, durability, "hurt" HP band. The only warm tone in the machine. |
 | **Directive Magenta** | `#FF4FA3` | Commanded geometry. Ring (solid current / dashed target), hazard footprints, countdown arcs, lockout timers. Avionics flight-director lineage: magenta is the path you must obey. Never decorative. |
-| **Klaxon Red** | `#FF4A36` | Harm, now. Damage flashes, critical HP, poison pulses, the pedestal mine, death-frame accents. Red is spent, never worn. Red and magenta never share a line weight (disambiguation at 1–2px). |
+| **Klaxon Red** | `#FF4A36` | Harm, now. Damage flashes, critical HP, poison pulses, the pedestal mine, death-frame accents, the camo-blown mark — and, as of 0.1.19, the contact sighting ring and its reporter echo (harm *sighted*: the ring points at where harm will come from). Red is spent, never worn. Red and magenta never share a line weight (disambiguation at 1–2px). |
 
 **Team wheel (16 agents / 8 duos).** Team hue appears *only* as fills (carrier diamond, trace tint, chip); semantic colors appear *only* as lines/glyphs/UI — fills vs lines is itself a channel. Team hue is never used alone: the identity plate (player name) or team letter always sits adjacent — except while the plate is suppressed in a cluster, see Part 8. Candidate wheel, S/L-locked, to be validated through a CVD simulator before freeze (a CI palette-lint step guards the hue lock and this gate):
 
@@ -274,6 +274,7 @@ Replays are bit-exact, so the camera directs itself deterministically from the e
 
 1. **Add agent positions to the analyst feed** (one array) → scoreboard-anchored-to-camera, minimaps, third-party overlays.
 2. **Pipe chat into the analyst feed live** (it is public by design; today it reaches only stdout) → the diplomacy layer becomes broadcastable: a transcript panel on the desk, floating team-tagged chat chips optionally over the arena, and the finale betrayal *with its receipts*.
+   *Amendment (0.1.19): a message leading with the word `contact` is battlefield intel, not diplomacy, and packs meeting stacked its chips into text walls. The broadcast draws the report instead of printing it — a Klaxon sighting ring blooms on the tile named after "at" (first two unsigned integers; signed or fractional coordinates invalidate the pair), and a miniature ring echo rides the reporter for the chip's usual 2.5 s (not a `!` — that glyph is the camo-blown mark's). The ring lands even if the reporter died the same tick; coordinate-less contact calls mark the reporter only. The sentence itself never reaches the arena; the transcript panel still gets it via the feed. Klaxon here is harm sighted, an addition recorded in §3.1's row.*
 3. **Export `eventHistory`** (currently accumulated and dropped) → timeline, highlight index, heatmaps.
 4. **Replay-mode `/watch`** → per-seat fog POV in replays (the "watch it from the victim's eyes" clip).
 

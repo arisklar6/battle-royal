@@ -90,6 +90,18 @@ const
   SpFadeIgnite = 924       # 924..927
   SpFadeMine = 928         # 928..931
   SpFadeVoid = 932         # 932..935
+  ## Contact calls are drawn, not printed (VISUAL_REDESIGN 5.7 amendment):
+  ## a talk message leading with "contact" is battlefield intel, not
+  ## diplomacy, and packs meeting used to stack its chips into text walls.
+  ## The report becomes a klaxon sighting ring blooming on the named tile
+  ## plus a miniature ring echoing it over the reporter — deliberately NOT
+  ## an exclamation: SpRevealMark is already a klaxon "!" riding an agent
+  ## ("camo blown"), and one glyph must not carry two meanings. 940..944
+  ## sits clear of the fade ramps (920..935) and SpProjBase (960 + ord,
+  ## max 972).
+  ContactStages = 4
+  SpContactPing* = 940     # 940..943: sighting ring, one sprite per stage
+  SpContactMark* = 944     # ring-echo chip over the reporting speaker
   SpPodCrateBase = 900     # 900 + ord(ItemId): contents-keyed crates
   ## 960 + ord(ItemId) -> 964..972. This lived at 80 until 2026-08-13, where
   ## `80 + ord(iArrows|iDarts)` = 91, 92 landed inside SpBushBase's 90..93.
@@ -304,6 +316,7 @@ type
     talkUntil: array[16, int]
     talkFlip: array[16, int]
     talkW: array[16, int]     # chip width in 1x space, for the edge clamp
+    talkMark: array[16, bool] # active chip is a contact "!", not text
     lastCause: array[16, string]  # cause watermark for settlement chyrons
     labels: array[16, string]     # slotLabel per seat; see ensureLabels
     labelsReady: bool
@@ -1722,6 +1735,74 @@ proc ensureLabels(r: var Renderer, s: Sim) =
 const
   TalkChipTtl = 60     # 2.5 s at 24 Hz
   TalkChipMax = 24     # chars of message after the speaker tag
+  ContactPingTtl = 30  # sighting ring: one 1.25 s bloom at 24 Hz, then gone
+  ContactPingSz = 24   # ring canvas in 1x px — 4 tiles, reads at map zoom
+  ContactMarkW = 7     # ring-echo chip canvas in 1x space (square)
+  ContactMarkH = 7
+
+proc contactCall*(text: string): (bool, int, int) =
+  ## A talk message leading with the word "contact" is a sighting report.
+  ## Returns (isContact, x, y), where the coordinates are the first two
+  ## integers after the word "at" — "contact: P3 at (31,20)" -> (true, 31,
+  ## 20); the P-slot survives because it precedes "at". A coordinate-less
+  ## call ("contact nearby, regroup") returns (true, -1, -1): the reporter
+  ## is still marked, nothing is pinged. Exported for the test suite.
+  result = (false, -1, -1)
+  var i = 0
+  while i < text.len and text[i] == ' ':
+    inc i
+  const Kw = "contact"
+  if i + Kw.len > text.len:
+    return
+  for k in 0 ..< Kw.len:
+    let c = text[i + k]
+    if (if c >= 'A' and c <= 'Z': chr(ord(c) + 32) else: c) != Kw[k]:
+      return
+  # word boundary: "contacting hq" is conversation, not a report
+  if i + Kw.len < text.len:
+    let nxt = text[i + Kw.len]
+    if nxt in {'a' .. 'z', 'A' .. 'Z', '0' .. '9'}:
+      return
+  result[0] = true
+  var j = i + Kw.len
+  var atEnd = -1
+  while j + 1 < text.len:
+    let a = text[j]
+    let t = text[j + 1]
+    if (a == 'a' or a == 'A') and (t == 't' or t == 'T') and
+       text[j - 1] notin {'a' .. 'z', 'A' .. 'Z', '0' .. '9'} and
+       (j + 2 >= text.len or
+        text[j + 2] notin {'a' .. 'z', 'A' .. 'Z', '0' .. '9'}):
+      atEnd = j + 2
+      break
+    inc j
+  if atEnd < 0:
+    return
+  var coords: array[2, int]
+  var found = 0
+  var p = atEnd
+  while p < text.len and found < 2:
+    if text[p] == '-' and p + 1 < text.len and text[p + 1] in {'0' .. '9'}:
+      # a signed number is off-board by definition — mirroring "-5" onto
+      # tile 5 would ring a confident lie, so the whole pair is dropped
+      return
+    if text[p] in {'0' .. '9'}:
+      var v = 0
+      while p < text.len and text[p] in {'0' .. '9'}:
+        v = min(9999, v * 10 + (ord(text[p]) - ord('0')))
+        inc p
+      # swallow a fractional tail ("3.5") so it can't become the next coord
+      if p + 1 < text.len and text[p] == '.' and text[p + 1] in {'0' .. '9'}:
+        inc p
+        while p < text.len and text[p] in {'0' .. '9'}:
+          inc p
+      coords[found] = v
+      inc found
+    else:
+      inc p
+  if found == 2:
+    result[1] = coords[0]
+    result[2] = coords[1]
 
 proc talkSafe(text: string): string =
   ## 3x5-font-safe chip text: uppercase, unsupported glyphs become spaces,
@@ -1800,6 +1881,53 @@ proc pingPixels(big: bool): seq[uint8] =
         let outer = d2 > (rr - RS) * (rr - RS)
         let a = (if big: 90 else: 150) div (if outer: 2 else: 1)
         result.put(Sz, x, y, GoldTone, uint8(a))
+
+proc contactPingPixels(stage: int): seq[uint8] =
+  ## Sighting ring for a contact call: blooms outward across ContactStages
+  ## while the rim dims — the report becomes a place on the board instead
+  ## of a sentence over the speaker's head. Klaxon, the harm family: the
+  ## ring marks where a threat was seen; amber stays the crates' color.
+  ## Same doubled-coordinate raster as pingPixels for the smooth rim.
+  const Sz = ContactPingSz * RS
+  result = newSeq[uint8](Sz * Sz * 4)
+  let rr = (8 + stage * 5) * RS        # drawn radius 4 -> 11.5 px at 1x
+  let inner = rr - 2 * RS
+  let alpha = 210 - stage * 45         # 210, 165, 120, 75
+  for y in 0 ..< Sz:
+    for x in 0 ..< Sz:
+      let dx = x * 2 + 1 - Sz
+      let dy = y * 2 + 1 - Sz
+      let d2 = dx * dx + dy * dy
+      if d2 > inner * inner and d2 <= rr * rr:
+        let outer = d2 > (rr - RS) * (rr - RS)
+        result.put(Sz, x, y, Klaxon, uint8(alpha div (if outer: 2 else: 1)))
+  if stage == 0:
+    # the first frame also stamps the sighted point itself
+    for oy in 0 ..< RS * 2:
+      for ox in 0 ..< RS * 2:
+        result.put(Sz, Sz div 2 - RS + ox, Sz div 2 - RS + oy, Klaxon, 230)
+
+proc contactMarkPixels(): seq[uint8] =
+  ## Miniature sighting ring that rides the reporting speaker in the
+  ## talk-chip slot — who called it stays on air even though the sentence
+  ## does not, and the echo visually rhymes with the bloom on the tile.
+  ## Not an exclamation on purpose: SpRevealMark already means "camo blown"
+  ## as a klaxon "!" at the same anchor.
+  const Sz = ContactMarkW * RS
+  result = newSeq[uint8](Sz * ContactMarkH * RS * 4)
+  let rr = 6 * RS                      # doubled-coordinate radius: 3 px at 1x
+  let inner = rr - 2 * RS
+  for y in 0 ..< ContactMarkH * RS:
+    for x in 0 ..< Sz:
+      let dx = x * 2 + 1 - Sz
+      let dy = y * 2 + 1 - ContactMarkH * RS
+      let d2 = dx * dx + dy * dy
+      if d2 > inner * inner and d2 <= rr * rr:
+        result.put(Sz, x, y, Klaxon, 230)
+  for oy in 0 ..< RS:                  # sighted-point dot, echoing stage 0
+    for ox in 0 ..< RS:
+      result.put(Sz, Sz div 2 - RS div 2 + ox,
+                 (ContactMarkH * RS) div 2 - RS div 2 + oy, Klaxon)
 
 proc hitFlashPixels(): seq[uint8] =
   ## 1-frame peak-white carrier silhouette on any damage taken — the
@@ -2342,6 +2470,11 @@ proc spriteDefs(s: Sim): seq[uint8] =
                    native = true)
   result.addSprite(SpHitFlash, BodyWR, BodyHR, hitFlashPixels(), "hit",
                    native = true)
+  for k in 0 ..< ContactStages:
+    result.addSprite(SpContactPing + k, ContactPingSz * RS, ContactPingSz * RS,
+                     contactPingPixels(k), "contact" & $k, native = true)
+  result.addSprite(SpContactMark, ContactMarkW * RS, ContactMarkH * RS,
+                   contactMarkPixels(), "contact_mark", native = true)
 
 proc bodySprite(r: Renderer, s: Sim, slot: int): int =
   let moving = s.tick - r.lastMoveTick[slot] < 12
@@ -2586,7 +2719,30 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
   # as the kill feed's dynamic text.
   for idx in r.talkSeen ..< s.talkLog.len:
     let msg = s.talkLog[idx]
-    if msg.slot < 0 or msg.slot > 15 or not s.agents[msg.slot].alive:
+    if msg.slot < 0 or msg.slot > 15:
+      continue
+    # contact calls are drawn, not printed (VISUAL_REDESIGN 5.7 amendment):
+    # packs meeting stacked "CONTACT: P0 AT .." chips into text walls. The
+    # report becomes a sighting ring on the named tile and a spotter chip
+    # over the reporter, reusing the talk slot's object and lifecycle.
+    let (isContact, tx, ty) = contactCall(msg.text)
+    if isContact:
+      # the ring marks a tile, not the speaker, so it lands even when the
+      # reporter died between submitting the call and this render tick —
+      # "called it in and got killed" is exactly the beat worth drawing
+      if tx >= 0 and tx < ArenaSize and ty >= 0 and ty < ArenaSize:
+        r.spawnEffect(result, s, SpContactPing,
+                      tx * TileSize + TileSize div 2,
+                      ty * TileSize + TileSize div 2,
+                      ContactPingSz, ContactPingTtl,
+                      SpContactPing, ContactStages)
+      if s.agents[msg.slot].alive:
+        r.talkMark[msg.slot] = true
+        r.talkOn[msg.slot] = true
+        r.talkW[msg.slot] = ContactMarkW
+        r.talkUntil[msg.slot] = s.tick + TalkChipTtl
+      continue
+    if not s.agents[msg.slot].alive:
       continue
     let body = talkSafe(msg.text)
     if body.len == 0:
@@ -2607,6 +2763,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
                                 chipColor[0], chipColor[1], chipColor[2])
     result.addSprite(spId, w, h, px, "talk" & $msg.slot)
     r.talkW[msg.slot] = w
+    r.talkMark[msg.slot] = false
     r.talkOn[msg.slot] = true
     r.talkUntil[msg.slot] = s.tick + TalkChipTtl
   r.talkSeen = s.talkLog.len
@@ -2618,12 +2775,21 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       r.talkOn[slot] = false
     else:
       # re-pin to the speaker every tick so the chip follows them; clamp
-      # into the arena so edge speakers don't push their text off-world
+      # into the arena so edge speakers don't push their text off-world.
+      # A contact ring-echo centres on the head instead of running
+      # chip-left, and sits 4px higher than text (rows -23..-17) so it
+      # fully clears both the hp band below (-10..-8) and SpRevealMark's
+      # rows (-16..-12) when a revealed camo carrier calls a contact.
       let p = s.agents[slot].pos
-      let cx = max(0, min(WorldPx - r.talkW[slot], p.x * TileSize - 4))
+      let home = (if r.talkMark[slot]:
+                    p.x * TileSize + TileSize div 2 - ContactMarkW div 2
+                  else: p.x * TileSize - 4)
+      let cx = max(0, min(WorldPx - r.talkW[slot], home))
       result.addObject(ObTalkBase + slot, cx,
-                       p.y * TileSize - (BodyH - TileSize) - 13, 14, LayerMap,
-                       SpTalkBase + slot * 2 + (r.talkFlip[slot] mod 2))
+                       p.y * TileSize - (BodyH - TileSize) -
+                       (if r.talkMark[slot]: 17 else: 13), 14, LayerMap,
+                       (if r.talkMark[slot]: SpContactMark
+                        else: SpTalkBase + slot * 2 + (r.talkFlip[slot] mod 2)))
   # bushes (objects: berries shrink as charges deplete)
   var bushIdx = 0
   for b in s.bushes:
@@ -3080,6 +3246,7 @@ proc resetForLoop*(r: var Renderer) =
     r.talkOn[i] = false
     r.talkFlip[i] = 0
     r.talkUntil[i] = 0
+    r.talkMark[i] = false
     r.lastCause[i] = ""
   r.labelsReady = false
 
