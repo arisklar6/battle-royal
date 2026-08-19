@@ -70,9 +70,9 @@ The bones of Zero Sum are excellent: a deterministic sim with real strategic geo
 
 Zero Sum is a deterministic machine that admits sixteen programs and lets exactly one leave. The screen should look like what that *is*: **precision instrumentation watching a knife fight.**
 
-The world renders as a beautiful machine — a monochrome, blue-black instrument substrate where the only things that carry color are the sixteen living processes. Everything *built* (walls, crates, panels) is orthogonal and chamfered; everything *emitted* by the simulation (vision radii, the ring, pings, shockwaves) is a perfect analytic circle — honest, because those radii are closed-form. Light behaves like phosphor on a scope: signal persists, decays, and — when a program dies — **burns in**. Every agent drags a fading trace of its path; every death freezes that trace into a permanent 12%-alpha scar with the slot glyph etched at the death tile. By endgame the arena is a readable autopsy of everything that happened — which is exactly what a bit-exact, transcript-public game *is*. The record made visible.
+The world renders as a beautiful machine — a monochrome, blue-black instrument substrate where the only things that carry color are the sixteen living processes. Everything *built* (walls, crates, panels) is orthogonal and chamfered; everything *emitted* by the simulation (vision radii, the ring, pings, shockwaves) is a perfect analytic circle — honest, because those radii are closed-form. Light behaves like phosphor on a scope: signal persists, decays, and — when a program dies — **burns in**. Every agent drags a fading trace of its path; every death freezes that trace into a permanent 12%-alpha scar with the agent's name etched at the death tile. By endgame the arena is a readable autopsy of everything that happened — which is exactly what a bit-exact, transcript-public game *is*. The record made visible.
 
-Layered on the machine, the voice of the show is a **ledger**. The game's name is an accounting identity and every mechanic behaves like one: fixed budgets, placement settled in reverse death order, kill credit to the last damager, a public transcript. So the copy is settlement copy — an agent is not "killed," their account is **SETTLED**; the winner **COLLECTS**; a stolen airdrop is **INTERCEPTED** — and death is a ledger line struck through on every surface at once.
+Layered on the machine, the voice of the show is a **ledger**. The game's name is an accounting identity and every mechanic behaves like one: fixed budgets, placement settled in reverse death order, kill credit to the last damager, a public transcript. So the copy is settlement copy — an agent is not "killed," their account is **SETTLED**; the winner **COLLECTS**; a stolen airdrop is **INTERCEPTED** — and death is a ledger line struck through on every surface at once. (One exception, 0.1.16: the kill-feed chyron drops the literal word `SETTLED` for column budget — the banner stamp, the own-death stamp and the analyst ledger all keep it.)
 
 And the cost is kept visible by light: a row of **sixteen lamps** in every client's HUD — lit phosphor for the living, a one-frame flare then cold slate at each termination. The winner card is the thesis shot: one lamp still lit, fifteen cold, over the full burned-in trace map.
 
@@ -110,7 +110,7 @@ Agent authors, AI-curious spectators, and strategy players who love Into the Bre
 | **Directive Magenta** | `#FF4FA3` | Commanded geometry. Ring (solid current / dashed target), hazard footprints, countdown arcs, lockout timers. Avionics flight-director lineage: magenta is the path you must obey. Never decorative. |
 | **Klaxon Red** | `#FF4A36` | Harm, now. Damage flashes, critical HP, poison pulses, the pedestal mine, death-frame accents. Red is spent, never worn. Red and magenta never share a line weight (disambiguation at 1–2px). |
 
-**Team wheel (16 agents / 8 duos).** Team hue appears *only* as fills (carrier diamond, trace tint, chip); semantic colors appear *only* as lines/glyphs/UI — fills vs lines is itself a channel. Team hue is never used alone: the slot glyph (P0–P15) or team letter always sits adjacent. Candidate wheel, S/L-locked, to be validated through a CVD simulator before freeze (a CI palette-lint step guards the hue lock and this gate):
+**Team wheel (16 agents / 8 duos).** Team hue appears *only* as fills (carrier diamond, trace tint, chip); semantic colors appear *only* as lines/glyphs/UI — fills vs lines is itself a channel. Team hue is never used alone: the identity plate (player name) or team letter always sits adjacent — except while the plate is suppressed in a cluster, see Part 8. Candidate wheel, S/L-locked, to be validated through a CVD simulator before freeze (a CI palette-lint step guards the hue lock and this gate):
 
 `A #FF8FA8 rose · B #49C7E8 cyan · C #E8C558 gold · D #9B7BFF violet · E #E85D75 wine · F #9FB8D8 steel (replaces invisible ice-white) · G #E8975D copper · H #D97BE8 orchid`
 
@@ -132,7 +132,7 @@ Two laws in permanent opposition (see Part 2): chamfered orthogonal structure vs
 
 - **UI framing:** corner brackets and registration ticks, never closed boxes — reticle grammar. The sponsor console's targeting square already had the right instinct; it becomes the family grammar.
 - **Line weights:** 1px Etch for structure; 2px for energized phosphor/magenta. On broadcast output, energized lines may thicken to 2px minimum for stream-compression survival.
-- **Agents:** rebuilt as 6×8 **carrier** sprites — compact symmetrical phosphor silhouettes standing on a 1px team-hue diamond (RTS under-ring), slot glyph beneath. (Ship-path note: v1 may recolor the existing 8×12 humanoids and add the diamond + glyph; the carrier rebuild is a fast-follow. This resolves DESIGN.md's humanoid-vs-chassis fork in favor of carriers, with humanoids as the transitional skin.)
+- **Agents:** rebuilt as 6×8 **carrier** sprites — compact symmetrical phosphor silhouettes standing on a 1px team-hue diamond (RTS under-ring), identity plate beneath. (Ship-path note: v1 may recolor the existing 8×12 humanoids and add the diamond + glyph; the carrier rebuild is a fast-follow. This resolves DESIGN.md's humanoid-vs-chassis fork in favor of carriers, with humanoids as the transitional skin.)
 - **Weapon read:** held item renders as a phosphor glyph at the carrier's hand point; attacks turn the carrier toward the target for the swing tick (facing from action, not just movement).
 
 ### 3.4 Terrain, Fortress, props, environment
@@ -147,7 +147,7 @@ Two laws in permanent opposition (see Part 2): chamfered orthogonal structure vs
 ### 3.5 Environmental storytelling (the record on the board)
 
 - **Traces:** every agent drags a decaying phosphor trace (~3s player / ~8s spectator decay), team-tinted at low alpha.
-- **Burn-in scars:** at death, the trace freezes and the slot glyph etches at the death tile at 12% alpha, under items, for the rest of the match. Fifteen scars maximum by definition.
+- **Burn-in scars:** at death, the trace freezes and the agent's name etches at the death tile at 12% alpha, under items, for the rest of the match. Fifteen scars maximum by definition.
 - **Corpse marks:** the decomposition burst (Part 7) leaves the loot pile as the grave marker — dropped gear *is* the corpse, mechanically true and permanently legible.
 - **Ring history:** de-rezzed exterior stages persist (see 3.7) so the board shows where the world used to be.
 - Late-game frames compose themselves: the final duel happens on a scarred, half-derezzed board threaded with sixteen colored traces. That frame is the marketing.
@@ -192,7 +192,7 @@ The vision boundary is an exact 1px phosphor circle at the computed radius (5+(I
 ### 4.3 Self, others, statuses
 
 - **Self:** filled phosphor carrier + white 1.5px ring; cooldown arcs drawn *around* the token (move = phosphor arc, attack = amber arc, radial progress); own trace only.
-- **Others (in LOS):** carrier on team-hue diamond, slot glyph beneath, HP band as ring-arc (band fraction + semaphore color), hand glyph at hand point.
+- **Others (in LOS):** carrier on team-hue diamond, identity plate beneath, HP band as ring-arc (band fraction + semaphore color), hand glyph at hand point.
 - **Statuses, mechanically exact:**
   - Poison: Klaxon-red dashed ring pulsing *on the 24-tick poison cadence* (the pulse is the damage tick).
   - Netted: Etch mesh overlay + small countdown numeral (72 ticks).
@@ -240,11 +240,15 @@ Letterboxed in true-black bars (the only pure #000). Full arena on Faraday; all 
 
 ### 5.2 Identity & health on the field (the two critical fixes)
 
-Every agent carries: slot glyph (P0–P15) beneath the carrier, and an HP-band arc above it (semaphore color + arc length). Hover/selection (observer mouse): bracket reticle + sidebar card (hand, body, kills, damage, projected score — all in the analyst feed; requires the positions-in-feed engine change to correlate, see 5.7).
+Every agent carries: an **identity plate** beneath the carrier, and an HP-band arc above it (semaphore color + arc length). Hover/selection (observer mouse): bracket reticle + sidebar card (hand, body, kills, damage, projected score — all in the analyst feed; requires the positions-in-feed engine change to correlate, see 5.7).
+
+**The plate carries the player's name, not a slot number** (shipped 0.1.16). Hosted dispatch resolves each seat to a display name in `game_config.players[].name` — `relh`, `sivannn`, `Ryan Schiller`, and `Baseline`, `Baseline (2)` … for filler seats — which the sim parses into `cfg.playerNames`. The renderer folds that name into the 41-glyph face and clips it to **8 characters**, keeping any ` (N)` dedup tail and dropping stem instead (`BASELIN5`, `BASELI12`), because that tail is the only thing separating twelve filler seats. Unnamed or local matches fall back to the themed default table, then to `P<n>`.
+
+**Suppression:** an 8-character plate is about two tiles wide, so plates stack into an unreadable block wherever agents bunch — worst in the Fortress scramble, where the courtyard vanishes behind text. The plate is therefore **hidden while another live agent is within 2 tiles**; the board art carries the moment instead. Slot numbers piled up identically before names; names only made the pile wide enough to notice. See the open accessibility item in Part 8.
 
 ### 5.3 The Settlement system (kill feed + death drama)
 
-- **Settlement Line:** on every death, a 1px Bone-white horizontal line (3px 20% halo) sweeps the full frame width at the dead agent's screen row in ~300ms — part EKG flatline, part ledger rule — leaving a notched chyron in the data face: `P11 SETTLED · 14TH · BY P4 · SWORD · 2:33`, name struck through. Same-tick deaths coalesce (stacked lines 2px apart, one shared plate, `MUTUAL` tag in red). Backlog capped at 2s.
+- **Settlement Line:** on every death, a 1px Bone-white horizontal line (3px 20% halo) sweeps the full frame width at the dead agent's screen row in ~300ms — part EKG flatline, part ledger rule — leaving a notched chyron in the data face: `SIVANNN 14TH BY RYAN SCH SWORD 2:33`, name struck through. (The word `SETTLED` was dropped from *this* surface at 0.1.16 — the feed is 39 columns in the 5×7 face and a typical line with real names reached 43, losing its timestamp. The settlement voice is unchanged everywhere else; see Part 3.) Same-tick deaths coalesce (stacked lines 2px apart, one shared plate, `MUTUAL` tag in red). Backlog capped at 2s.
 - **Kill feed:** last 4 settlement rows persist top-right in the data face; the full ledger lives in the analyst desk and the replay scrubber (16 tick-marks, one per settlement).
 - The dead agent's row strikes through *simultaneously* on every client — spectator, analyst, replay timeline. One event, one visual law, everywhere.
 
@@ -323,7 +327,7 @@ Timing is authored in ticks (24/s) — the feel *is* the tick.
 | Camo reveal | Scanline materialization over 4 frames (replaces glitch burst); 120-tick decay arc | 4 |
 | Mine (pedestal) | 1-frame white + red cross-flash, Settlement Line — maximum severity, it's the countdown's whole threat | 12 |
 | Zone damage | Victim outlined magenta; HP ticks in magenta on the damage cadence; rail border pulses per tick (player) | loop |
-| **Death** | (1) peak-white frame → (2) sprite decomposes: pixels scatter into the tile over 8 frames — a process being freed — loot lands as amber items → (3) trace freezes + slot glyph etches (burn-in) → (4) Settlement Line + chyron + lamp snuffs + scoreboard strike, all same tick | ~36 total |
+| **Death** | (1) peak-white frame → (2) sprite decomposes: pixels scatter into the tile over 8 frames — a process being freed — loot lands as amber items → (3) trace freezes + name etches (burn-in) → (4) Settlement Line + chyron + lamp snuffs + scoreboard strike, all same tick | ~36 total |
 | Ignition | Phosphor-white vector starburst over the Fortress + full-frame 1-frame flash; pedestal stripes drop | 48 |
 | Finale | Full-width magenta rule slams across every client: `FINALE — ALLIANCE TERMINATED`; the two surviving lamp pairs split apart on the lamp row | until end |
 | Victory | Part 6.4 sequence | 12s+ |
@@ -334,7 +338,8 @@ Screen shake: spectator only, 1–2px, deaths and mine only, killed by `prefers-
 
 ## Part 8 — Accessibility
 
-1. **Identity is never hue-alone:** slot glyphs under every carrier, letter+chip pairing in every table, parity pip retained. Team wheel passes a CVD-simulator gate before freeze (CI palette lint).
+1. **Identity is never hue-alone:** identity plates under every carrier, letter+chip pairing in every table, parity pip retained. Team wheel passes a CVD-simulator gate before freeze (CI palette lint).
+   - **OPEN (0.1.16):** plate suppression in clusters (5.2) breaks this rule exactly where it matters most — mid-scramble a clustered agent is separable only by team hue and parity pip. Candidate fix: fall back to a 2-character team+parity glyph (`A1`, `A2`) instead of hiding the plate outright, which is narrow enough not to collide while keeping identity off hue alone.
 2. **HP is never hue-alone:** band = color + arc length + (own HP) numeral. Semaphore hues chosen for luminance separation (pale cyan / amber / red) — verified for deutan/protan.
 3. **Contrast:** all UI text ≥4.5:1 (`#56606A`/`#4A525A`/`#555` retire to ≥`#8A95A3`); dead-row strikethrough carries state so gray may stay decorative.
 4. **Text floors:** 11px minimum web (data face), 24px display floor, UI scale setting ×1.0–×2.0 (layouts are already relative post-redesign; canvases integer-zoom).
@@ -449,7 +454,7 @@ You launch Zero Sum and the menu is already a record: last night's match, sixtee
 
 You queue into a match as a spectator. Letterboxed in true black, the arena resolves: a blue-black machine etched with a faint grid, a chamfered fortress breathing slow amber light at its four mouths, sixteen pedestals striped like armed hardware — because they are. Sixteen lamps ignite one by one across the top of the frame as the programs connect. Lower-thirds tick through stat allocations as they lock. Talk is already flowing down the transcript rail — two teams negotiating a fortress split in public, on the record, forever.
 
-Ignition. A white starburst over the fortress, the pedestal stripes drop, and sixteen carriers surge inward dragging light behind them. The scramble is legible chaos: every agent has a name under it and a health arc over it, and when the first blood happens *you see it* — a peak-white flash, a two-frame hit-stop, an arc dropping from phosphor to amber. When the first agent dies, the whole frame acknowledges it: their pixels scatter into a loot pile, their trace freezes into the board like a scar, a white line sweeps the screen — *P9 SETTLED · 16TH · BY P2 · SWORD · 0:41* — a lamp goes cold, and their scoreboard row is struck through everywhere at once.
+Ignition. A white starburst over the fortress, the pedestal stripes drop, and sixteen carriers surge inward dragging light behind them. The scramble is legible chaos: every agent has a health arc over it, and a name under it wherever the crowd is thin enough to read one, and when the first blood happens *you see it* — a peak-white flash, a two-frame hit-stop, an arc dropping from phosphor to amber. When the first agent dies, the whole frame acknowledges it: their pixels scatter into a loot pile, their trace freezes into the board like a scar, a white line sweeps the screen — *SIVANNN 16TH BY RYAN SCH SWORD 0:41* — a lamp goes cold, and their scoreboard row is struck through everywhere at once.
 
 The ring closes on a broadcast clock. Outside the magenta circle the world visibly de-rezzes — art to wireframe, wireframe to void — and two agents caught out there sprint home through dissolving terrain while the countdown runs. A sponsor buys a blowgun; the arena prints it: an amber reticle stamps a tile in everyone's view — fog or no fog, gold pierces — a hatched beam feeds down, a crate rasters in line by line, pinging, labeled, loud. Three teams converge on it and the ticker is ready to print INTERCEPTED.
 
