@@ -26,11 +26,26 @@ jobs:
       - name: run sim tests
         shell: bash
         run: |
-          set -e
+          # No `set -e` around the loop on purpose: it aborts at the first
+          # failing file, and the glob is alphabetical, so one early break
+          # hides every later result -- including t_golden, the corpus that
+          # is the whole reason this job runs on both ubuntu and windows.
+          # Collect instead, so one run reports the complete breakage set.
+          fail=0
+          failed=""
           for t in tests/t_*.nim; do
             echo "=== $t"
-            nim c -r --hints:off "$t"
+            if ! nim c -r --hints:off "$t"; then
+              echo "FAILED: $t"
+              failed="$failed $t"
+              fail=1
+            fi
           done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::failing tests:$failed"
+            exit 1
+          fi
+          echo "all tests passed"
 
   # Double-run determinism on one runner: the same seed twice must
   # produce byte-identical hash files.
@@ -53,6 +68,32 @@ jobs:
             diff "run1_$seed.txt" "run2_$seed.txt"
             echo "seed $seed deterministic"
           done
+
+  # Sprite-family drift guard. dump_sprites' declaredFamilies() claims it
+  # "cannot drift from render.nim", but nothing enforced that and it fell
+  # behind twice in one day. Any emitted sprite id outside the table is art
+  # that exists and appears on no contact sheet -- indistinguishable from art
+  # that does not exist. Running the real dump in strict mode makes the claim
+  # true instead of aspirational.
+  sprite-families:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: "2.2.4"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: sync pinned deps
+        shell: bash
+        run: |
+          nimble install -y nimby
+          nimby sync nimby.lock
+      - name: dump sprites in strict mode
+        shell: bash
+        run: |
+          set -e
+          nim c --hints:off -p:game -p:src -o:dump_sprites tools/art/dump_sprites.nim
+          ./dump_sprites out="$RUNNER_TEMP/sprites" seed=42 ticks=260
 
   # Cockpit game-plan interpreter: the prompt is the whole policy UI, so
   # its parse and its read-back chips are golden-tested.
