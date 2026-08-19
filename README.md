@@ -14,6 +14,34 @@ Built in Nim on the [bitworld](https://github.com/Metta-AI/bitworld) engine libr
 
 Match: 24 Hz, hard cap 9,120 ticks (6:20). Protocol: `battle_royal.player.v1` (JSON over WS). Live and static replay presentation: sprite_v1.
 
+> [!CAUTION]
+> **Do not upload until the platform-side rename is confirmed.** The manifest
+> templates now carry `game.name` `battle-royal` / `battle-royal-duos`, but the
+> published Coworld is still registered under `zero-sum`.
+>
+> **`game.name` is the upload-time ownership key: the first authenticated upload
+> of a name claims that name** (`docs/PLATFORM_FACTS.md`, "the first
+> authenticated upload of a `game.name` claims name ownership"). Running
+> `coworld build` + `upload-coworld` against these templates today would not
+> rename anything — it would mint a **brand-new Coworld with zero version
+> history**, stranding the `0.1.9 → 0.1.18` chain and its league behind the old
+> name. The Progress / counterfactual-evals comparison needs a name that has
+> already played, so a fresh name silently produces no comparison at all.
+>
+> An in-place rename of the Coworld rows and the league has been requested from
+> the platform team and is **not yet confirmed**. Until it is:
+>
+> - **Hold all uploads.**
+> - If something must ship urgently, build with `game.name` temporarily reverted
+>   to `zero-sum` / `zero-sum-duos` — ship under the old name and rename later.
+> - Delete this block once the platform confirms the rename.
+>
+> Also wire-visible at the next canonical upload: the protocol id is now
+> `battle_royal.player.v1` (was `zero_sum.player.v1`) and the replay magic is
+> `BATTLE_ROYAL_FRAMES` (legacy `ZERO_SUM_FRAMES` still parses). Third-party
+> policies pinning the old protocol string will break — say so in the upload
+> announcement.
+
 ## League profiles
 
 `python tools/gen_manifest.py` generates two publishable templates from the
