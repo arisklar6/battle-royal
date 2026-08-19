@@ -6,7 +6,7 @@
 
 import std/json
 import zero_sum/[types, sim]
-import render
+import ../game/render
 
 # ---- real names as they arrive from hosted dispatch
 doAssert slotLabel("relh", 0) == "RELH"
