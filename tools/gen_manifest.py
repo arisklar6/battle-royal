@@ -13,6 +13,15 @@ def doc(rel: str) -> dict:
     return {"type": "text", "value": (ROOT / rel).read_text(encoding="utf-8")}
 
 
+# Certification step `source-resolves` fetches this through the GitHub contents
+# API and wants a Dockerfile in the directory or an ancestor. Every runnable in
+# the manifest needs it — the game AND each bundled player — and a manifest that
+# omits it fails that step outright. It was added by hand in 84b3377/91558ff
+# after this generator had already been written, so regenerating used to drop it
+# again silently; assert_source_urls() below is what makes that impossible now.
+SOURCE_URL = "https://github.com/arisklar6/zero-sum"
+
+
 INT16 = {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "integer"}}
 
 CONFIG_SCHEMA = {
@@ -210,6 +219,7 @@ MANIFEST = {
         "owner": "arisklar6@gmail.com",
         "runnable": {
             "type": "game",
+            "source_url": SOURCE_URL,
             "image": "{{ZERO_SUM_IMAGE}}",
             "run": ["/app/zero_sum_server"],
         },
@@ -226,6 +236,7 @@ MANIFEST = {
         "id": "zero-sum-baseline",
         "name": "Zero Sum Baseline",
         "type": "player",
+        "source_url": SOURCE_URL,
         "image": "{{ZERO_SUM_IMAGE}}",
         "run": ["/app/zero_sum_baseline"],
         "description": "Bundled reference policy: allocates 6/6/4/4, loots "
@@ -278,10 +289,32 @@ DUOS_MANIFEST["variants"] = [{
 }]
 DUOS_MANIFEST["certification"]["game_config"] = DUOS_FIXTURE
 
+def assert_source_urls(name: str, manifest: dict) -> None:
+    """Fail loudly rather than write a template that cannot certify.
+
+    Checks every runnable the certifier resolves sources for, so a new role
+    added later (grader, diagnoser, optimizer) is covered without editing this.
+    """
+    missing = []
+    if not manifest["game"]["runnable"].get("source_url"):
+        missing.append("game.runnable")
+    for role in ("player", "commissioner", "grader", "diagnoser", "optimizer"):
+        for i, entry in enumerate(manifest.get(role, [])):
+            if not entry.get("source_url"):
+                missing.append(f"{role}[{i}] ({entry.get('id', '?')})")
+    if missing:
+        raise SystemExit(
+            f"{name}: source_url missing on {', '.join(missing)} — the "
+            f"certifier's source-resolves step would fail. Set SOURCE_URL on "
+            f"every runnable before regenerating."
+        )
+
+
 for filename, manifest in [
     ("coworld_manifest_template.json", MANIFEST),
     ("coworld_manifest_duos_template.json", DUOS_MANIFEST),
 ]:
+    assert_source_urls(filename, manifest)
     out = ROOT / filename
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {out} ({out.stat().st_size} bytes)")
