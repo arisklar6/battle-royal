@@ -17,6 +17,10 @@ RUN nimble install -y nimby && /root/.nimble/bin/nimby sync nimby.lock
 COPY src ./src
 COPY game ./game
 COPY player ./player
+# Baked art blobs: staticRead'd at compile time (ART_UPGRADE_PLAN §4.4).
+# Build stage only — the runtime stage copies just the binaries, so no
+# asset directory ships in the image.
+COPY art/baked ./art/baked
 
 RUN mkdir -p /out && \
     nim c -d:release --hints:off --warnings:off -o:/out/zero_sum_server game/server.nim && \
