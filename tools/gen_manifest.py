@@ -234,10 +234,13 @@ MANIFEST = {
         "source_url": SOURCE_URL,
         "image": "{{BATTLE_ROYAL_IMAGE}}",
         "run": ["/app/battle_royal_baseline"],
-        "description": "Bundled reference policy: allocates 6/6/4/4, loots "
-                       "nearby crates, fights when armed and healthy, flees "
-                       "weak, heals when safe, obeys the ring, claims its "
-                       "sponsor drops, forages.",
+        "description": "Bundled reference policy for the FFA survival "
+                       "meta: allocates 7/3/5/5 (speed and athleticism over "
+                       "blade), obeys the ring first, keeps its distance, "
+                       "heals early, fights only cornered or to finish an "
+                       "adjacent critical threat, goes maximum-caution once "
+                       "the podium is in reach, and talks its way out of "
+                       "zero-point fights on the arena-wide channels.",
     }],
     "variants": [
         {

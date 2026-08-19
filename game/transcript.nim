@@ -35,7 +35,7 @@ proc systemLine(s: Sim, e: Event, remainAfter: int): string =
   of evEventWarning: t & "HAZARD WARNING: " & e.data & " *"
   of evGiftIncoming: t & "SPONSOR DROP INBOUND: " & e.data & " *"
   of evGiftLanded: t & "SPONSOR DROP LANDED at (" & $e.pos.x & "," & $e.pos.y & ") *"
-  of evFinale: t & "FINALE - one team left, no allies now *"
+  of evFinale: t & "FINALE - two remain - the last-two showdown *"
   of evMatchEnd:
     if e.slot >= 0: t & s.tag(e.slot) & " WINS *"
     else: t & "MATCH OVER *"
