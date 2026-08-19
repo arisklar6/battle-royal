@@ -9,7 +9,7 @@
 ## renderer — whatever you change in game/render.nim shows up here, and if the
 ## packet is malformed this tool sees the same thing the viewer would.
 ##
-## Usage: frame_dump [seed] [ticks] [outPath] [scale]
+## Usage: frame_dump [seed] [ticks] [outPath] [scale] [numPlayers]
 ##   seed    PRNG seed                       (default 42)
 ##   ticks   stop after this many sim ticks  (default 400; capped by match end)
 ##   out     PNG path                        (default docs/evidence/frame.png)
@@ -116,10 +116,12 @@ when isMainModule:
   let outArg =
     if paramCount() >= 3: paramStr(3) else: "docs/evidence/frame.png"
   let scaleArg = if paramCount() >= 4: parseInt(paramStr(4)) else: 2
+  let playersArg = if paramCount() >= 5: parseInt(paramStr(5)) else: 16
 
   # max_ticks is validated to 100..20000 by parseSimConfig; ask for the full
   # match and stop early ourselves so any tick count is dumpable.
-  let original = %*{"seed": seedArg, "max_ticks": 20000, "freeze_ticks": 48}
+  let original = %*{"seed": seedArg, "max_ticks": 20000, "freeze_ticks": 48,
+                    "num_players": playersArg}
   let cfg = parseSimConfig(original, mintFixed)
   var s = initSim(cfg)
   var r: Renderer

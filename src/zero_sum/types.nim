@@ -129,20 +129,25 @@ const
     Pos(x: 8, y: 24), Pos(x: 9, y: 18), Pos(x: 13, y: 13), Pos(x: 18, y: 9),
     Pos(x: 24, y: 8), Pos(x: 30, y: 9), Pos(x: 35, y: 13), Pos(x: 39, y: 18)]
 
-proc internalSlot*(mode: LeagueMode, externalSlot: AgentId): AgentId =
-  ## The platform's team_n scheduler seats one policy at i and i+8 for an
-  ## eight-team match. Keep Zero Sum's canonical adjacent internal teams by
-  ## translating that external seating at the game boundary.
+proc internalSlot*(mode: LeagueMode, externalSlot: AgentId,
+                   nPlayers = 16): AgentId =
+  ## The platform's team_n scheduler seats one policy at i and i+T for a
+  ## T-team match (T = nPlayers div 2; 8 for the full house). Keep Zero
+  ## Sum's canonical adjacent internal teams by translating that external
+  ## seating at the game boundary.
   case mode
   of lmSolo: externalSlot
   of lmDuos:
-    AgentId(2 * (int(externalSlot) mod 8) + int(externalSlot) div 8)
+    let half = nPlayers div 2
+    AgentId(2 * (int(externalSlot) mod half) + int(externalSlot) div half)
 
-proc externalSlot*(mode: LeagueMode, internalSlot: AgentId): AgentId =
+proc externalSlot*(mode: LeagueMode, internalSlot: AgentId,
+                   nPlayers = 16): AgentId =
   case mode
   of lmSolo: internalSlot
   of lmDuos:
-    AgentId(int(internalSlot) div 2 + 8 * (int(internalSlot) mod 2))
+    AgentId(int(internalSlot) div 2 +
+            (nPlayers div 2) * (int(internalSlot) mod 2))
 
 proc team*(slot: AgentId): int = slot div 2
 proc teamName*(slot: AgentId): string = TeamNames[team(slot)]

@@ -1118,28 +1118,92 @@ proc stencilFor(id: ItemId): StencilRef =
   of iDarts: st(StencilDartsPx, StencilDartsMask, StencilDartsW, StencilDartsH)
   of iNone: st(StencilSwordPx, StencilSwordMask, StencilSwordW, StencilSwordH)   # never drawn; a valid ref keeps this total
 
+proc wrect(px: var seq[uint8], x0, y0, x1, y1: int,
+           c: (uint8, uint8, uint8), a: uint8 = 255) =
+  for y in y0 .. y1:
+    for x in x0 .. x1:
+      px.put(HeldPx, x, y, c, a)
+
 proc heldWeaponPixels(id: ItemId, mirror = false): seq[uint8] =
-  ## Held-item mark (PAINTBOT pass 2): ctf's cogs visibly CARRY the gun —
-  ## big, dark-edged, unmistakable at broadcast zoom. Same stencil
-  ## vocabulary the chips and crates wear (one vocabulary, zero drift), but
-  ## full size, in the item's own amber with an ink outline, and mirrored
-  ## for the west-facing hand so the mark leads the carrier.
+  ## Held-item art (PAINTBOT pass 3): ctf's rigs carry OBJECTS — a gun you
+  ## can name at a glance, not a shrunken icon (the 24px stencil reductions
+  ## read as blobs in a hand; they stay the chip/crate vocabulary). Each
+  ## item is drawn as a chunky object in three materials: Bone steel for
+  ## blades, the amber ramp for wood and matter, gunmetal for tubes — over
+  ## an ink outline so it separates from any hull and the daylight floor.
+  ## Authored pointing east; the west hand gets the horizontal mirror.
+  ## Coordinates are raw render px on the 28px canvas (HeldPx tracks RS,
+  ## so the guard below keeps a silent RS change from shearing the art).
+  static: doAssert HeldPx == 28
   result = newSeq[uint8](HeldPx * HeldPx * 4)
-  let stn = stencilFor(id)
-  let off = (HeldPx - stn.w) div 2
-  let c = itemColor(id)
-  # gunmetal body, amber-lit top edge: ctf's guns are near-black, which is
-  # what lets them read across every hull colour — an all-amber mark
-  # vanishes against the copper and gold teams. The item's own amber
-  # survives as the lit edge, so the matter contract still shows.
-  let metal = (74'u8, 78'u8, 86'u8)
-  for y in 0 ..< stn.h:
-    for x in 0 ..< stn.w:
-      if stn.mask[y * stn.w + x] > 0:
-        let dx = (if mirror: stn.w - 1 - x else: x)
-        let litEdge = y == 0 or stn.mask[max(0, y - 2) * stn.w + x] == 0
-        result.put(HeldPx, off + dx, off + y,
-                   (if litEdge: c else: metal))
+  const Steel = Bone                      # blade-bright, reads on any hull
+  const Metal = (74'u8, 78'u8, 86'u8)
+  template L(ax0, ay0, ax1, ay1, t: int, c: (uint8, uint8, uint8)) =
+    glyphLine(result, HeldPx, ax0, ay0, ax1, ay1, t, c)
+  case id
+  of iSword:
+    L(4, 24, 8, 20, 3, AmberDeep)                 # grip
+    L(8, 20, 24, 4, 3, Steel)                     # blade
+    L(6, 15, 13, 22, 3, GoldTone)                 # crossguard
+  of iSpear:
+    L(2, 15, 21, 15, 2, AmberMid)                 # shaft
+    L(21, 11, 26, 15, 2, Steel)                   # head
+    L(21, 19, 26, 15, 2, Steel)
+    L(20, 15, 26, 15, 2, Steel)
+  of iBow:
+    L(22, 7, 22, 21, 2, AmberMid)                 # belly
+    L(15, 3, 22, 8, 2, AmberMid)                  # limbs
+    L(15, 25, 22, 20, 2, AmberMid)
+    L(15, 4, 15, 24, 1, Steel)                    # string
+  of iKnives:
+    L(4, 23, 8, 19, 2, AmberDeep)                 # grips under blades
+    L(12, 26, 16, 22, 2, AmberDeep)
+    L(6, 21, 15, 12, 2, Steel)
+    L(14, 24, 23, 15, 2, Steel)
+  of iBlowgun:
+    L(3, 14, 24, 14, 3, Metal)                    # tube
+    result.wrect(2, 12, 5, 17, Steel)             # mouthpiece
+    result.wrect(13, 12, 15, 17, GoldTone)        # grip band
+  of iNet:
+    for i in 0 .. 2:
+      L(7 + i * 6, 7, 7 + i * 6, 21, 1, AmberMid)
+      L(7, 7 + i * 6, 21, 7 + i * 6, 1, AmberMid)
+    for cx in [6, 20]:                            # corner weights
+      for cy in [6, 20]:
+        result.wrect(cx, cy, cx + 2, cy + 2, AmberDeep)
+  of iFirstAid:
+    result.wrect(6, 9, 22, 23, Steel)             # kit box
+    result.wrect(12, 11, 16, 21, GoldTone)        # amber cross (red = harm)
+    result.wrect(8, 14, 20, 18, GoldTone)
+  of iRations:
+    result.wrect(6, 12, 22, 24, AmberMid)         # tin
+    result.wrect(6, 12, 22, 14, AmberHot)         # lid glint
+    result.wrect(12, 8, 16, 12, Metal)            # cap
+  of iBackpack:
+    result.wrect(7, 10, 21, 25, AmberDeep)        # body
+    result.wrect(7, 10, 21, 15, AmberMid)         # flap
+    result.wrect(13, 14, 15, 18, GoldTone)        # buckle
+  of iCamo:
+    result.wrect(6, 10, 22, 24, (150'u8, 170'u8, 185'u8), 200)
+    L(6, 12, 22, 22, 1, Steel)                    # fold line
+  of iArrows:
+    for yy in [9, 15, 21]:
+      L(4, yy, 20, yy, 1, AmberMid)
+      L(20, yy, 25, yy, 2, Steel)                 # heads
+      result.wrect(4, yy - 1, 6, yy + 1, GoldTone)
+  of iDarts:
+    for yy in [12, 19]:
+      L(6, yy, 18, yy, 1, AmberDim)
+      L(18, yy, 24, yy, 2, Steel)
+  of iNone:
+    discard                                       # never drawn
+  if mirror:
+    for y in 0 ..< HeldPx:
+      for x in 0 ..< HeldPx div 2:
+        let a = (y * HeldPx + x) * 4
+        let b = (y * HeldPx + (HeldPx - 1 - x)) * 4
+        for ch in 0 .. 3:
+          swap(result[a + ch], result[b + ch])
   result.addBacklight(HeldPx, HeldPx, StoneInk, 235)
 
 proc dimmed(px: seq[uint8], mul: int): seq[uint8] =
@@ -1955,10 +2019,11 @@ proc settleLinePixels(): seq[uint8] =
     result.put(WorldPx, x, 1, Bone, 230)
     result.put(WorldPx, x, 2, Bone, 70)
 
-proc lampRowPixels(mask: int): seq[uint8] =
-  ## 16 lamps, one per slot: lit phosphor = alive, cold etch = settled.
+proc lampRowPixels(mask, n: int): seq[uint8] =
+  ## One lamp per seated player: lit phosphor = alive, cold etch = settled.
+  ## The row shrinks with num_players; the sprite keeps its HUD footprint.
   result = newSeq[uint8](81 * 6 * 4)
-  for i in 0 ..< 16:
+  for i in 0 ..< n:
     let ox = 1 + i * 5
     let lit = ((mask shr i) and 1) == 1
     for y in 1 .. 4:
@@ -2205,7 +2270,7 @@ proc spriteDefs(s: Sim): seq[uint8] =
   for id in derezSpriteIds():
     result.addSprite(id, TilePxR, TilePxR, derezTilePixels(id), "derez",
                      native = true)
-  for slot in 0 .. 15:
+  for slot in 0 ..< s.cfg.numPlayers:
     for facing in 0 .. 3:
       for frame in 0 .. 1:
         result.addSprite(SpBodyBase + slot * 10 + facing * 2 + frame,
@@ -2320,7 +2385,7 @@ proc spriteDefs(s: Sim): seq[uint8] =
   for id in [iArrows, iDarts, iKnives, iNet]:
     result.addSprite(SpProjBase + ord(id), ProjPx, ProjPx, projPixels(id),
                        "proj_" & $id, native = true)
-  for slot in 0 .. 15:
+  for slot in 0 ..< s.cfg.numPlayers:
     let (w, h, px) = tagPixels(slotLabel(s, slot))
     result.addSprite(SpSlotLabelBase + slot, w, h, px, "tag" & $slot)
     let (sw, sh, spx) = tagPixels(shortLabel(slot))
@@ -2441,7 +2506,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.bgLive = true
   r.ensureTrace()
   # facing/anim bookkeeping
-  for slot in 0 .. 15:
+  for slot in 0 ..< s.cfg.numPlayers:
     let a = s.agents[slot]
     if a.alive:
       r.stampTrace(a.pos.x, a.pos.y, TeamColors[slot div 2], 130)
@@ -2897,14 +2962,15 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         r.trace[i] = (r.trace[i] and 0xFFFFFF00'u32) or
                      (if na < 6: 0'u32 else: na)
     r.emitTraceCells(result, r.traceSpritePixels(s))
-  # 16-lamp alive row: subtraction made visible as light
+  # per-seat alive lamp row: subtraction made visible as light
   var lampMask = 0
-  for slot in 0 .. 15:
+  for slot in 0 ..< s.cfg.numPlayers:
     if s.agents[slot].alive:
       lampMask = lampMask or (1 shl slot)
   if lampMask != r.lastLampMask:
     r.lastLampMask = lampMask
-    result.addSprite(SpLampRow, 81, 6, lampRowPixels(lampMask), "lamps")
+    result.addSprite(SpLampRow, 81, 6,
+                     lampRowPixels(lampMask, s.cfg.numPlayers), "lamps")
     result.addObject(ObLampRow, 2, 50, 0, LayerHudTL, SpLampRow)
   # exterior treatment tracks the shrinking ring. The board itself never
   # changes, so it is defined once per match: only the per-tile overlay
@@ -2926,9 +2992,6 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     r.mouthsDrawn = true
     r.mouthPhase = mouthNow
   # HUD
-  var deadCount = 0
-  for a in s.agents:
-    if not a.alive: inc deadCount
   let zrHud = s.zoneRadius()
   let secs = s.tick div 24
   # ring clock (Tier 1): the schedule is public — broadcast the countdown
@@ -2941,9 +3004,9 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         else:
           ringTxt.add(">" & $st.rEnd & " IN " & mmss((st.shrinkT - s.tick) div 24))
       break
-  let hud1 = "ALIVE " & $(16 - deadCount) & "  " & ringTxt & "  T " & mmss(secs)
+  let hud1 = "ALIVE " & $s.aliveCount() & "  " & ringTxt & "  T " & mmss(secs)
   var hud2 = "COIN"
-  for t in 0 .. 7:
+  for t in 0 ..< s.cfg.numPlayers div 2:
     hud2.add(" " & TeamNames[t] & $s.teamBudget[t])
   if hud1 != r.lastHud1:
     r.lastHud1 = hud1
@@ -3009,7 +3072,8 @@ proc labelsKey(s: Sim): uint64 =
   ## part of what it depends on. Without this a cached atlas would carry one
   ## match's names into the next.
   result = 0xCBF29CE484222325'u64
-  for i in 0 .. 15:
+  result = (result xor uint64(s.cfg.numPlayers)) * 0x100000001B3'u64
+  for i in 0 ..< s.cfg.numPlayers:
     for ch in slotLabel(s, i):
       result = (result xor uint64(ord(ch))) * 0x100000001B3'u64
 
