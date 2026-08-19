@@ -304,6 +304,7 @@ type
     traceCellDrawn: array[TraceCells, bool]
     lastLampMask: int
     lastHp: array[16, int]    # centi-HP watermark for hit flashes
+    bgLive: bool              # pedestal plates already swapped to disarmed
     dmgFlip: int
     ## Cached sprite-definition blob. `spriteDefs` is a pure function of the
     ## arena, but it ran in full — the whole rasterizer plus ~270 Snappy
@@ -541,6 +542,25 @@ proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena, lift: int) =
     for x in 0 ..< TilePxR:
       px.put(w, ox + x, oy + y, parapetColorAt(a, ox + x, oy + y, lift))
 
+proc compositeBaked(px: var seq[uint8], w, ox, oy: int,
+                    art: openArray[uint8], aw, ah: int) =
+  ## Alpha-over a baked sprite into a larger RGBA buffer.
+  for y in 0 ..< ah:
+    for x in 0 ..< aw:
+      let si = (y * aw + x) * 4
+      let al = int(art[si + 3])
+      if al == 0:
+        continue
+      let di = ((oy + y) * w + ox + x) * 4
+      if al == 255:
+        px[di] = art[si]; px[di+1] = art[si+1]; px[di+2] = art[si+2]
+        px[di+3] = 255
+      else:
+        for ch in 0 .. 2:
+          px[di + ch] = uint8((int(art[si + ch]) * al +
+                               int(px[di + ch]) * (255 - al)) div 255)
+        px[di + 3] = 255
+
 proc rockAt(px: var seq[uint8], w, ox, oy: int) =
   ## Boulder under the same up-left key light as the walls.
   ## Etch ramp as of Phase 2. The old (86,78,70) was a warm brown — stone
@@ -566,16 +586,13 @@ proc rockAt(px: var seq[uint8], w, ox, oy: int) =
       px.put(w, ox + x, oy + k, shade(Phosphor, -74), 150)
   px.put(w, ox + TilePxR - 1, oy + TilePxR - 1, StoneInk)
 
-proc pedestalAt(px: var seq[uint8], w, ox, oy: int) =
-  let gold = (235'u8, 166'u8, 76'u8)      # amber family (matter)
-  for y in 0 ..< TilePxR:
-    for x in 0 ..< TilePxR:
-      let ring = x < RS or y < RS or x >= TilePxR - RS or y >= TilePxR - RS
-      px.put(w, ox + x, oy + y, (if ring: shade(gold, -50) else: gold))
-  for i in 0 ..< RS:
-    for j in 0 ..< RS:
-      px.put(w, ox + 2 * RS + i, oy + 2 * RS + j, shade(gold, 30))
-      px.put(w, ox + 3 * RS + i, oy + 3 * RS + j, shade(gold, 30))
+proc pedestalAt(px: var seq[uint8], w, ox, oy: int, armed: bool) =
+  ## Baked pedestal plate (Tier A): hazard-striped amber while the mines
+  ## are live during the countdown, plain disarmed plate after ignition.
+  if armed:
+    px.compositeBaked(w, ox, oy, PedestalArmedPx, PedestalArmedW, PedestalArmedH)
+  else:
+    px.compositeBaked(w, ox, oy, PedestalOffPx, PedestalOffW, PedestalOffH)
 
 ## --- reclaimed territory: overlay tiles, not a re-baked board ---------
 ##
@@ -672,7 +689,8 @@ proc isReclaimed(safeR, tx, ty: int): bool =
   let dy = ty - c
   dx * dx + dy * dy > safeR * safeR
 
-proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
+proc backgroundPixels(a: Arena, safeR: int, derez: int,
+                      armed = false): seq[uint8] =
   ## safeR: tiles outside this center radius are reclaimed territory.
   ## derez escalates with the ring stage (VISUAL_REDESIGN §3.7 — the
   ## machine deallocating the world): 0 = red "off-air" wash,
@@ -696,10 +714,9 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
         wallAt(result, WorldPxR, ox, oy, a, 22)
       of tkRock:
         plateAt(result, WorldPxR, ox, oy, tx, ty)
-        rockAt(result, WorldPxR, ox, oy)
       of tkPedestal:
         plateAt(result, WorldPxR, ox, oy, tx, ty)
-        pedestalAt(result, WorldPxR, ox, oy)
+        pedestalAt(result, WorldPxR, ox, oy, armed)
       if isReclaimed(safeR, tx, ty):
         # Composite the very tile the wire places, with the viewer's own
         # unpremultiplied source-over. Opaque stages replace, the stage-0
@@ -721,6 +738,53 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
             result[i + 3] = 255
 
 # ---------------------------------------------------------------- humanoids
+
+  # --- rock art (Tier A): greedy cluster match over the PRNG rock layout —
+  # 3x2 blocks first, then 2x2, then per-tile orphans; the generated
+  # clusters read as one formation instead of a grid of copies. Variant
+  # choice is pixHash of the origin: deterministic per arena.
+  var claimed: array[ArenaSize * ArenaSize, bool]
+  template isRock(tx, ty: int): bool =
+    tx >= 0 and ty >= 0 and tx < ArenaSize and ty < ArenaSize and
+      a.tiles[ty][tx] == tkRock and not claimed[ty * ArenaSize + tx]
+  template claim(tx, ty, bw, bh: int) =
+    for cy in ty ..< ty + bh:
+      for cx in tx ..< tx + bw:
+        claimed[cy * ArenaSize + cx] = true
+  for ty in 0 ..< ArenaSize:
+    for tx in 0 ..< ArenaSize:
+      block fit32:
+        for cy in ty ..< ty + 2:
+          for cx in tx ..< tx + 3:
+            if not isRock(cx, cy): break fit32
+        claim(tx, ty, 3, 2)
+        case pixHash(tx * 7 + 1, ty * 11 + 3) mod 3
+        of 0: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                RockCluster32APx, RockCluster32AW, RockCluster32AH)
+        of 1: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                RockCluster32BPx, RockCluster32BW, RockCluster32BH)
+        else: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                RockCluster32CPx, RockCluster32CW, RockCluster32CH)
+  for ty in 0 ..< ArenaSize:
+    for tx in 0 ..< ArenaSize:
+      block fit22:
+        for cy in ty ..< ty + 2:
+          for cx in tx ..< tx + 2:
+            if not isRock(cx, cy): break fit22
+        claim(tx, ty, 2, 2)
+        case pixHash(tx * 5 + 2, ty * 13 + 1) mod 3
+        of 0: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                RockCluster22APx, RockCluster22AW, RockCluster22AH)
+        of 1: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                RockCluster22BPx, RockCluster22BW, RockCluster22BH)
+        else: result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                RockCluster22CPx, RockCluster22CW, RockCluster22CH)
+  for ty in 0 ..< ArenaSize:
+    for tx in 0 ..< ArenaSize:
+      if isRock(tx, ty):
+        claimed[ty * ArenaSize + tx] = true
+        result.compositeBaked(WorldPxR, tx * TilePxR, ty * TilePxR,
+                              RockOrphanPx, RockOrphanW, RockOrphanH)
 
 ## --- baked carrier blit (ART_UPGRADE_PLAN Phase 3, two-chassis) --------
 ##
@@ -1027,32 +1091,10 @@ proc podCratePixels(band: (uint8, uint8, uint8)): seq[uint8] =
 ## and SpCargoBase (710), which had no definition or placement left at all.
 
 proc bushPixels(berries: int): seq[uint8] =
-  ## Foliage clump, native: lit crown, shaded underside, frayed rim, and
-  ## berries big enough to count at a glance (charges are gameplay).
+  ## Baked crystal clump (Tier A); the berries stay code — charges are
+  ## gameplay state and must stay countable (ART_UPGRADE_PLAN §2).
   result = newSeq[uint8](TilePxR * TilePxR * 4)
-  ## Etch-dark, not foliage green. This was the most clear-cut art-bible
-  ## violation in the renderer (§3.1 law 3: "there is no green anywhere in
-  ## the identity"), and the bush is the one organic exception the bible
-  ## allows — §3.4 grants it "small Etch-dark clusters whose berries are
-  ## amber pips". Lifted a little off EtchDim so the clump still separates
-  ## from the substrate it sits on.
-  let leaf = shade(EtchDim, 12)
-  for y in 0 ..< TilePxR:
-    for x in 0 ..< TilePxR:
-      let dx = x * 2 + 1 - TilePxR
-      let dy = y * 2 + 1 - TilePxR
-      let d2 = dx * dx + dy * dy
-      let r2 = (TilePxR - 1) * (TilePxR - 1)
-      let n = pixHash(x * 13 + 5, y * 17 + 3) mod 100
-      if d2 <= r2 - r2 div 3 or (d2 <= r2 and n < 62):
-        var c = leaf
-        if dy < -RS: c = shade(leaf, 26)          # crown to the light
-        elif dy > RS * 2: c = shade(leaf, -22)    # underside
-        if n mod 3 == 0: c = shade(c, 14)
-        result.put(TilePxR, x, y, c)
-  ## Berry positions are on the same 12x12 authoring canvas the clump was
-  ## drawn against, so they scale by ArtScale — `* RS div 2` truncated at
-  ## odd RS and put the pips off the foliage.
+  result.compositeBaked(TilePxR, 0, 0, BushClumpPx, BushClumpW, BushClumpH)
   const spots = [(2, 4), (7, 2), (5, 8)]
   for i in 0 ..< min(berries, 3):
     let bx = spots[i][0] * ArtScale
@@ -1877,7 +1919,8 @@ proc spriteDefs(s: Sim): seq[uint8] =
   ## *pristine* — reclaimed territory arrives as overlay objects, which is
   ## what stops the board being re-sent 27 times a match.
   result.addSprite(SpBackground, WorldPxR, WorldPxR,
-                   backgroundPixels(s.arena, ArenaSize, 0), "arena")
+                   backgroundPixels(s.arena, ArenaSize, 0,
+                                    armed = s.phase == phCountdown), "arena")
   for id in derezSpriteIds():
     result.addSprite(id, TilePxR, TilePxR, derezTilePixels(id), "derez",
                      native = true)
@@ -2031,6 +2074,14 @@ proc spawnEffect(r: var Renderer, packet: var seq[uint8], s: Sim,
                        x: px, y: py))
 
 proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
+  # Pedestal disarm (VISUAL_REDESIGN §3.4): the mines die at ignition, so
+  # the board's plates swap from hazard-striped to plain — one extra
+  # background define per match, exactly as ART_UPGRADE_PLAN budgeted.
+  if not r.bgLive and s.phase != phCountdown:
+    result.addSprite(SpBackground, WorldPxR, WorldPxR,
+                     backgroundPixels(s.arena, ArenaSize, 0, armed = false),
+                     "arena")
+    r.bgLive = true
   r.ensureTrace()
   # facing/anim bookkeeping
   for slot in 0 .. 15:
@@ -2579,12 +2630,15 @@ proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   result.addViewport(LayerHudBL, 320, 14)
   result.addLayer(LayerBanner, 0x05, 0x02)
   result.addViewport(LayerBanner, 120, 16)
-  let key = arenaKey(s.arena)
+  var key = arenaKey(s.arena)
+  if s.phase == phCountdown:
+    key = key xor 1'u64        # armed pedestals bake a different board
   if not r.defsValid or r.defsKey != key:
     r.defsBlob = spriteDefs(s)
     r.defsKey = key
     r.defsValid = true
   result.add(r.defsBlob)
+  r.bgLive = s.phase != phCountdown
   result.addObject(ObBackground, 0, 0, 0, LayerMap, SpBackground)
   # the board is pristine in the sprite; reclaimed ground is objects, and a
   # viewer joining at tick 5000 needs the ones already standing
@@ -2634,6 +2688,7 @@ proc resetForLoop*(r: var Renderer) =
     r.lastCause[i] = ""
 
   r.lastBgRadius = 0
+  r.bgLive = false
   for i in 0 ..< r.derezTile.len:
     r.derezTile[i] = 0
   r.podLabelText = @[]
