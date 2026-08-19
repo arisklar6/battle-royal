@@ -94,6 +94,18 @@ block wire_shapes:
   s.step()
   doAssert s.agents[2].pos == Pos(x: 10, y: 29)
 
+block provisional_final_score:
+  ## #23 (relh): an elimination `final` carries score_final=false — the
+  ## placement ladder can still shift under a dead agent until the match
+  ## ends. Coverage lived in t_league_modes, deleted with the league modes.
+  var s = mkSim()
+  s.agents[5].alive = false
+  s.agents[5].deathTick = 100
+  let elimination = parseJson(finalJson(s, 5))
+  doAssert not elimination["score_final"].getBool()
+  s.phase = phEnded
+  doAssert parseJson(finalJson(s, 5))["score_final"].getBool()
+
 block player_config_shape:
   var s = mkSim()
   let c = parseJson(playerConfigJson(s, 3))
