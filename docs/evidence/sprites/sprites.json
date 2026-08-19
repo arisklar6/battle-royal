@@ -12,13 +12,13 @@
   "ticksRequested": 480,
   "ticksRun": 480,
   "updateFrames": 480,
-  "updatePacketBytes": 2292223,
+  "updatePacketBytes": 4703590,
   "maxVariants": 2,
-  "uniqueSpriteIds": 359,
-  "spriteRecords": 359,
-  "pngCount": 406,
-  "totalRawBytes": 15619184,
-  "totalCompressedBytes": 2558188,
+  "uniqueSpriteIds": 417,
+  "spriteRecords": 417,
+  "pngCount": 465,
+  "totalRawBytes": 21443416,
+  "totalCompressedBytes": 5507897,
   "giftRequested": true,
   "shopOpensTick": 160,
   "shopOpensTickMovedForGift": true,
@@ -27,11 +27,64 @@
     "declaredFamilies": 44,
     "presentFamilies": 43,
     "declaredIds": 498,
-    "emittedIds": 359,
+    "emittedIds": 365,
     "emptyFamilies": [
       "damage_numeral"
     ],
-    "undeclaredEmittedIds": [],
+    "undeclaredEmittedIds": [
+      621,
+      622,
+      623,
+      624,
+      625,
+      626,
+      627,
+      628,
+      629,
+      630,
+      631,
+      632,
+      846,
+      940,
+      941,
+      942,
+      943,
+      944,
+      1450,
+      1451,
+      1452,
+      1453,
+      1454,
+      1455,
+      1456,
+      1457,
+      1458,
+      1459,
+      1460,
+      1461,
+      1462,
+      1463,
+      1464,
+      1465,
+      1470,
+      1471,
+      1500,
+      1501,
+      1502,
+      1503,
+      1504,
+      1505,
+      1506,
+      1507,
+      1508,
+      1509,
+      1510,
+      1511,
+      1512,
+      1513,
+      1514,
+      1515
+    ],
     "families": [
       {
         "family": "background",
@@ -230,15 +283,8 @@
         "lo": 601,
         "hi": 612,
         "declared": 12,
-        "emitted": 6,
-        "missingIds": [
-          607,
-          608,
-          609,
-          610,
-          611,
-          612
-        ]
+        "emitted": 12,
+        "missingIds": []
       },
       {
         "family": "mouth_light",
@@ -540,30 +586,41 @@
       "label": "arena",
       "w": 1152,
       "h": 1152,
-      "defineCount": 1,
-      "distinctVariants": 1,
-      "dumpedVariants": 1,
+      "defineCount": 2,
+      "distinctVariants": 2,
+      "dumpedVariants": 2,
       "firstTick": 0,
-      "lastTick": 0,
+      "lastTick": 49,
       "fromInitPacket": true,
       "dimsVary": false,
       "variants": [
         {
           "file": "png/s0001_arena_0.png",
-          "pixHash": "25232C3EFDBF569F",
+          "pixHash": "59C3D388F3632C55",
           "w": 1152,
           "h": 1152,
-          "compressedBytes": 1908520,
+          "compressedBytes": 2403064,
           "rawBytes": 5308416,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
+        },
+        {
+          "file": "png/s0001_arena_1.png",
+          "pixHash": "CFB3965BC6036C43",
+          "w": 1152,
+          "h": 1152,
+          "compressedBytes": 2403288,
+          "rawBytes": 5308416,
+          "defineCount": 1,
+          "firstTick": 49,
+          "lastTick": 49
         }
       ]
     },
     {
       "id": 30,
-      "label": "fw_black",
+      "label": "fw_bone",
       "w": 72,
       "h": 72,
       "defineCount": 1,
@@ -575,11 +632,11 @@
       "dimsVary": false,
       "variants": [
         {
-          "file": "png/s0030_fw_black_0.png",
-          "pixHash": "165AF683C081C605",
+          "file": "png/s0030_fw_bone_0.png",
+          "pixHash": "DD17167EAA672CA1",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1813,
+          "compressedBytes": 2048,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -589,7 +646,7 @@
     },
     {
       "id": 31,
-      "label": "fw_gold",
+      "label": "fw_amber",
       "w": 72,
       "h": 72,
       "defineCount": 1,
@@ -601,11 +658,11 @@
       "dimsVary": false,
       "variants": [
         {
-          "file": "png/s0031_fw_gold_0.png",
-          "pixHash": "BA929A101851E085",
+          "file": "png/s0031_fw_amber_0.png",
+          "pixHash": "91AD24B205307495",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1813,
+          "compressedBytes": 2048,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -628,10 +685,10 @@
       "variants": [
         {
           "file": "png/s0032_mine_0.png",
-          "pixHash": "1E3D8704E5BAD9E5",
+          "pixHash": "0099694C7D41D019",
           "w": 48,
           "h": 48,
-          "compressedBytes": 880,
+          "compressedBytes": 1613,
           "rawBytes": 9216,
           "defineCount": 1,
           "firstTick": 0,
@@ -862,10 +919,10 @@
       "variants": [
         {
           "file": "png/s0043_camo_glass_0.png",
-          "pixHash": "DD05C041626AB7C5",
+          "pixHash": "55CA4408F4E05385",
           "w": 32,
           "h": 48,
-          "compressedBytes": 361,
+          "compressedBytes": 320,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1018,10 +1075,10 @@
       "variants": [
         {
           "file": "png/s0049_glitch_0.png",
-          "pixHash": "EC60851AEEACFB8A",
+          "pixHash": "42A4EC0A7E99E322",
           "w": 32,
           "h": 48,
-          "compressedBytes": 642,
+          "compressedBytes": 567,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1044,10 +1101,10 @@
       "variants": [
         {
           "file": "png/s0051_item_sword_0.png",
-          "pixHash": "DEA1E8FED4A090FB",
+          "pixHash": "10BAF1952CD03F33",
           "w": 24,
           "h": 24,
-          "compressedBytes": 355,
+          "compressedBytes": 285,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1070,10 +1127,10 @@
       "variants": [
         {
           "file": "png/s0052_item_spear_0.png",
-          "pixHash": "7FC2CC4602FAB051",
+          "pixHash": "32C4BFA1CC5F886C",
           "w": 24,
           "h": 24,
-          "compressedBytes": 429,
+          "compressedBytes": 265,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1096,10 +1153,10 @@
       "variants": [
         {
           "file": "png/s0053_item_bow_0.png",
-          "pixHash": "A6C9CAB37BD414F3",
+          "pixHash": "A8FE7DEA3F299D12",
           "w": 24,
           "h": 24,
-          "compressedBytes": 360,
+          "compressedBytes": 287,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1122,10 +1179,10 @@
       "variants": [
         {
           "file": "png/s0054_item_knives_0.png",
-          "pixHash": "877A64B1B80216A9",
+          "pixHash": "E7A5F0497EA06BBF",
           "w": 24,
           "h": 24,
-          "compressedBytes": 429,
+          "compressedBytes": 289,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1148,10 +1205,10 @@
       "variants": [
         {
           "file": "png/s0055_item_blowgun_0.png",
-          "pixHash": "8AA5D44955EFB315",
+          "pixHash": "FC4F0460458E4C47",
           "w": 24,
           "h": 24,
-          "compressedBytes": 429,
+          "compressedBytes": 271,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1174,10 +1231,10 @@
       "variants": [
         {
           "file": "png/s0056_item_net_0.png",
-          "pixHash": "A17F3F3559586B77",
+          "pixHash": "CDC6502A4D9373DF",
           "w": 24,
           "h": 24,
-          "compressedBytes": 415,
+          "compressedBytes": 286,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1200,10 +1257,10 @@
       "variants": [
         {
           "file": "png/s0057_item_first_aid_0.png",
-          "pixHash": "55DA970740B5620D",
+          "pixHash": "A44FA136F93BAE01",
           "w": 24,
           "h": 24,
-          "compressedBytes": 348,
+          "compressedBytes": 227,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1226,10 +1283,10 @@
       "variants": [
         {
           "file": "png/s0058_item_rations_0.png",
-          "pixHash": "2010BED2445EA71D",
+          "pixHash": "588053B885200B45",
           "w": 24,
           "h": 24,
-          "compressedBytes": 415,
+          "compressedBytes": 215,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1252,10 +1309,10 @@
       "variants": [
         {
           "file": "png/s0059_item_backpack_0.png",
-          "pixHash": "A88D2CCDD52225C7",
+          "pixHash": "588053B885200B45",
           "w": 24,
           "h": 24,
-          "compressedBytes": 415,
+          "compressedBytes": 215,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1278,10 +1335,10 @@
       "variants": [
         {
           "file": "png/s0060_item_camouflage_0.png",
-          "pixHash": "15E0517B83041407",
+          "pixHash": "8F48C70885808234",
           "w": 24,
           "h": 24,
-          "compressedBytes": 443,
+          "compressedBytes": 261,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1304,10 +1361,10 @@
       "variants": [
         {
           "file": "png/s0061_item_arrows_0.png",
-          "pixHash": "0FFD348943E307FF",
+          "pixHash": "102A13779E529E55",
           "w": 24,
           "h": 24,
-          "compressedBytes": 590,
+          "compressedBytes": 307,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1330,10 +1387,10 @@
       "variants": [
         {
           "file": "png/s0062_item_darts_0.png",
-          "pixHash": "E5B4DB68F43F687B",
+          "pixHash": "EBB46C2D4F73DBA2",
           "w": 24,
           "h": 24,
-          "compressedBytes": 575,
+          "compressedBytes": 279,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1356,10 +1413,10 @@
       "variants": [
         {
           "file": "png/s0090_bush0_0.png",
-          "pixHash": "1C5C7B6282E2686D",
+          "pixHash": "F4726BE1B4F7B0BC",
           "w": 24,
           "h": 24,
-          "compressedBytes": 589,
+          "compressedBytes": 497,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1382,10 +1439,10 @@
       "variants": [
         {
           "file": "png/s0091_bush1_0.png",
-          "pixHash": "787183CEBFDC5531",
+          "pixHash": "CA827B40DCC21ED2",
           "w": 24,
           "h": 24,
-          "compressedBytes": 606,
+          "compressedBytes": 514,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1408,10 +1465,10 @@
       "variants": [
         {
           "file": "png/s0092_bush2_0.png",
-          "pixHash": "D8DF41BADC86D9FB",
+          "pixHash": "B6E46F868FD4ACCE",
           "w": 24,
           "h": 24,
-          "compressedBytes": 611,
+          "compressedBytes": 537,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1434,10 +1491,10 @@
       "variants": [
         {
           "file": "png/s0093_bush3_0.png",
-          "pixHash": "1FF68FFD44CBBDD9",
+          "pixHash": "6AFB95E68E52DD6E",
           "w": 24,
           "h": 24,
-          "compressedBytes": 608,
+          "compressedBytes": 536,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -1638,10 +1695,10 @@
       "variants": [
         {
           "file": "png/s0400_body0_0.png",
-          "pixHash": "09A5E046CFBDA3AD",
+          "pixHash": "399CB2B8B1B18A1A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 696,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1664,10 +1721,10 @@
       "variants": [
         {
           "file": "png/s0401_body0_0.png",
-          "pixHash": "675A393E616DC025",
+          "pixHash": "93F183921CDBFC22",
           "w": 32,
           "h": 48,
-          "compressedBytes": 623,
+          "compressedBytes": 671,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1690,10 +1747,10 @@
       "variants": [
         {
           "file": "png/s0402_body0_0.png",
-          "pixHash": "61384FEA807CAC9D",
+          "pixHash": "6CEAE4FE56B1751A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 669,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1716,10 +1773,10 @@
       "variants": [
         {
           "file": "png/s0403_body0_0.png",
-          "pixHash": "454A940524CD6295",
+          "pixHash": "CED28345F8216782",
           "w": 32,
           "h": 48,
-          "compressedBytes": 615,
+          "compressedBytes": 655,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1742,10 +1799,10 @@
       "variants": [
         {
           "file": "png/s0404_body0_0.png",
-          "pixHash": "55292F6AC04EB4AD",
+          "pixHash": "FE73CF296929F803",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 607,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1768,10 +1825,10 @@
       "variants": [
         {
           "file": "png/s0405_body0_0.png",
-          "pixHash": "EAC61176DF42D125",
+          "pixHash": "8066D614CD8D1AD7",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 596,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1794,10 +1851,10 @@
       "variants": [
         {
           "file": "png/s0406_body0_0.png",
-          "pixHash": "7F4DA9528B97A8CD",
+          "pixHash": "DC488AB988C4777A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 590,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1820,10 +1877,10 @@
       "variants": [
         {
           "file": "png/s0407_body0_0.png",
-          "pixHash": "061284B891BA42C5",
+          "pixHash": "1E62EC165E719D42",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 585,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1846,10 +1903,10 @@
       "variants": [
         {
           "file": "png/s0410_body1_0.png",
-          "pixHash": "E004E0C7ECC88E4D",
+          "pixHash": "EE09DC741EB2080A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 664,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1872,10 +1929,10 @@
       "variants": [
         {
           "file": "png/s0411_body1_0.png",
-          "pixHash": "DF3211BAC9612C45",
+          "pixHash": "3BE27317AAB6AF72",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 643,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1898,10 +1955,10 @@
       "variants": [
         {
           "file": "png/s0412_body1_0.png",
-          "pixHash": "6A7C532565087D3D",
+          "pixHash": "9F5B73C571B5442A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 637,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1924,10 +1981,10 @@
       "variants": [
         {
           "file": "png/s0413_body1_0.png",
-          "pixHash": "F0997403F0867E35",
+          "pixHash": "280C2E7896B98472",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 631,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1950,10 +2007,10 @@
       "variants": [
         {
           "file": "png/s0414_body1_0.png",
-          "pixHash": "22787D1103621E4D",
+          "pixHash": "C13DDA0B6FAF910B",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 635,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -1976,10 +2033,10 @@
       "variants": [
         {
           "file": "png/s0415_body1_0.png",
-          "pixHash": "4FCB6DA7563ABC45",
+          "pixHash": "8C7D38759303BAAF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 640,
+          "compressedBytes": 621,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2002,10 +2059,10 @@
       "variants": [
         {
           "file": "png/s0416_body1_0.png",
-          "pixHash": "6ACE22043DEEDA6D",
+          "pixHash": "47450707C332D4CA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 613,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2028,10 +2085,10 @@
       "variants": [
         {
           "file": "png/s0417_body1_0.png",
-          "pixHash": "DE62F0A2354A4DE5",
+          "pixHash": "2D39E7015F6EDA92",
           "w": 32,
           "h": 48,
-          "compressedBytes": 628,
+          "compressedBytes": 607,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2054,10 +2111,10 @@
       "variants": [
         {
           "file": "png/s0420_body2_0.png",
-          "pixHash": "795D62B875D48D8D",
+          "pixHash": "0F5A3F2DCBA1FF82",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2080,10 +2137,10 @@
       "variants": [
         {
           "file": "png/s0421_body2_0.png",
-          "pixHash": "6A6A817E662CFF0D",
+          "pixHash": "807449E13651A9EA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2106,10 +2163,10 @@
       "variants": [
         {
           "file": "png/s0422_body2_0.png",
-          "pixHash": "A7F19FC8167EE43D",
+          "pixHash": "C67491BDF72FA4B2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2132,10 +2189,10 @@
       "variants": [
         {
           "file": "png/s0423_body2_0.png",
-          "pixHash": "1B1437ACA94A94FD",
+          "pixHash": "0B8DAEB4F833DBAA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2158,10 +2215,10 @@
       "variants": [
         {
           "file": "png/s0424_body2_0.png",
-          "pixHash": "C4E0B1DC66659E8D",
+          "pixHash": "3B3A0FD836E1017B",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2184,10 +2241,10 @@
       "variants": [
         {
           "file": "png/s0425_body2_0.png",
-          "pixHash": "EDD659B6E402100D",
+          "pixHash": "B898E6B2B44CF8FF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 578,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2210,10 +2267,10 @@
       "variants": [
         {
           "file": "png/s0426_body2_0.png",
-          "pixHash": "BF17CD8F7D7050AD",
+          "pixHash": "20C0062D5E691852",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 569,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2236,10 +2293,10 @@
       "variants": [
         {
           "file": "png/s0427_body2_0.png",
-          "pixHash": "124FA56B13C619AD",
+          "pixHash": "E2D78B50162DF62A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 566,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2262,10 +2319,10 @@
       "variants": [
         {
           "file": "png/s0430_body3_0.png",
-          "pixHash": "6B6D07E6E7D1162D",
+          "pixHash": "79B4DFF3BD5575F2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2288,10 +2345,10 @@
       "variants": [
         {
           "file": "png/s0431_body3_0.png",
-          "pixHash": "E9170802EFE2BD2D",
+          "pixHash": "62205715224D131A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2314,10 +2371,10 @@
       "variants": [
         {
           "file": "png/s0432_body3_0.png",
-          "pixHash": "49C2503AEBFDD95D",
+          "pixHash": "4DB0533CDAF0F602",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2340,10 +2397,10 @@
       "variants": [
         {
           "file": "png/s0433_body3_0.png",
-          "pixHash": "64E292FE11023E1D",
+          "pixHash": "4DB724704A8119BA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2366,10 +2423,10 @@
       "variants": [
         {
           "file": "png/s0434_body3_0.png",
-          "pixHash": "ADE0A42FFE6AA62D",
+          "pixHash": "35DDA6BD8EB0584B",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 623,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2392,10 +2449,10 @@
       "variants": [
         {
           "file": "png/s0435_body3_0.png",
-          "pixHash": "59B063EF7CBC4D2D",
+          "pixHash": "A73C871D575AFCAF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 599,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2418,10 +2475,10 @@
       "variants": [
         {
           "file": "png/s0436_body3_0.png",
-          "pixHash": "1F6DCF1F067BA74D",
+          "pixHash": "D85D5BB0023A3082",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 604,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2444,10 +2501,10 @@
       "variants": [
         {
           "file": "png/s0437_body3_0.png",
-          "pixHash": "D9342C6C2E7210CD",
+          "pixHash": "50DCFFE9FD4815DA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 598,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2470,10 +2527,10 @@
       "variants": [
         {
           "file": "png/s0440_body4_0.png",
-          "pixHash": "7ADD9AAF272669AD",
+          "pixHash": "DE4E710A2C01036A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2496,10 +2553,10 @@
       "variants": [
         {
           "file": "png/s0441_body4_0.png",
-          "pixHash": "7D5B6E77D27F7525",
+          "pixHash": "FDF03DAE5EEB7542",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2522,10 +2579,10 @@
       "variants": [
         {
           "file": "png/s0442_body4_0.png",
-          "pixHash": "FD214C96D4107E1D",
+          "pixHash": "8CE55B8916494EAA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2548,10 +2605,10 @@
       "variants": [
         {
           "file": "png/s0443_body4_0.png",
-          "pixHash": "19DBC6C5A17A8F15",
+          "pixHash": "F922BBFA5FA501B2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2574,10 +2631,10 @@
       "variants": [
         {
           "file": "png/s0444_body4_0.png",
-          "pixHash": "C660E9D317B77AAD",
+          "pixHash": "8C108BBBFACE86F3",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2600,10 +2657,10 @@
       "variants": [
         {
           "file": "png/s0445_body4_0.png",
-          "pixHash": "00C746B050548625",
+          "pixHash": "AD4E59D19545AB17",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2626,10 +2683,10 @@
       "variants": [
         {
           "file": "png/s0446_body4_0.png",
-          "pixHash": "AD7509AA1B8A874D",
+          "pixHash": "55A4C48B4457E7EA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 589,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2652,10 +2709,10 @@
       "variants": [
         {
           "file": "png/s0447_body4_0.png",
-          "pixHash": "BCEFB77B8A8414C5",
+          "pixHash": "C9B0E4146E38CF12",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 584,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2678,10 +2735,10 @@
       "variants": [
         {
           "file": "png/s0450_body5_0.png",
-          "pixHash": "C5A562A5F549C2CD",
+          "pixHash": "DEB34447DF8F47CA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2704,10 +2761,10 @@
       "variants": [
         {
           "file": "png/s0451_body5_0.png",
-          "pixHash": "1AA06BEE61AED045",
+          "pixHash": "8F6BD16C6F0BC2C2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2730,10 +2787,10 @@
       "variants": [
         {
           "file": "png/s0452_body5_0.png",
-          "pixHash": "050F1A0BAD620C3D",
+          "pixHash": "1E0817CBC8C950CA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2756,10 +2813,10 @@
       "variants": [
         {
           "file": "png/s0453_body5_0.png",
-          "pixHash": "2B5803533872F135",
+          "pixHash": "C3070D03CA2DA032",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2782,10 +2839,10 @@
       "variants": [
         {
           "file": "png/s0454_body5_0.png",
-          "pixHash": "0818FEEF0BE352CD",
+          "pixHash": "6459D24E58AE79AB",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 634,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2808,10 +2865,10 @@
       "variants": [
         {
           "file": "png/s0455_body5_0.png",
-          "pixHash": "8B39C7DAEE886045",
+          "pixHash": "EC13956EF3B473DF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 620,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2834,10 +2891,10 @@
       "variants": [
         {
           "file": "png/s0456_body5_0.png",
-          "pixHash": "38018BB14F96856D",
+          "pixHash": "66CAF86A4CFFD642",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 612,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2860,10 +2917,10 @@
       "variants": [
         {
           "file": "png/s0457_body5_0.png",
-          "pixHash": "25CE79C885806AE5",
+          "pixHash": "E62CB6FE5311F6CA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2886,10 +2943,10 @@
       "variants": [
         {
           "file": "png/s0460_body6_0.png",
-          "pixHash": "3509CCECA6381DFD",
+          "pixHash": "7ADE7795C149CF22",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2912,10 +2969,10 @@
       "variants": [
         {
           "file": "png/s0461_body6_0.png",
-          "pixHash": "CCACD7337D06AAB5",
+          "pixHash": "9BF0AC90BE6C3EFA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2938,10 +2995,10 @@
       "variants": [
         {
           "file": "png/s0462_body6_0.png",
-          "pixHash": "E4F8E09C88F3ECAD",
+          "pixHash": "D4E9DD09BC9C0982",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2964,10 +3021,10 @@
       "variants": [
         {
           "file": "png/s0463_body6_0.png",
-          "pixHash": "641EF97ECC1B8425",
+          "pixHash": "539BC5106C4074CA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -2990,10 +3047,10 @@
       "variants": [
         {
           "file": "png/s0464_body6_0.png",
-          "pixHash": "808D1C1096C92EFD",
+          "pixHash": "C8CDD7BE54CC4243",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3016,10 +3073,10 @@
       "variants": [
         {
           "file": "png/s0465_body6_0.png",
-          "pixHash": "5018AF6BFADBBBB5",
+          "pixHash": "4721307CAA8907E7",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3042,10 +3099,10 @@
       "variants": [
         {
           "file": "png/s0466_body6_0.png",
-          "pixHash": "D6E0716556725E9D",
+          "pixHash": "03DF014E1DCF425A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 589,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3068,10 +3125,10 @@
       "variants": [
         {
           "file": "png/s0467_body6_0.png",
-          "pixHash": "993BD787C1C44BD5",
+          "pixHash": "BFB6C04F00E98D72",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 584,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3094,10 +3151,10 @@
       "variants": [
         {
           "file": "png/s0470_body7_0.png",
-          "pixHash": "9A8B82748B733E1D",
+          "pixHash": "A3DC5C47004EA6DA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3120,10 +3177,10 @@
       "variants": [
         {
           "file": "png/s0471_body7_0.png",
-          "pixHash": "8C945F62DEA9D555",
+          "pixHash": "DBDBEDAD04E0C092",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3146,10 +3203,10 @@
       "variants": [
         {
           "file": "png/s0472_body7_0.png",
-          "pixHash": "DD17FC7901EE74CD",
+          "pixHash": "8BFC20476A5197BA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3172,10 +3229,10 @@
       "variants": [
         {
           "file": "png/s0473_body7_0.png",
-          "pixHash": "67C60C66296EE345",
+          "pixHash": "2F33745FBAC4F862",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3198,10 +3255,10 @@
       "variants": [
         {
           "file": "png/s0474_body7_0.png",
-          "pixHash": "DCFF1EBDA20CCE1D",
+          "pixHash": "DC83C655D3025BF3",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 634,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3224,10 +3281,10 @@
       "variants": [
         {
           "file": "png/s0475_body7_0.png",
-          "pixHash": "FD2DBB4F6B836555",
+          "pixHash": "C5D5B866C4986517",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 620,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3250,10 +3307,10 @@
       "variants": [
         {
           "file": "png/s0476_body7_0.png",
-          "pixHash": "5F85D60341827CBD",
+          "pixHash": "797BC59799349B82",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 612,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3276,10 +3333,10 @@
       "variants": [
         {
           "file": "png/s0477_body7_0.png",
-          "pixHash": "46C4B0E051729375",
+          "pixHash": "B87D9D675C244F5A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3302,10 +3359,10 @@
       "variants": [
         {
           "file": "png/s0480_body8_0.png",
-          "pixHash": "44E6F3DA72414615",
+          "pixHash": "11577798B131612A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3328,10 +3385,10 @@
       "variants": [
         {
           "file": "png/s0481_body8_0.png",
-          "pixHash": "2303269AF183BC15",
+          "pixHash": "1900BF0ABCCF08C2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3354,10 +3411,10 @@
       "variants": [
         {
           "file": "png/s0482_body8_0.png",
-          "pixHash": "435D19A9B4429645",
+          "pixHash": "D6FF1579C11C0D6A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3380,10 +3437,10 @@
       "variants": [
         {
           "file": "png/s0483_body8_0.png",
-          "pixHash": "1F269F8D2E96CF05",
+          "pixHash": "5F453AE1CE054452",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3406,10 +3463,10 @@
       "variants": [
         {
           "file": "png/s0484_body8_0.png",
-          "pixHash": "906A42FE62D25715",
+          "pixHash": "D753018AF72DB223",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3432,10 +3489,10 @@
       "variants": [
         {
           "file": "png/s0485_body8_0.png",
-          "pixHash": "A66EFED36F58CD15",
+          "pixHash": "45C654C887DC0807",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3458,10 +3515,10 @@
       "variants": [
         {
           "file": "png/s0486_body8_0.png",
-          "pixHash": "63C1700B5D03E535",
+          "pixHash": "EBBD11ED5F244B8A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 589,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3484,10 +3541,10 @@
       "variants": [
         {
           "file": "png/s0487_body8_0.png",
-          "pixHash": "C1CCC5A408201D35",
+          "pixHash": "2C0CEAEA4536D752",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 584,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3510,10 +3567,10 @@
       "variants": [
         {
           "file": "png/s0490_body9_0.png",
-          "pixHash": "58BA694B0E615CB5",
+          "pixHash": "615CE30A14E1531A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3536,10 +3593,10 @@
       "variants": [
         {
           "file": "png/s0491_body9_0.png",
-          "pixHash": "C2309943274AAEB5",
+          "pixHash": "84B11FDFC79C2CD2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3562,10 +3619,10 @@
       "variants": [
         {
           "file": "png/s0492_body9_0.png",
-          "pixHash": "62384B4E94892AE5",
+          "pixHash": "82B9DEC6B32A35BA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3588,10 +3645,10 @@
       "variants": [
         {
           "file": "png/s0493_body9_0.png",
-          "pixHash": "F12F2871FD4EAAA5",
+          "pixHash": "480B5C360456EAC2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3614,10 +3671,10 @@
       "variants": [
         {
           "file": "png/s0494_body9_0.png",
-          "pixHash": "9B2E059424FAECB5",
+          "pixHash": "065A2C181CB46E4B",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 634,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3640,10 +3697,10 @@
       "variants": [
         {
           "file": "png/s0495_body9_0.png",
-          "pixHash": "32C9F52FB4243EB5",
+          "pixHash": "A1DB4BC0AC7056DF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 620,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3666,10 +3723,10 @@
       "variants": [
         {
           "file": "png/s0496_body9_0.png",
-          "pixHash": "8DDE983295DDA0D5",
+          "pixHash": "DEC6F4C50C2DB382",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 612,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3692,10 +3749,10 @@
       "variants": [
         {
           "file": "png/s0497_body9_0.png",
-          "pixHash": "2F86B7B851FACFD5",
+          "pixHash": "23F941B279A7F18A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3718,10 +3775,10 @@
       "variants": [
         {
           "file": "png/s0500_body10_0.png",
-          "pixHash": "6A097541F9805F0D",
+          "pixHash": "5C0A486B63DB0C12",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3744,10 +3801,10 @@
       "variants": [
         {
           "file": "png/s0501_body10_0.png",
-          "pixHash": "4D9B8B5626D3B61D",
+          "pixHash": "4C34B2B53125C1AA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3770,10 +3827,10 @@
       "variants": [
         {
           "file": "png/s0502_body10_0.png",
-          "pixHash": "8B2AF3BF0C69823D",
+          "pixHash": "8B5D6D18F467D5E2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3796,10 +3853,10 @@
       "variants": [
         {
           "file": "png/s0503_body10_0.png",
-          "pixHash": "22301FEC73E0020D",
+          "pixHash": "6472524C145430DA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3822,10 +3879,10 @@
       "variants": [
         {
           "file": "png/s0504_body10_0.png",
-          "pixHash": "B58CC465EA11700D",
+          "pixHash": "CE4E57E7FAA2E803",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3848,10 +3905,10 @@
       "variants": [
         {
           "file": "png/s0505_body10_0.png",
-          "pixHash": "D107638EA4A8C71D",
+          "pixHash": "53FE1BD7A975D0E7",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3874,10 +3931,10 @@
       "variants": [
         {
           "file": "png/s0506_body10_0.png",
-          "pixHash": "FDBA7B6462F9EBAD",
+          "pixHash": "33DDF53072BDDE0A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 589,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3900,10 +3957,10 @@
       "variants": [
         {
           "file": "png/s0507_body10_0.png",
-          "pixHash": "9B0667C47CDA183D",
+          "pixHash": "87BD0F22CA83ED92",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 584,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3926,10 +3983,10 @@
       "variants": [
         {
           "file": "png/s0510_body11_0.png",
-          "pixHash": "60E38ED266F2092D",
+          "pixHash": "FC652AD992D0E22A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3952,10 +4009,10 @@
       "variants": [
         {
           "file": "png/s0511_body11_0.png",
-          "pixHash": "3AB28E8313EF63BD",
+          "pixHash": "00ED21E2FAA7B062",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -3978,10 +4035,10 @@
       "variants": [
         {
           "file": "png/s0512_body11_0.png",
-          "pixHash": "98670CDD70C847DD",
+          "pixHash": "4570EAA8C5CB2CDA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4004,10 +4061,10 @@
       "variants": [
         {
           "file": "png/s0513_body11_0.png",
-          "pixHash": "860D69E1699870AD",
+          "pixHash": "44A30C0898B19B32",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4030,10 +4087,10 @@
       "variants": [
         {
           "file": "png/s0514_body11_0.png",
-          "pixHash": "A3572B1B7D8B992D",
+          "pixHash": "DCBE83063DBA2733",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 634,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4056,10 +4113,10 @@
       "variants": [
         {
           "file": "png/s0515_body11_0.png",
-          "pixHash": "AB4BEA6FA0C8F3BD",
+          "pixHash": "AFDE29ECF96A6937",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 620,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4082,10 +4139,10 @@
       "variants": [
         {
           "file": "png/s0516_body11_0.png",
-          "pixHash": "6B9B0E0C3E2B96CD",
+          "pixHash": "0E5D9644B0DB16B2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 612,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4108,10 +4165,10 @@
       "variants": [
         {
           "file": "png/s0517_body11_0.png",
-          "pixHash": "0D2327A112435DDD",
+          "pixHash": "689946B703780E7A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4134,10 +4191,10 @@
       "variants": [
         {
           "file": "png/s0520_body12_0.png",
-          "pixHash": "40EC16B1B0AEBE95",
+          "pixHash": "A6070293CA4C3C9A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4160,10 +4217,10 @@
       "variants": [
         {
           "file": "png/s0521_body12_0.png",
-          "pixHash": "597E7198AB91F85D",
+          "pixHash": "1B62C4082CCBB582",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4186,10 +4243,10 @@
       "variants": [
         {
           "file": "png/s0522_body12_0.png",
-          "pixHash": "1C92FD4624C60EC5",
+          "pixHash": "9B4DCC1A8CC196EA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4212,10 +4269,10 @@
       "variants": [
         {
           "file": "png/s0523_body12_0.png",
-          "pixHash": "F5191E4E1FCCA54D",
+          "pixHash": "F515B9A664762912",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4238,10 +4295,10 @@
       "variants": [
         {
           "file": "png/s0524_body12_0.png",
-          "pixHash": "8C6F65D5A13FCF95",
+          "pixHash": "88AC58D1BAAFBDFB",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4264,10 +4321,10 @@
       "variants": [
         {
           "file": "png/s0525_body12_0.png",
-          "pixHash": "DCEA49D12967095D",
+          "pixHash": "5B4D542AA849D9CF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4290,10 +4347,10 @@
       "variants": [
         {
           "file": "png/s0526_body12_0.png",
-          "pixHash": "6692B30C00769335",
+          "pixHash": "A5DCFD33B6EEEEA2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 589,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4316,10 +4373,10 @@
       "variants": [
         {
           "file": "png/s0527_body12_0.png",
-          "pixHash": "FE6253F475506AFD",
+          "pixHash": "5A0FDBCCF3A88A6A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 584,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4342,10 +4399,10 @@
       "variants": [
         {
           "file": "png/s0530_body13_0.png",
-          "pixHash": "789F2C08550716B5",
+          "pixHash": "238F4F04A7581E92",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4368,10 +4425,10 @@
       "variants": [
         {
           "file": "png/s0531_body13_0.png",
-          "pixHash": "98CC77EA152C207D",
+          "pixHash": "FCD52DA300AE725A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4394,10 +4451,10 @@
       "variants": [
         {
           "file": "png/s0532_body13_0.png",
-          "pixHash": "2A681D25DF49E8E5",
+          "pixHash": "A91BA7A36B138282",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4420,10 +4477,10 @@
       "variants": [
         {
           "file": "png/s0533_body13_0.png",
-          "pixHash": "FBD7961CE4449BED",
+          "pixHash": "E714B37008C0AE4A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4446,10 +4503,10 @@
       "variants": [
         {
           "file": "png/s0534_body13_0.png",
-          "pixHash": "BB12C8516BA0A6B5",
+          "pixHash": "CC38C7F55BD64413",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 634,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4472,10 +4529,10 @@
       "variants": [
         {
           "file": "png/s0535_body13_0.png",
-          "pixHash": "0965D3D6A205B07D",
+          "pixHash": "AB594B1A82E2C5B7",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 620,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4498,10 +4555,10 @@
       "variants": [
         {
           "file": "png/s0536_body13_0.png",
-          "pixHash": "D865731F47ABE055",
+          "pixHash": "F7C4EA0F1E3E4D3A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 612,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4524,10 +4581,10 @@
       "variants": [
         {
           "file": "png/s0537_body13_0.png",
-          "pixHash": "894DA6A40E70C11D",
+          "pixHash": "E3C79D7AE38B85C2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4550,10 +4607,10 @@
       "variants": [
         {
           "file": "png/s0540_body14_0.png",
-          "pixHash": "E7EB5418168956C5",
+          "pixHash": "681E04B09A80D432",
           "w": 32,
           "h": 48,
-          "compressedBytes": 634,
+          "compressedBytes": 695,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4576,10 +4633,10 @@
       "variants": [
         {
           "file": "png/s0541_body14_0.png",
-          "pixHash": "0C8945F0C31DA045",
+          "pixHash": "62047EDE984BA97A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 622,
+          "compressedBytes": 670,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4602,10 +4659,10 @@
       "variants": [
         {
           "file": "png/s0542_body14_0.png",
-          "pixHash": "59B080AD2762FFB5",
+          "pixHash": "27E2713F9B7C2262",
           "w": 32,
           "h": 48,
-          "compressedBytes": 626,
+          "compressedBytes": 668,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4628,10 +4685,10 @@
       "variants": [
         {
           "file": "png/s0543_body14_0.png",
-          "pixHash": "1123D1F304F8CA75",
+          "pixHash": "ED711815D6EA68BA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 614,
+          "compressedBytes": 654,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4654,10 +4711,10 @@
       "variants": [
         {
           "file": "png/s0544_body14_0.png",
-          "pixHash": "336EA33C071A67C5",
+          "pixHash": "CDBE33FEB3E99D2B",
           "w": 32,
           "h": 48,
-          "compressedBytes": 648,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4680,10 +4737,10 @@
       "variants": [
         {
           "file": "png/s0545_body14_0.png",
-          "pixHash": "8FF51E2940F2B145",
+          "pixHash": "5B344ABCBA397AAF",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 595,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4706,10 +4763,10 @@
       "variants": [
         {
           "file": "png/s0546_body14_0.png",
-          "pixHash": "5415171D208DE1E5",
+          "pixHash": "976D3AA94FEABEB2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 636,
+          "compressedBytes": 589,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4732,10 +4789,10 @@
       "variants": [
         {
           "file": "png/s0547_body14_0.png",
-          "pixHash": "3700A9D0345148E5",
+          "pixHash": "1110B62EF2EBF0AA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 624,
+          "compressedBytes": 584,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4758,10 +4815,10 @@
       "variants": [
         {
           "file": "png/s0550_body15_0.png",
-          "pixHash": "48D9C8CCD1BD7D65",
+          "pixHash": "89B3A5A90C35F882",
           "w": 32,
           "h": 48,
-          "compressedBytes": 637,
+          "compressedBytes": 663,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4784,10 +4841,10 @@
       "variants": [
         {
           "file": "png/s0551_body15_0.png",
-          "pixHash": "D2B2FF08244D1C65",
+          "pixHash": "CFCA574E09BEBDEA",
           "w": 32,
           "h": 48,
-          "compressedBytes": 625,
+          "compressedBytes": 642,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4810,10 +4867,10 @@
       "variants": [
         {
           "file": "png/s0552_body15_0.png",
-          "pixHash": "95D143F91FC33855",
+          "pixHash": "DE38B68FFF6F6AB2",
           "w": 32,
           "h": 48,
-          "compressedBytes": 633,
+          "compressedBytes": 636,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4836,10 +4893,10 @@
       "variants": [
         {
           "file": "png/s0553_body15_0.png",
-          "pixHash": "2C01E210A0A27D95",
+          "pixHash": "34AE892A1ABDB06A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 621,
+          "compressedBytes": 630,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4862,10 +4919,10 @@
       "variants": [
         {
           "file": "png/s0554_body15_0.png",
-          "pixHash": "8B4D6515E8570D65",
+          "pixHash": "D90D2B2B08A38943",
           "w": 32,
           "h": 48,
-          "compressedBytes": 651,
+          "compressedBytes": 634,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4888,10 +4945,10 @@
       "variants": [
         {
           "file": "png/s0555_body15_0.png",
-          "pixHash": "434C5AF4B126AC65",
+          "pixHash": "9A1741DAE1334127",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 620,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4914,10 +4971,10 @@
       "variants": [
         {
           "file": "png/s0556_body15_0.png",
-          "pixHash": "59B843706D215785",
+          "pixHash": "FBB59C4A51659D3A",
           "w": 32,
           "h": 48,
-          "compressedBytes": 639,
+          "compressedBytes": 612,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4940,10 +4997,10 @@
       "variants": [
         {
           "file": "png/s0557_body15_0.png",
-          "pixHash": "600C6AA32D4AC605",
+          "pixHash": "ACF229EB86F6FF52",
           "w": 32,
           "h": 48,
-          "compressedBytes": 627,
+          "compressedBytes": 606,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -4966,10 +5023,10 @@
       "variants": [
         {
           "file": "png/s0560_corpse0_0.png",
-          "pixHash": "B3929F68DB95328D",
+          "pixHash": "8BF3E00A9BE016E0",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 592,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -4992,10 +5049,10 @@
       "variants": [
         {
           "file": "png/s0561_corpse1_0.png",
-          "pixHash": "698CD139E092CA1D",
+          "pixHash": "0AD542EA2ED21CC9",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 600,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5018,10 +5075,10 @@
       "variants": [
         {
           "file": "png/s0562_corpse2_0.png",
-          "pixHash": "CA25BFF171E344AD",
+          "pixHash": "850F62F0DA08FC52",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 592,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5044,10 +5101,10 @@
       "variants": [
         {
           "file": "png/s0563_corpse3_0.png",
-          "pixHash": "7C018B779AAAFE7D",
+          "pixHash": "F73B1BF1B7C38543",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 600,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5070,10 +5127,10 @@
       "variants": [
         {
           "file": "png/s0564_corpse4_0.png",
-          "pixHash": "417F0B17B1C604AD",
+          "pixHash": "1F977FF55E52F40C",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 593,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5096,10 +5153,10 @@
       "variants": [
         {
           "file": "png/s0565_corpse5_0.png",
-          "pixHash": "8B204959747754FD",
+          "pixHash": "9CB8FE61A0BA15D4",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 601,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5122,10 +5179,10 @@
       "variants": [
         {
           "file": "png/s0566_corpse6_0.png",
-          "pixHash": "2C1C75166279EC4D",
+          "pixHash": "A9F422107781C23C",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 592,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5148,10 +5205,10 @@
       "variants": [
         {
           "file": "png/s0567_corpse7_0.png",
-          "pixHash": "F24484F4CA4C709D",
+          "pixHash": "6367A2DDE355A408",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 600,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5174,10 +5231,10 @@
       "variants": [
         {
           "file": "png/s0568_corpse8_0.png",
-          "pixHash": "08ABB47032B1233D",
+          "pixHash": "C184164034568014",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 593,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5200,10 +5257,10 @@
       "variants": [
         {
           "file": "png/s0569_corpse9_0.png",
-          "pixHash": "0846CD0D44FA574D",
+          "pixHash": "FE1643C1CC6CA8A2",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 601,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5226,10 +5283,10 @@
       "variants": [
         {
           "file": "png/s0570_corpse10_0.png",
-          "pixHash": "2BCC727EAB09765D",
+          "pixHash": "D21303032E27AAB5",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 592,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5252,10 +5309,10 @@
       "variants": [
         {
           "file": "png/s0571_corpse11_0.png",
-          "pixHash": "47DCB0EB5FA38E6D",
+          "pixHash": "05CC84D85EF30C2E",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 600,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5278,10 +5335,10 @@
       "variants": [
         {
           "file": "png/s0572_corpse12_0.png",
-          "pixHash": "54986E966A98DB2D",
+          "pixHash": "73067F5302C1C82B",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 593,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5304,10 +5361,10 @@
       "variants": [
         {
           "file": "png/s0573_corpse13_0.png",
-          "pixHash": "1AF3CDA7D9A8B6FD",
+          "pixHash": "E932AF4D80A06945",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 601,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5330,10 +5387,10 @@
       "variants": [
         {
           "file": "png/s0574_corpse14_0.png",
-          "pixHash": "05C1BF481ECDCF4D",
+          "pixHash": "89B676F8B797C3B9",
           "w": 48,
           "h": 24,
-          "compressedBytes": 371,
+          "compressedBytes": 593,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5356,10 +5413,10 @@
       "variants": [
         {
           "file": "png/s0575_corpse15_0.png",
-          "pixHash": "1857733584E4CF5D",
+          "pixHash": "7F44C1D6990B122C",
           "w": 48,
           "h": 24,
-          "compressedBytes": 370,
+          "compressedBytes": 601,
           "rawBytes": 4608,
           "defineCount": 1,
           "firstTick": 0,
@@ -5370,8 +5427,8 @@
     {
       "id": 601,
       "label": "held_sword",
-      "w": 20,
-      "h": 20,
+      "w": 28,
+      "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
       "dumpedVariants": 1,
@@ -5382,11 +5439,11 @@
       "variants": [
         {
           "file": "png/s0601_held_sword_0.png",
-          "pixHash": "769EEC8D7ACA7881",
-          "w": 20,
-          "h": 20,
-          "compressedBytes": 150,
-          "rawBytes": 1600,
+          "pixHash": "3CBA12889920F47A",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 208,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5396,8 +5453,8 @@
     {
       "id": 602,
       "label": "held_spear",
-      "w": 20,
-      "h": 20,
+      "w": 28,
+      "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
       "dumpedVariants": 1,
@@ -5408,11 +5465,11 @@
       "variants": [
         {
           "file": "png/s0602_held_spear_0.png",
-          "pixHash": "AB44B1BF21472C11",
-          "w": 20,
-          "h": 20,
-          "compressedBytes": 123,
-          "rawBytes": 1600,
+          "pixHash": "FD9AF16F4096784E",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 205,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5422,8 +5479,8 @@
     {
       "id": 603,
       "label": "held_bow",
-      "w": 20,
-      "h": 20,
+      "w": 28,
+      "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
       "dumpedVariants": 1,
@@ -5434,11 +5491,11 @@
       "variants": [
         {
           "file": "png/s0603_held_bow_0.png",
-          "pixHash": "545BC059C64DF075",
-          "w": 20,
-          "h": 20,
-          "compressedBytes": 293,
-          "rawBytes": 1600,
+          "pixHash": "07C68A53E24A7AC9",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 303,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5448,8 +5505,8 @@
     {
       "id": 604,
       "label": "held_knives",
-      "w": 20,
-      "h": 20,
+      "w": 28,
+      "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
       "dumpedVariants": 1,
@@ -5460,11 +5517,11 @@
       "variants": [
         {
           "file": "png/s0604_held_knives_0.png",
-          "pixHash": "694852B5629E8B6D",
-          "w": 20,
-          "h": 20,
-          "compressedBytes": 135,
-          "rawBytes": 1600,
+          "pixHash": "439673E2CAC6B379",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 704,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5474,8 +5531,8 @@
     {
       "id": 605,
       "label": "held_blowgun",
-      "w": 20,
-      "h": 20,
+      "w": 28,
+      "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
       "dumpedVariants": 1,
@@ -5486,11 +5543,11 @@
       "variants": [
         {
           "file": "png/s0605_held_blowgun_0.png",
-          "pixHash": "9CEEC9CF0A7307A5",
-          "w": 20,
-          "h": 20,
-          "compressedBytes": 87,
-          "rawBytes": 1600,
+          "pixHash": "7A539DA6EB9AF4AB",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 210,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5500,8 +5557,8 @@
     {
       "id": 606,
       "label": "held_net",
-      "w": 20,
-      "h": 20,
+      "w": 28,
+      "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
       "dumpedVariants": 1,
@@ -5512,11 +5569,479 @@
       "variants": [
         {
           "file": "png/s0606_held_net_0.png",
-          "pixHash": "5FA024E86F0F5FB5",
-          "w": 20,
-          "h": 20,
-          "compressedBytes": 135,
-          "rawBytes": 1600,
+          "pixHash": "72FC77798EF5FC22",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 267,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 607,
+      "label": "held_first_aid",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0607_held_first_aid_0.png",
+          "pixHash": "58C5AF76E0AA8E21",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 264,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 608,
+      "label": "held_rations",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0608_held_rations_0.png",
+          "pixHash": "3241DC20A31B0AE3",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 284,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 609,
+      "label": "held_backpack",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0609_held_backpack_0.png",
+          "pixHash": "C17B17569C0714D1",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 344,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 610,
+      "label": "held_camouflage",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0610_held_camouflage_0.png",
+          "pixHash": "A8405847FDC02C4E",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 398,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 611,
+      "label": "held_arrows",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0611_held_arrows_0.png",
+          "pixHash": "CB835ADFC90EF551",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 327,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 612,
+      "label": "held_darts",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0612_held_darts_0.png",
+          "pixHash": "901D856EA5F0BD5A",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 341,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 621,
+      "label": "held_w_sword",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0621_held_w_sword_0.png",
+          "pixHash": "4BC361F6A56FF89E",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 202,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 622,
+      "label": "held_w_spear",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0622_held_w_spear_0.png",
+          "pixHash": "AB5E8BDCB75C54AE",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 219,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 623,
+      "label": "held_w_bow",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0623_held_w_bow_0.png",
+          "pixHash": "32B88AFEC5214E49",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 355,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 624,
+      "label": "held_w_knives",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0624_held_w_knives_0.png",
+          "pixHash": "267678CFE0A25649",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 690,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 625,
+      "label": "held_w_blowgun",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0625_held_w_blowgun_0.png",
+          "pixHash": "528F516E5D72F3BB",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 212,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 626,
+      "label": "held_w_net",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0626_held_w_net_0.png",
+          "pixHash": "FCB6243F5485B4AA",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 274,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 627,
+      "label": "held_w_first_aid",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0627_held_w_first_aid_0.png",
+          "pixHash": "0AF3BF728BA58841",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 303,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 628,
+      "label": "held_w_rations",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0628_held_w_rations_0.png",
+          "pixHash": "19D1FC7F7059F18F",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 293,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 629,
+      "label": "held_w_backpack",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0629_held_w_backpack_0.png",
+          "pixHash": "4421DEB6CA765F49",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 339,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 630,
+      "label": "held_w_camouflage",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0630_held_w_camouflage_0.png",
+          "pixHash": "0E1A42584F779C0E",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 378,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 631,
+      "label": "held_w_arrows",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0631_held_w_arrows_0.png",
+          "pixHash": "068D523BF82C6F79",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 357,
+          "rawBytes": 3136,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 632,
+      "label": "held_w_darts",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0632_held_w_darts_0.png",
+          "pixHash": "A3B03B3CDE95053A",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 321,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5656,7 +6181,7 @@
     {
       "id": 800,
       "label": "tag0",
-      "w": 40,
+      "w": 88,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5668,11 +6193,11 @@
       "variants": [
         {
           "file": "png/s0800_tag0_0.png",
-          "pixHash": "DD43EF806A1033A5",
-          "w": 40,
+          "pixHash": "5A3159302E824FE5",
+          "w": 88,
           "h": 28,
-          "compressedBytes": 444,
-          "rawBytes": 4480,
+          "compressedBytes": 798,
+          "rawBytes": 9856,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5682,7 +6207,7 @@
     {
       "id": 801,
       "label": "tag1",
-      "w": 40,
+      "w": 136,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5694,11 +6219,11 @@
       "variants": [
         {
           "file": "png/s0801_tag1_0.png",
-          "pixHash": "62CC3F726C4F0825",
-          "w": 40,
+          "pixHash": "40C8509D3B9D1CE5",
+          "w": 136,
           "h": 28,
-          "compressedBytes": 384,
-          "rawBytes": 4480,
+          "compressedBytes": 1242,
+          "rawBytes": 15232,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5708,7 +6233,7 @@
     {
       "id": 802,
       "label": "tag2",
-      "w": 40,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5720,11 +6245,11 @@
       "variants": [
         {
           "file": "png/s0802_tag2_0.png",
-          "pixHash": "20D4A15BA696E645",
-          "w": 40,
+          "pixHash": "E6E3601DD909E625",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 399,
-          "rawBytes": 4480,
+          "compressedBytes": 879,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5734,7 +6259,7 @@
     {
       "id": 803,
       "label": "tag3",
-      "w": 40,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5746,11 +6271,11 @@
       "variants": [
         {
           "file": "png/s0803_tag3_0.png",
-          "pixHash": "BFD6777F323A1E45",
-          "w": 40,
+          "pixHash": "00A42F10C5D83E65",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 414,
-          "rawBytes": 4480,
+          "compressedBytes": 966,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5760,7 +6285,7 @@
     {
       "id": 804,
       "label": "tag4",
-      "w": 40,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5772,11 +6297,11 @@
       "variants": [
         {
           "file": "png/s0804_tag4_0.png",
-          "pixHash": "3BFC3E5A83317C05",
-          "w": 40,
+          "pixHash": "7F0F3E9753D2FCE5",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 405,
-          "rawBytes": 4480,
+          "compressedBytes": 991,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5786,7 +6311,7 @@
     {
       "id": 805,
       "label": "tag5",
-      "w": 40,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5798,11 +6323,11 @@
       "variants": [
         {
           "file": "png/s0805_tag5_0.png",
-          "pixHash": "5290A2898D7B3845",
-          "w": 40,
+          "pixHash": "E324F699D15BF4A5",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 402,
-          "rawBytes": 4480,
+          "compressedBytes": 981,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5812,7 +6337,7 @@
     {
       "id": 806,
       "label": "tag6",
-      "w": 40,
+      "w": 88,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5824,11 +6349,11 @@
       "variants": [
         {
           "file": "png/s0806_tag6_0.png",
-          "pixHash": "A9EC55DBF72A48A5",
-          "w": 40,
+          "pixHash": "10A565D6E78D1E65",
+          "w": 88,
           "h": 28,
-          "compressedBytes": 414,
-          "rawBytes": 4480,
+          "compressedBytes": 871,
+          "rawBytes": 9856,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5838,7 +6363,7 @@
     {
       "id": 807,
       "label": "tag7",
-      "w": 40,
+      "w": 120,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5850,11 +6375,11 @@
       "variants": [
         {
           "file": "png/s0807_tag7_0.png",
-          "pixHash": "A37E7BF375A515C5",
-          "w": 40,
+          "pixHash": "627AFEF34E5250E5",
+          "w": 120,
           "h": 28,
-          "compressedBytes": 354,
-          "rawBytes": 4480,
+          "compressedBytes": 1029,
+          "rawBytes": 13440,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5864,7 +6389,7 @@
     {
       "id": 808,
       "label": "tag8",
-      "w": 40,
+      "w": 136,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5876,11 +6401,11 @@
       "variants": [
         {
           "file": "png/s0808_tag8_0.png",
-          "pixHash": "2C9BA94E332B2E85",
-          "w": 40,
+          "pixHash": "F16BA1DB7B33BCE5",
+          "w": 136,
           "h": 28,
-          "compressedBytes": 426,
-          "rawBytes": 4480,
+          "compressedBytes": 1287,
+          "rawBytes": 15232,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5890,7 +6415,7 @@
     {
       "id": 809,
       "label": "tag9",
-      "w": 40,
+      "w": 120,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5902,11 +6427,11 @@
       "variants": [
         {
           "file": "png/s0809_tag9_0.png",
-          "pixHash": "9DC1CB825BAC78A5",
-          "w": 40,
+          "pixHash": "750F34D1B21410A5",
+          "w": 120,
           "h": 28,
-          "compressedBytes": 414,
-          "rawBytes": 4480,
+          "compressedBytes": 1077,
+          "rawBytes": 13440,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5916,7 +6441,7 @@
     {
       "id": 810,
       "label": "tag10",
-      "w": 56,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5928,11 +6453,11 @@
       "variants": [
         {
           "file": "png/s0810_tag10_0.png",
-          "pixHash": "5FE34805EC2031A5",
-          "w": 56,
+          "pixHash": "7FB9DAEBFE463765",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 543,
-          "rawBytes": 6272,
+          "compressedBytes": 1066,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5942,7 +6467,7 @@
     {
       "id": 811,
       "label": "tag11",
-      "w": 56,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5954,11 +6479,11 @@
       "variants": [
         {
           "file": "png/s0811_tag11_0.png",
-          "pixHash": "B381734513890825",
-          "w": 56,
+          "pixHash": "6E5B16B65E40D1E5",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 498,
-          "rawBytes": 6272,
+          "compressedBytes": 1058,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5968,7 +6493,7 @@
     {
       "id": 812,
       "label": "tag12",
-      "w": 56,
+      "w": 120,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -5980,11 +6505,11 @@
       "variants": [
         {
           "file": "png/s0812_tag12_0.png",
-          "pixHash": "0786513C4F9F7245",
-          "w": 56,
+          "pixHash": "3702FB4257634725",
+          "w": 120,
           "h": 28,
-          "compressedBytes": 537,
-          "rawBytes": 6272,
+          "compressedBytes": 1038,
+          "rawBytes": 13440,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -5994,7 +6519,7 @@
     {
       "id": 813,
       "label": "tag13",
-      "w": 56,
+      "w": 104,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -6006,11 +6531,11 @@
       "variants": [
         {
           "file": "png/s0813_tag13_0.png",
-          "pixHash": "73C03417ECED4845",
-          "w": 56,
+          "pixHash": "A688DDEA199B1CE5",
+          "w": 104,
           "h": 28,
-          "compressedBytes": 507,
-          "rawBytes": 6272,
+          "compressedBytes": 964,
+          "rawBytes": 11648,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -6020,7 +6545,7 @@
     {
       "id": 814,
       "label": "tag14",
-      "w": 56,
+      "w": 88,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -6032,11 +6557,11 @@
       "variants": [
         {
           "file": "png/s0814_tag14_0.png",
-          "pixHash": "B987688E02773305",
-          "w": 56,
+          "pixHash": "D8DDEF642BC4D925",
+          "w": 88,
           "h": 28,
-          "compressedBytes": 489,
-          "rawBytes": 6272,
+          "compressedBytes": 811,
+          "rawBytes": 9856,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -6046,7 +6571,7 @@
     {
       "id": 815,
       "label": "tag15",
-      "w": 56,
+      "w": 120,
       "h": 28,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -6058,11 +6583,11 @@
       "variants": [
         {
           "file": "png/s0815_tag15_0.png",
-          "pixHash": "A30D607B9399A445",
-          "w": 56,
+          "pixHash": "D630FB59C6943565",
+          "w": 120,
           "h": 28,
-          "compressedBytes": 522,
-          "rawBytes": 6272,
+          "compressedBytes": 1116,
+          "rawBytes": 13440,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -6084,10 +6609,10 @@
       "variants": [
         {
           "file": "png/s0830_hp0_0.png",
-          "pixHash": "67346A8A5BF25325",
+          "pixHash": "87ACB2803BF203A5",
           "w": 40,
           "h": 12,
-          "compressedBytes": 97,
+          "compressedBytes": 132,
           "rawBytes": 1920,
           "defineCount": 1,
           "firstTick": 0,
@@ -6110,10 +6635,10 @@
       "variants": [
         {
           "file": "png/s0831_hp1_0.png",
-          "pixHash": "864D1D800F01C7E5",
+          "pixHash": "895B3393C7A1F5A5",
           "w": 40,
           "h": 12,
-          "compressedBytes": 167,
+          "compressedBytes": 215,
           "rawBytes": 1920,
           "defineCount": 1,
           "firstTick": 0,
@@ -6136,10 +6661,10 @@
       "variants": [
         {
           "file": "png/s0832_hp2_0.png",
-          "pixHash": "F67720AF244E38A5",
+          "pixHash": "B0CB35680C32BCA5",
           "w": 40,
           "h": 12,
-          "compressedBytes": 167,
+          "compressedBytes": 142,
           "rawBytes": 1920,
           "defineCount": 1,
           "firstTick": 0,
@@ -6176,7 +6701,7 @@
     {
       "id": 840,
       "label": "kill0",
-      "w": 92,
+      "w": 104,
       "h": 9,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -6188,11 +6713,11 @@
       "variants": [
         {
           "file": "png/s0840_kill0_0.png",
-          "pixHash": "47FE94B22FBFC765",
-          "w": 92,
+          "pixHash": "121FA4A067712888",
+          "w": 104,
           "h": 9,
-          "compressedBytes": 477,
-          "rawBytes": 3312,
+          "compressedBytes": 633,
+          "rawBytes": 3744,
           "defineCount": 1,
           "firstTick": 480,
           "lastTick": 480
@@ -6214,10 +6739,10 @@
       "variants": [
         {
           "file": "png/s0842_kill1_0.png",
-          "pixHash": "3D346DC9D5746268",
+          "pixHash": "3E69BB1DB92BEE05",
           "w": 92,
           "h": 9,
-          "compressedBytes": 527,
+          "compressedBytes": 572,
           "rawBytes": 3312,
           "defineCount": 1,
           "firstTick": 480,
@@ -6228,7 +6753,7 @@
     {
       "id": 844,
       "label": "kill2",
-      "w": 92,
+      "w": 98,
       "h": 9,
       "defineCount": 1,
       "distinctVariants": 1,
@@ -6240,11 +6765,37 @@
       "variants": [
         {
           "file": "png/s0844_kill2_0.png",
-          "pixHash": "261F68E1D9949B05",
-          "w": 92,
+          "pixHash": "C765465264098FA5",
+          "w": 98,
           "h": 9,
-          "compressedBytes": 491,
-          "rawBytes": 3312,
+          "compressedBytes": 594,
+          "rawBytes": 3528,
+          "defineCount": 1,
+          "firstTick": 480,
+          "lastTick": 480
+        }
+      ]
+    },
+    {
+      "id": 846,
+      "label": "kill3",
+      "w": 104,
+      "h": 9,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 480,
+      "lastTick": 480,
+      "fromInitPacket": false,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0846_kill3_0.png",
+          "pixHash": "B28A5836BFBD7685",
+          "w": 104,
+          "h": 9,
+          "compressedBytes": 629,
+          "rawBytes": 3744,
           "defineCount": 1,
           "firstTick": 480,
           "lastTick": 480
@@ -6433,10 +6984,10 @@
       "variants": [
         {
           "file": "png/s0871_crate_p0_0.png",
-          "pixHash": "1F6D85C75D3C7BE5",
+          "pixHash": "1716D1976B211E05",
           "w": 24,
           "h": 24,
-          "compressedBytes": 132,
+          "compressedBytes": 136,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6459,10 +7010,10 @@
       "variants": [
         {
           "file": "png/s0872_crate_p1_0.png",
-          "pixHash": "1B0301B97EDC36E5",
+          "pixHash": "03A8CFE7A612CEC5",
           "w": 24,
           "h": 24,
-          "compressedBytes": 146,
+          "compressedBytes": 143,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6485,10 +7036,10 @@
       "variants": [
         {
           "file": "png/s0873_crate_p2_0.png",
-          "pixHash": "EF08E2C8798B8925",
+          "pixHash": "F5E9B57CE326DDA5",
           "w": 24,
           "h": 24,
-          "compressedBytes": 145,
+          "compressedBytes": 139,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6563,10 +7114,10 @@
       "variants": [
         {
           "file": "png/s0876_hit_0.png",
-          "pixHash": "CAA2D7E0D0AAF465",
+          "pixHash": "FAADCA9E4D8D4D65",
           "w": 32,
           "h": 48,
-          "compressedBytes": 368,
+          "compressedBytes": 305,
           "rawBytes": 6144,
           "defineCount": 1,
           "firstTick": 0,
@@ -6589,10 +7140,10 @@
       "variants": [
         {
           "file": "png/s0901_pod_sword_0.png",
-          "pixHash": "25505E2A423DC025",
+          "pixHash": "339B674A0BF9E6AC",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 270,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6615,10 +7166,10 @@
       "variants": [
         {
           "file": "png/s0902_pod_spear_0.png",
-          "pixHash": "A99D19CF0404BD95",
+          "pixHash": "4630A00328A7F527",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 265,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6641,10 +7192,10 @@
       "variants": [
         {
           "file": "png/s0903_pod_bow_0.png",
-          "pixHash": "52280B246073FA35",
+          "pixHash": "73271A8F3114BCD9",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 241,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6667,10 +7218,10 @@
       "variants": [
         {
           "file": "png/s0904_pod_knives_0.png",
-          "pixHash": "1033B50102E7CB25",
+          "pixHash": "B81D848EFE6F8A69",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 516,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6693,10 +7244,10 @@
       "variants": [
         {
           "file": "png/s0905_pod_blowgun_0.png",
-          "pixHash": "2A2FF6E6D6E37D25",
+          "pixHash": "7A77A8C7C3F84219",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 287,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6719,10 +7270,10 @@
       "variants": [
         {
           "file": "png/s0906_pod_net_0.png",
-          "pixHash": "A99D19CF0404BD95",
+          "pixHash": "83C47FE2C2C0B2AA",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 301,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6745,10 +7296,10 @@
       "variants": [
         {
           "file": "png/s0907_pod_first_aid_0.png",
-          "pixHash": "25505E2A423DC025",
+          "pixHash": "C796AFF8DD698697",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 302,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6771,10 +7322,10 @@
       "variants": [
         {
           "file": "png/s0908_pod_rations_0.png",
-          "pixHash": "A99D19CF0404BD95",
+          "pixHash": "B34D881A8F9CD571",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 267,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6797,10 +7348,10 @@
       "variants": [
         {
           "file": "png/s0909_pod_backpack_0.png",
-          "pixHash": "1033B50102E7CB25",
+          "pixHash": "1E33D6F9DDDFDE43",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 316,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6823,10 +7374,10 @@
       "variants": [
         {
           "file": "png/s0910_pod_camouflage_0.png",
-          "pixHash": "2A2FF6E6D6E37D25",
+          "pixHash": "15FDA1EB0C8E6E70",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 306,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6849,10 +7400,10 @@
       "variants": [
         {
           "file": "png/s0911_pod_arrows_0.png",
-          "pixHash": "52280B246073FA35",
+          "pixHash": "F641543C6464D65E",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 278,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6875,10 +7426,10 @@
       "variants": [
         {
           "file": "png/s0912_pod_darts_0.png",
-          "pixHash": "1033B50102E7CB25",
+          "pixHash": "C7ED616E209E0735",
           "w": 24,
           "h": 24,
-          "compressedBytes": 255,
+          "compressedBytes": 294,
           "rawBytes": 2304,
           "defineCount": 1,
           "firstTick": 0,
@@ -6901,10 +7452,10 @@
       "variants": [
         {
           "file": "png/s0920_fade_death_0.png",
-          "pixHash": "165AF683C081C605",
+          "pixHash": "DD17167EAA672CA1",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1813,
+          "compressedBytes": 2048,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -6927,10 +7478,10 @@
       "variants": [
         {
           "file": "png/s0921_fade_death_0.png",
-          "pixHash": "D9DDF33F49183CA5",
+          "pixHash": "1B6363D17B5046C3",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1809,
+          "compressedBytes": 1973,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -6953,10 +7504,10 @@
       "variants": [
         {
           "file": "png/s0922_fade_death_0.png",
-          "pixHash": "6C6AAC0A3A87BB05",
+          "pixHash": "4C225BE31B1BB8BF",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1809,
+          "compressedBytes": 1930,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -6979,10 +7530,10 @@
       "variants": [
         {
           "file": "png/s0923_fade_death_0.png",
-          "pixHash": "8EFDCAC77E62FBE5",
+          "pixHash": "6530347A3890301D",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1740,
+          "compressedBytes": 1868,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -7005,10 +7556,10 @@
       "variants": [
         {
           "file": "png/s0924_fade_ignite_0.png",
-          "pixHash": "BA929A101851E085",
+          "pixHash": "91AD24B205307495",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1813,
+          "compressedBytes": 2048,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -7031,10 +7582,10 @@
       "variants": [
         {
           "file": "png/s0925_fade_ignite_0.png",
-          "pixHash": "190190DB9AF3BF65",
+          "pixHash": "E9E01679F94C269B",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1809,
+          "compressedBytes": 1973,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -7057,10 +7608,10 @@
       "variants": [
         {
           "file": "png/s0926_fade_ignite_0.png",
-          "pixHash": "7421C6A8BC8076C5",
+          "pixHash": "20A91E25E77A67FF",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1809,
+          "compressedBytes": 1927,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -7083,10 +7634,10 @@
       "variants": [
         {
           "file": "png/s0927_fade_ignite_0.png",
-          "pixHash": "79110F7DB9D42425",
+          "pixHash": "C7385F5FC3960F3D",
           "w": 72,
           "h": 72,
-          "compressedBytes": 1740,
+          "compressedBytes": 1868,
           "rawBytes": 20736,
           "defineCount": 1,
           "firstTick": 0,
@@ -7109,10 +7660,10 @@
       "variants": [
         {
           "file": "png/s0928_fade_mine_0.png",
-          "pixHash": "1E3D8704E5BAD9E5",
+          "pixHash": "0099694C7D41D019",
           "w": 48,
           "h": 48,
-          "compressedBytes": 880,
+          "compressedBytes": 1613,
           "rawBytes": 9216,
           "defineCount": 1,
           "firstTick": 0,
@@ -7135,10 +7686,10 @@
       "variants": [
         {
           "file": "png/s0929_fade_mine_0.png",
-          "pixHash": "E50B3815CDFF4105",
+          "pixHash": "4E804EDC077F5477",
           "w": 48,
           "h": 48,
-          "compressedBytes": 896,
+          "compressedBytes": 1565,
           "rawBytes": 9216,
           "defineCount": 1,
           "firstTick": 0,
@@ -7161,10 +7712,10 @@
       "variants": [
         {
           "file": "png/s0930_fade_mine_0.png",
-          "pixHash": "2E267F7923073A45",
+          "pixHash": "F77E2B54CFECCE28",
           "w": 48,
           "h": 48,
-          "compressedBytes": 896,
+          "compressedBytes": 1512,
           "rawBytes": 9216,
           "defineCount": 1,
           "firstTick": 0,
@@ -7187,10 +7738,10 @@
       "variants": [
         {
           "file": "png/s0931_fade_mine_0.png",
-          "pixHash": "A19AE0C0CDF98A45",
+          "pixHash": "074A763A8317161F",
           "w": 48,
           "h": 48,
-          "compressedBytes": 905,
+          "compressedBytes": 1374,
           "rawBytes": 9216,
           "defineCount": 1,
           "firstTick": 0,
@@ -7296,6 +7847,136 @@
           "h": 192,
           "compressedBytes": 1875,
           "rawBytes": 18432,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 940,
+      "label": "contact0",
+      "w": 96,
+      "h": 96,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0940_contact0_0.png",
+          "pixHash": "8139C530519139E5",
+          "w": 96,
+          "h": 96,
+          "compressedBytes": 2049,
+          "rawBytes": 36864,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 941,
+      "label": "contact1",
+      "w": 96,
+      "h": 96,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0941_contact1_0.png",
+          "pixHash": "0710FD6CA61CB265",
+          "w": 96,
+          "h": 96,
+          "compressedBytes": 2148,
+          "rawBytes": 36864,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 942,
+      "label": "contact2",
+      "w": 96,
+      "h": 96,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0942_contact2_0.png",
+          "pixHash": "5BCC2A9B18243FE5",
+          "w": 96,
+          "h": 96,
+          "compressedBytes": 2195,
+          "rawBytes": 36864,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 943,
+      "label": "contact3",
+      "w": 96,
+      "h": 96,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0943_contact3_0.png",
+          "pixHash": "A280E6D9257E988D",
+          "w": 96,
+          "h": 96,
+          "compressedBytes": 2466,
+          "rawBytes": 36864,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 944,
+      "label": "contact_mark",
+      "w": 28,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s0944_contact_mark_0.png",
+          "pixHash": "91DCC0B2AEA60BC5",
+          "w": 28,
+          "h": 28,
+          "compressedBytes": 340,
+          "rawBytes": 3136,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
@@ -8929,11 +9610,11 @@
       "label": "trace45",
       "w": 144,
       "h": 144,
-      "defineCount": 6,
-      "distinctVariants": 6,
+      "defineCount": 7,
+      "distinctVariants": 7,
       "dumpedVariants": 2,
       "firstTick": 48,
-      "lastTick": 288,
+      "lastTick": 480,
       "fromInitPacket": false,
       "dimsVary": false,
       "variants": [
@@ -10380,6 +11061,890 @@
           "h": 24,
           "compressedBytes": 312,
           "rawBytes": 2304,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1450,
+      "label": "decomp0_0",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1450_decomp0_0_0.png",
+          "pixHash": "7266C3818E1D73D5",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 478,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1451,
+      "label": "decomp0_1",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1451_decomp0_1_0.png",
+          "pixHash": "74E28162B51FD7AD",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 663,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1452,
+      "label": "decomp0_2",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1452_decomp0_2_0.png",
+          "pixHash": "501315764F093777",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 784,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1453,
+      "label": "decomp0_3",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1453_decomp0_3_0.png",
+          "pixHash": "F19DE81922EA82E5",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 818,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1454,
+      "label": "decomp0_4",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1454_decomp0_4_0.png",
+          "pixHash": "6B7F22748121628C",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 835,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1455,
+      "label": "decomp0_5",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1455_decomp0_5_0.png",
+          "pixHash": "1D54284CA0B7F43C",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 814,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1456,
+      "label": "decomp0_6",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1456_decomp0_6_0.png",
+          "pixHash": "3391B7A4DD565277",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 775,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1457,
+      "label": "decomp0_7",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1457_decomp0_7_0.png",
+          "pixHash": "36D2ABF9E64D87D1",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 702,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1458,
+      "label": "decomp1_0",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1458_decomp1_0_0.png",
+          "pixHash": "F166E7AE6B7782E5",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 481,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1459,
+      "label": "decomp1_1",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1459_decomp1_1_0.png",
+          "pixHash": "22222EBEA31C77BC",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 652,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1460,
+      "label": "decomp1_2",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1460_decomp1_2_0.png",
+          "pixHash": "0AE6B93D7FB49025",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 810,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1461,
+      "label": "decomp1_3",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1461_decomp1_3_0.png",
+          "pixHash": "912CF56378ED6C05",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 856,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1462,
+      "label": "decomp1_4",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1462_decomp1_4_0.png",
+          "pixHash": "22B8BE2A48503F98",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 873,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1463,
+      "label": "decomp1_5",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1463_decomp1_5_0.png",
+          "pixHash": "DBEEB19A57649616",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 847,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1464,
+      "label": "decomp1_6",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1464_decomp1_6_0.png",
+          "pixHash": "A1354EE337B9CB50",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 813,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1465,
+      "label": "decomp1_7",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1465_decomp1_7_0.png",
+          "pixHash": "FDEB71CC7FDD6665",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 753,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1470,
+      "label": "death_flash0",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1470_death_flash0_0.png",
+          "pixHash": "28E4C70B8EF96765",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 407,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1471,
+      "label": "death_flash1",
+      "w": 32,
+      "h": 48,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1471_death_flash1_0.png",
+          "pixHash": "6DA93C5664E25285",
+          "w": 32,
+          "h": 48,
+          "compressedBytes": 348,
+          "rawBytes": 6144,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1500,
+      "label": "tagshort0",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1500_tagshort0_0.png",
+          "pixHash": "B964617107AB7365",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 463,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1501,
+      "label": "tagshort1",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1501_tagshort1_0.png",
+          "pixHash": "7D012A933E7009A5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 351,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1502,
+      "label": "tagshort2",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1502_tagshort2_0.png",
+          "pixHash": "FC90A5BC1BB40E65",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 417,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1503,
+      "label": "tagshort3",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1503_tagshort3_0.png",
+          "pixHash": "60763B80314C84A5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 420,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1504,
+      "label": "tagshort4",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1504_tagshort4_0.png",
+          "pixHash": "78229B0530F48625",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 339,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1505,
+      "label": "tagshort5",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1505_tagshort5_0.png",
+          "pixHash": "E8A0059DE84FC665",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 378,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1506,
+      "label": "tagshort6",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1506_tagshort6_0.png",
+          "pixHash": "0EA0356C6FDB2265",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 411,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1507,
+      "label": "tagshort7",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1507_tagshort7_0.png",
+          "pixHash": "ED734CC52A4882A5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 414,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1508,
+      "label": "tagshort8",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1508_tagshort8_0.png",
+          "pixHash": "A5ADB89EF058E065",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 390,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1509,
+      "label": "tagshort9",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1509_tagshort9_0.png",
+          "pixHash": "8427DB0E475E44A5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 465,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1510,
+      "label": "tagshort10",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1510_tagshort10_0.png",
+          "pixHash": "90605B18FDFF1665",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 381,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1511,
+      "label": "tagshort11",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1511_tagshort11_0.png",
+          "pixHash": "91ED0303F68CB3A5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 475,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1512,
+      "label": "tagshort12",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1512_tagshort12_0.png",
+          "pixHash": "F9DC39B33E2281A5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 414,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1513,
+      "label": "tagshort13",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1513_tagshort13_0.png",
+          "pixHash": "10238F9CAEDA8065",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 384,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1514,
+      "label": "tagshort14",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1514_tagshort14_0.png",
+          "pixHash": "8EDA9D047DC40BA5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 501,
+          "rawBytes": 4480,
+          "defineCount": 1,
+          "firstTick": 0,
+          "lastTick": 0
+        }
+      ]
+    },
+    {
+      "id": 1515,
+      "label": "tagshort15",
+      "w": 40,
+      "h": 28,
+      "defineCount": 1,
+      "distinctVariants": 1,
+      "dumpedVariants": 1,
+      "firstTick": 0,
+      "lastTick": 0,
+      "fromInitPacket": true,
+      "dimsVary": false,
+      "variants": [
+        {
+          "file": "png/s1515_tagshort15_0.png",
+          "pixHash": "60BCA304DA628CE5",
+          "w": 40,
+          "h": 28,
+          "compressedBytes": 397,
+          "rawBytes": 4480,
           "defineCount": 1,
           "firstTick": 0,
           "lastTick": 0
