@@ -1418,7 +1418,7 @@ proc parseDir(v: string): (bool, Dir8) =
   (false, dN)
 
 proc applyInputJson*(s: var Sim, slot: AgentId, j: JsonNode) =
-  ## Canonical application of one zero_sum.player.v1 wire payload.
+  ## Canonical application of one battle_royal.player.v1 wire payload.
   if j == nil or j.kind != JObject:
     return
   let wireType = j{"type"}.getStr("")

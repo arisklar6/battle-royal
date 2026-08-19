@@ -2,7 +2,7 @@
 ## wire-shape input parsing, minted-seed round trip (league integrity).
 
 import std/[json, strutils]
-import zero_sum/[prng, types, arena, sim, obs]
+import battle_royal/[prng, types, arena, sim, obs]
 
 proc fixedSeed(): uint64 = 12345'u64
 
@@ -93,7 +93,7 @@ block wire_shapes:
 block player_config_shape:
   var s = mkSim()
   let c = parseJson(playerConfigJson(s, 3))
-  doAssert c["protocol"].getStr() == "zero_sum.player.v1"
+  doAssert c["protocol"].getStr() == "battle_royal.player.v1"
   doAssert c["slot"].getInt() == 3
   doAssert c["teammate_slot"].getInt() == 2
   doAssert c["arena"]["static_map"].len == ArenaSize

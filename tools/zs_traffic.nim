@@ -10,7 +10,7 @@
 import std/[algorithm, json, monotimes, os, strformat, strutils, tables, times]
 import supersnappy
 import bitworld/spriteprotocol
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 import render, demo_script
 
 proc mintFixed(): uint64 = 42'u64

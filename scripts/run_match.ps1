@@ -1,4 +1,4 @@
-# Zero Sum: coach-mode local play. One browser tab (the cockpit) holds the
+# Battle Royal: coach-mode local play. One browser tab (the cockpit) holds the
 # spectator, your team panel, the sponsor console, and the analyst desk.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\run_match.ps1
@@ -38,7 +38,7 @@ while ($true) {
   $match++
   Write-Host ""
   Write-Host "=== MATCH $match ==="
-  $env:ZERO_SUM_LOCAL = "1"    # enables /coach for the cockpit
+  $env:BATTLE_ROYAL_LOCAL = "1"    # enables /coach for the cockpit
   $proc = Start-Process -FilePath $server -WorkingDirectory $root `
     -ArgumentList "--port:$Port", "--config-path:$config" -PassThru
   Start-Sleep -Seconds 2
@@ -107,4 +107,4 @@ while ($true) {
 Get-Process baseline -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process server -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -eq $server } | Stop-Process -Force
-Write-Host "all Zero Sum processes stopped."
+Write-Host "all Battle Royal processes stopped."

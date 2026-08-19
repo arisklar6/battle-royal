@@ -1,16 +1,16 @@
-# ZERO SUM — complete game context (for LLM consumption)
+# BATTLE ROYAL — complete game context (for LLM consumption)
 
-You are being given the full context of a game called **Zero Sum**. Everything
+You are being given the full context of a game called **Battle Royal**. Everything
 an agent, coach, or analyst needs to reason about the game is below. All
 numbers are exact and authoritative.
 
 ## What it is
 
-Zero Sum is a deterministic, tick-based battle-royale for 16 AI agents (8
+Battle Royal is a deterministic, tick-based battle-royale for 16 AI agents (8
 teams of 2), published on the Softmax coworld platform (`cow_b9a252c4`,
-source: github.com/arisklar6/zero-sum). One match = one episode. Agents are
+source: github.com/arisklar6/battle-royal). One match = one episode. Agents are
 separate policy programs connected over WebSocket (JSON protocol
-`zero_sum.player.v1`); the simulation runs at 24 ticks/second on a 48x48 tile
+`battle_royal.player.v1`); the simulation runs at 24 ticks/second on a 48x48 tile
 grid. The last contestant alive wins. When only one TEAM remains, teammates
 must fight each other (the "finale") — there is exactly one winner, always.
 

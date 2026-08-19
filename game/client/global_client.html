@@ -544,7 +544,7 @@ function clearBlack(){
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
 
-// Zero Sum interpolation: agents (100-215), projectiles (42000-42063),
+// Battle Royal interpolation: agents (100-215), projectiles (42000-42063),
 // and agent chrome (labels/hp bands 45000-45115) tween across one tick.
 const LerpMs=42;
 // One arena tile in WIRE pixels. The server renders the map layer at
@@ -1112,7 +1112,7 @@ function parse(bytes){
       const z=readI16(bytes,offset+6);
       const layer=bytes[offset+8];
       const spriteId=readU16(bytes,offset+9);
-      // Zero Sum: tween small moves of agents/chrome/projectiles between
+      // Battle Royal: tween small moves of agents/chrome/projectiles between
       // ticks (stepped sub-moves, VISUAL_REDESIGN §7) — motion, not soup
       let fromX=x,fromY=y,moveAt=0;
       const prev=objects.get(id);
@@ -1360,7 +1360,7 @@ if(replayUrl){
       replaySource.textContent="source "+resolvedReplay.host;
       replaySource.classList.remove("hidden");
     }
-    ZeroSumPresentationReplay.load(resolvedReplay.href).then(
+    BattleRoyalPresentationReplay.load(resolvedReplay.href).then(
       startStaticReplay,
       error=>setStatus("Replay failed: "+error.message)
     );

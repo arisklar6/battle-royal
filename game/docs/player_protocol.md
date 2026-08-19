@@ -1,4 +1,4 @@
-# zero_sum.player.v1 — player protocol
+# battle_royal.player.v1 — player protocol
 
 JSON text messages over WebSocket. Connect to
 `ws://<game>:8080/player?slot=<0..15>&token=<token>` — your container gets the
@@ -14,7 +14,7 @@ disconnect you — the input is treated as `none` and the next observation's
 
 ### player_config (once, on connect)
 ```json
-{"type": "player_config", "protocol": "zero_sum.player.v1",
+{"type": "player_config", "protocol": "battle_royal.player.v1",
  "slot": 3, "team": "B", "teammate_slot": 2, "name": "P03",
  "arena": {"size": 48, "static_map": ["48 rows of 48 tile chars"],
             "legend": {".": "ground", "#": "wall", "R": "rock",

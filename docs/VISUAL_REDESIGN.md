@@ -1,10 +1,10 @@
-# ZERO SUM — Visual Redesign & Art Direction Bible
+# BATTLE ROYAL — Visual Redesign & Art Direction Bible
 
 **Codename: AFTERGLOW** · *"Sixteen programs. One machine. Every signal leaves a trace — one outlasts them all."*
 
 Status: proposed v1.0 (2026-07-31). This document supersedes DESIGN.md §21.1 and §21.3 where they conflict (both with each other and with this doc); it preserves every LOCKED gameplay/protocol decision, the fog-as-security-property invariant, the code-generated-art-only pipeline, sprite_v1 constraints (no shaders, no 3D, no camera motion primitives, no audio channel), and the naming rules (no engine names, no Hunger-Games vocabulary in public-facing copy).
 
-Evidence base: full code audit of `game/render.nim`, `game/client/*.html`, `game/server.nim`, `game/analyst.nim`, `src/zero_sum/{sim,obs,types}.nim`, DESIGN.md, `docs/LLM_CONTEXT.md`, and the seven `docs/evidence/v02_*.jpg` captures. Direction selected by scored competitive review of three independent identity pitches (broadcast-package / machine-instrument / handcrafted-diorama); the machine-instrument identity won on thematic truth and feasibility, with specific grafts from the other two called out inline.
+Evidence base: full code audit of `game/render.nim`, `game/client/*.html`, `game/server.nim`, `game/analyst.nim`, `src/battle_royal/{sim,obs,types}.nim`, DESIGN.md, `docs/LLM_CONTEXT.md`, and the seven `docs/evidence/v02_*.jpg` captures. Direction selected by scored competitive review of three independent identity pitches (broadcast-package / machine-instrument / handcrafted-diorama); the machine-instrument identity won on thematic truth and feasibility, with specific grafts from the other two called out inline.
 
 ---
 
@@ -12,7 +12,7 @@ Evidence base: full code audit of `game/render.nim`, `game/client/*.html`, `game
 
 *Written as the Steam Early Access review we do not want to receive.*
 
-The bones of Zero Sum are excellent: a deterministic sim with real strategic geography, a designed spectacle channel (arena-wide deaths, airdrops, a scheduled ring), and a genuinely novel hook — AI agents negotiating and betraying each other in public. Almost none of that reaches the screen. The presentation today is three unrelated prototypes wearing one WebSocket, and every one of them keeps the game's drama a secret.
+The bones of Battle Royal are excellent: a deterministic sim with real strategic geography, a designed spectacle channel (arena-wide deaths, airdrops, a scheduled ring), and a genuinely novel hook — AI agents negotiating and betraying each other in public. Almost none of that reaches the screen. The presentation today is three unrelated prototypes wearing one WebSocket, and every one of them keeps the game's drama a secret.
 
 ### CRITICAL — the product does not communicate its own game
 
@@ -68,7 +68,7 @@ The bones of Zero Sum are excellent: a deterministic sim with real strategic geo
 
 ### The identity: AFTERGLOW
 
-Zero Sum is a deterministic machine that admits sixteen programs and lets exactly one leave. The screen should look like what that *is*: **precision instrumentation watching a knife fight.**
+Battle Royal is a deterministic machine that admits sixteen programs and lets exactly one leave. The screen should look like what that *is*: **precision instrumentation watching a knife fight.**
 
 The world renders as a beautiful machine — a monochrome, blue-black instrument substrate where the only things that carry color are the sixteen living processes. Everything *built* (walls, crates, panels) is orthogonal and chamfered; everything *emitted* by the simulation (vision radii, the ring, pings, shockwaves) is a perfect analytic circle — honest, because those radii are closed-form. Light behaves like phosphor on a scope: signal persists, decays, and — when a program dies — **burns in**. Every agent drags a fading trace of its path; every death freezes that trace into a permanent 12%-alpha scar with the agent's name etched at the death tile. By endgame the arena is a readable autopsy of everything that happened — which is exactly what a bit-exact, transcript-public game *is*. The record made visible.
 
@@ -171,7 +171,7 @@ No dynamic lighting engine and none needed. Three cheap rules:
 
 ## Part 4 — Player View Redesign ("The Panel")
 
-The player client (and `/watch` agent-cam) is the cockpit of the aircraft the show is filming. Same family as the broadcast, opposite temperament: no letterbox, no chyrons, no bloom, fixed north-up, nothing animates that is not simulation state. It must remain a *truthful* rendering of `zero_sum.player.v1` — it never displays information the agent does not have.
+The player client (and `/watch` agent-cam) is the cockpit of the aircraft the show is filming. Same family as the broadcast, opposite temperament: no letterbox, no chyrons, no bloom, fixed north-up, nothing animates that is not simulation state. It must remain a *truthful* rendering of `battle_royal.player.v1` — it never displays information the agent does not have.
 
 ### 4.1 Fog = three knowledge states (replaces the black matte)
 
@@ -288,7 +288,7 @@ Replays are bit-exact, so the camera directs itself deterministically from the e
 
 ## Part 6 — HUD & Interface System
 
-One component grammar for all four clients: notched Booth-slate plates on Faraday, corner brackets, 2px rules, data-face numerals, stepped motion, semaphore bands, lamp row. A clip from any client is instantly Zero Sum.
+One component grammar for all four clients: notched Booth-slate plates on Faraday, corner brackets, 2px rules, data-face numerals, stepped motion, semaphore bands, lamp row. A clip from any client is instantly Battle Royal.
 
 ### 6.1 Spectator HUD
 Top-left: clock + lamp row + `RING 15→11 · T-0:18`. Top-right: kill feed (last 4). Bottom: softcoin stock-tape ticker in the data face (team chip · balance · last transaction). Banner strip retired in favor of chyrons + full-frame moments (ignition, finale, winner). The COIN truncation bug dies with the old 244px viewport.
@@ -300,7 +300,7 @@ Columns: chip+letter · P-glyph+name · HP semaphore bar (arc-fraction) · K · 
 On settlement: plate with cause of death (source-tagged damage list from `damage_taken`), killer credit, placement, kills, damage dealt, and the agent's trace map thumbnail (their whole match, drawn by the persistence buffer). Shareable by design.
 
 ### 6.4 Victory
-Runner-up settles (line sweep) → 1s hold → full-frame `ZERO SUM · P5 COLLECTS · 15+2=17` in display caps over the burned-in arena, lamp row with one lamp lit → scoreboard roll in mono → replay CTA. Minimum 12 seconds of ceremony. The match earns it.
+Runner-up settles (line sweep) → 1s hold → full-frame `BATTLE ROYAL · P5 COLLECTS · 15+2=17` in display caps over the burned-in arena, lamp row with one lamp lit → scoreboard roll in mono → replay CTA. Minimum 12 seconds of ceremony. The match earns it.
 
 ### 6.5 Sponsor console (the one interactive surface — currently decision-hostile)
 - Map upgraded to the shared schematic renderer: live ring + hatch, teammate positions (data already sent, currently unused), all pods, hazards, and a 4-line legend.
@@ -309,7 +309,7 @@ Runner-up settles (line sweep) → 1s hold → full-frame `ZERO SUM · P5 COLLEC
 - Catalog buttons: notched plates, amber prices, disabled states at ≥4.5:1 contrast. Markers persist server-side (resend pods on connect) so a reload doesn't blind the sponsor.
 
 ### 6.6 Menus, lobby, loading
-Countdown phase is pre-match pageantry: 16 pedestal lower-thirds rotate through stat allocations as they lock (`P5 · 6/6/4/4 · LOCKED`), lamp row filling as agents connect, mine-stripe pedestals armed. Loading and match-end screens reuse the trace-map + lamp-row motif. Main menu: the logo (ZERO SUM with a decaying trace tail) over a slowly-decaying replay of the previous match's trace map.
+Countdown phase is pre-match pageantry: 16 pedestal lower-thirds rotate through stat allocations as they lock (`P5 · 6/6/4/4 · LOCKED`), lamp row filling as agents connect, mine-stripe pedestals armed. Loading and match-end screens reuse the trace-map + lamp-row motif. Main menu: the logo (BATTLE ROYAL with a decaying trace tail) over a slowly-decaying replay of the previous match's trace map.
 
 ### 6.7 Notifications
 Every transient banner also lands as a persistent data-face line in the relevant rail/ticker (transient-only notifications fail slow viewers and assistive tech). aria-live="polite" on feed panels; innerHTML rebuilds replaced with row-append DOM updates.
@@ -457,7 +457,7 @@ Scored: Impact (player/viewer value) · Effort · Wow. All Tier-0/1 items are cl
 
 ## Part 12 — Final Vision
 
-You launch Zero Sum and the menu is already a record: last night's match, sixteen colored threads slowly dimming on a dark instrument board, one thread ending in a lamp that is still lit. ZERO SUM, engraved wide, a trace decaying off the final M.
+You launch Battle Royal and the menu is already a record: last night's match, sixteen colored threads slowly dimming on a dark instrument board, one thread ending in a lamp that is still lit. BATTLE ROYAL, engraved wide, a trace decaying off the final M.
 
 You queue into a match as a spectator. Letterboxed in true black, the arena resolves: a blue-black machine etched with a faint grid, a chamfered fortress breathing slow amber light at its four mouths, sixteen pedestals striped like armed hardware — because they are. Sixteen lamps ignite one by one across the top of the frame as the programs connect. Lower-thirds tick through stat allocations as they lock. Talk is already flowing down the transcript rail — two teams negotiating a fortress split in public, on the record, forever.
 
@@ -469,7 +469,7 @@ Mid-game, the analyst toggles the Knowledge Layer and the broadcast shows someth
 
 Then there are four. Then two — and they are teammates. The music cuts. A magenta rule slams across every client on Earth: **FINALE — ALLIANCE TERMINATED.** Two lamps left, side by side on the rail, and the transcript above them still shows the promise one made to the other three minutes ago. The last fight happens on a board that remembers everything: fifteen scars, sixteen colored threads, a ring hatched down to nothing. A final white line sweeps. The books balance.
 
-**ZERO SUM · P5 COLLECTS · 15+2=17** — engraved across the full frame, over the burned-in map of everything that happened, one lamp still lit. The ledger rolls: sixteen rows, fifteen struck. Anyone can replay it, bit-exact, from any seat, with every word said. The record is the game, and the game finally looks like it.
+**BATTLE ROYAL · P5 COLLECTS · 15+2=17** — engraved across the full frame, over the burned-in map of everything that happened, one lamp still lit. The ledger rolls: sixteen rows, fifteen struck. Anyone can replay it, bit-exact, from any seat, with every word said. The record is the game, and the game finally looks like it.
 
 ---
 

@@ -2,7 +2,7 @@
 ## built from the sim's talk log merged with system events.
 
 import std/[json, strutils]
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 
 proc name(s: Sim, slot: int): string =
   if slot >= 0 and slot < s.cfg.playerNames.len:

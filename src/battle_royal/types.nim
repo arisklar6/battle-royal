@@ -131,7 +131,7 @@ const
 
 proc internalSlot*(mode: LeagueMode, externalSlot: AgentId): AgentId =
   ## The platform's team_n scheduler seats one policy at i and i+8 for an
-  ## eight-team match. Keep Zero Sum's canonical adjacent internal teams by
+  ## eight-team match. Keep Battle Royal's canonical adjacent internal teams by
   ## translating that external seating at the game boundary.
   case mode
   of lmSolo: externalSlot

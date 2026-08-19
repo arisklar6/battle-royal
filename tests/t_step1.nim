@@ -2,7 +2,7 @@
 ## repeat-run determinism (DESIGN §15.5).
 
 import std/json
-import zero_sum/[prng, types, arena, sim]
+import battle_royal/[prng, types, arena, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 

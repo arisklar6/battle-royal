@@ -10,7 +10,7 @@
 ## Usage: artifact_size [seed]
 
 import std/[json, monotimes, strformat, strutils, times, os]
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 import presentation_replay, render, demo_script
 
 proc mintFixed(): uint64 = 42'u64

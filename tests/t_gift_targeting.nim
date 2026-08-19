@@ -4,7 +4,7 @@
 ## recipient gifts staying lockout-free.
 
 import std/json
-import zero_sum/[types, items, sim]
+import battle_royal/[types, items, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 

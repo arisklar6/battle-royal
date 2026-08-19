@@ -5,7 +5,7 @@
 ## name to something the 3x5/5x7 faces can draw inside the tag budget.
 
 import std/json
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 import ../game/render
 
 # ---- real names as they arrive from hosted dispatch
@@ -29,7 +29,7 @@ for n in 2 .. 12:
 # ---- every emitted character must be drawable by the shared 41-glyph set
 const Drawable = {'0'..'9', 'A'..'Z', ':', '-', '>', '.', ' '}
 for raw in ["relh", "Ryan Schiller", "Baseline (12)", "zs_patient",
-            "ryanschiller-zero-sum-player-v1", "Ω≈ç√", "user@example.com",
+            "ryanschiller-battle-royal-player-v1", "Ω≈ç√", "user@example.com",
             "  padded  ", "MiXeD cAsE"]:
   let lb = slotLabel(raw, 0)
   doAssert lb.len <= 8, "over budget: " & raw & " -> " & lb & " (" & $lb.len & ")"
@@ -42,7 +42,7 @@ doAssert slotLabel("Ω≈ç√", 11) == "P11"
 doAssert slotLabel("   ", 7) == "P7"
 
 # ---- a policy label that is all one token still truncates cleanly
-doAssert slotLabel("ryanschiller-zero-sum-player-v1", 0) == "RYANSCHI"
+doAssert slotLabel("ryanschiller-battle-royal-player-v1", 0) == "RYANSCHI"
 
 # ---- default (unhosted) names: sim.nim seeds a themed table, and a config
 # with no players[] must still produce distinct, drawable tags

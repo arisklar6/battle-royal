@@ -285,7 +285,7 @@ def header_lines(meta: dict, sprites: list[Sprite], title: str) -> list[str]:
     ones = [s for s in sprites if s.block_scale >= int(meta.get("rs", 1)) > 1]
     haze = [s for s in sprites if s.alpha_haze]
     lines = [
-        f"ZERO SUM — {title}",
+        f"BATTLE ROYAL — {title}",
         f"RS={meta.get('rs')}  tile={meta.get('tilePxR')}px  "
         f"arena={meta.get('worldPxR')}px  body={meta.get('bodyW')}x"
         f"{meta.get('bodyH')}  seed={meta.get('seed')}  "
@@ -465,7 +465,7 @@ def diff_sheet(meta_new: dict, new: list[Sprite],
     rows = int(np.ceil(len(keys) / cols))
     width = cols * cell_w + 24
     head = [
-        "ZERO SUM — sprite diff",
+        "BATTLE ROYAL — sprite diff",
         f"new: RS={meta_new.get('rs')} {meta_new.get('uniqueSpriteIds')} ids, "
         f"{len(new)} images   |   old: RS={meta_old.get('rs')} "
         f"{meta_old.get('uniqueSpriteIds')} ids, {len(old)} images",
@@ -516,7 +516,7 @@ def diff_sheet(meta_new: dict, new: list[Sprite],
 
 def repo_root(start: Path) -> Path:
     for p in [start, *start.parents]:
-        if (p / "zero_sum.nimble").is_file():
+        if (p / "battle_royal.nimble").is_file():
             return p
     return start
 

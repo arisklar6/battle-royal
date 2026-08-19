@@ -7,7 +7,7 @@
 ## is the looter.
 
 import std/[algorithm, json]
-import zero_sum/[types, arena, sim]
+import battle_royal/[types, arena, sim]
 
 type
   Interception* = object

@@ -2,7 +2,7 @@
 ## impassability, firestorm, warnings, zone-driven match end, determinism.
 
 import std/json
-import zero_sum/[prng, types, arena, sim]
+import battle_royal/[prng, types, arena, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 

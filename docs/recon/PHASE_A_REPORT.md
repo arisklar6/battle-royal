@@ -1,4 +1,4 @@
-# Zero Sum — Phase A Recon Report
+# Battle Royal — Phase A Recon Report
 
 Date: 2026-07-30. Repos inspected fresh (shallow clones in this session's workspace):
 
@@ -45,8 +45,8 @@ Second discovery: **`coworld-cogs-vs-clips` (the "v2 Coworld" your laptop had cl
 From paintarena + cogs_vs_clips (both verified verbatim in the raw reports):
 
 ```
-coworld-zero-sum/
-  compose.yaml                     # services: zero-sum (build: .), … → {{ZERO_SUM_IMAGE}} placeholder
+coworld-battle-royal/
+  compose.yaml                     # services: battle-royal (build: .), … → {{BATTLE_ROYAL_IMAGE}} placeholder
   Dockerfile.game                  # build stage → slim runtime; CMD runs the game server
   Dockerfile.player                # baseline player image
   coworld_manifest_template.json   # NO game.version (build stamps it); {{…_IMAGE}} placeholders
@@ -80,17 +80,17 @@ Manifest contract (from generated schema + `types.py`):
 
 ---
 
-## 3. Player protocol landscape → Zero Sum protocol plan
+## 3. Player protocol landscape → Battle Royal protocol plan
 
 - **bitscreen_v1** (among_them): server→client = one 8192-byte frame/tick (128×128, 4-bit Pico-8 palette). client→server = 2-byte button mask packet (`Up/Down/Left/Right/Select/A/B`) or ASCII chat packet. Observation = literally pixels.
 - **sprite_v1** (crewrift, jumper…): binary retained-mode scene graph — server sends Define Sprite (snappy-compressed RGBA) / Define Object (id,x,y,z,layer,sprite) / Delete / Clear / Viewport / Layer; client sends Input Text (`0x81`, doubles as chat), Mouse, button mask (`0x84`), Ready, Debug Sprites. Per-socket rendering = **fog/visibility is achieved by the server simply not drawing what you can't see** — there is no other fog mechanism, and that's the idiom we'll keep for spectator/replay surfaces.
 - **coworld.player.v1** (cogs_vs_clips): JSON over WS — `player_config` handshake (action names, obs shape, feature dictionary), per-tick `observation`, client `action` (by index or name, invalid/missing → noop), `final`. Slot+token auth, reconnect allowed, human-takeover semantics.
 
-**The platform mandates none of these** — *"The protocol is game-owned; player authors build against the linked spec."* The mission's requirements (stat-allocation handshake, structured fog/camo observations, zone state, death/audible events, sponsor-drop visibility, move/attack/pickup/drop/use/talk actions, talk channels, versioned name) fit a **JSON protocol in the coworld.player.v1 idiom**, which is also by far the friendliest surface for policy authors. Plan: **`zero_sum.player.v1`** — JSON over WS on `/player`, message list fully specified in Phase B; `/global` + `/replay` speak **sprite_v1** so the spectacle renderer is the bitworld one (vendored `global_client.html`). Humans get `/client/player` (custom HTML: renders JSON obs, sends actions/talk; honors the `?address=` proxy param).
+**The platform mandates none of these** — *"The protocol is game-owned; player authors build against the linked spec."* The mission's requirements (stat-allocation handshake, structured fog/camo observations, zone state, death/audible events, sponsor-drop visibility, move/attack/pickup/drop/use/talk actions, talk channels, versioned name) fit a **JSON protocol in the coworld.player.v1 idiom**, which is also by far the friendliest surface for policy authors. Plan: **`battle_royal.player.v1`** — JSON over WS on `/player`, message list fully specified in Phase B; `/global` + `/replay` speak **sprite_v1** so the spectacle renderer is the bitworld one (vendored `global_client.html`). Humans get `/client/player` (custom HTML: renders JSON obs, sends actions/talk; honors the `?address=` proxy param).
 
 ## 4. Observation encoding
 
-No structured observation encoder exists in bitworld (observations are rendered pixels/sprites). For Zero Sum: server-side fog computation, per-agent structured JSON (visible tiles/entities within vision radius modified by intelligence/camo/terrain, zone state + next-shrink telegraph, arena-wide events: death fireworks with team/count, audible booms with bearing, sponsor drop markers, team/talk inbox, own inventory/HP/stats/cooldowns). Exact schema in Phase B (DESIGN.md).
+No structured observation encoder exists in bitworld (observations are rendered pixels/sprites). For Battle Royal: server-side fog computation, per-agent structured JSON (visible tiles/entities within vision radius modified by intelligence/camo/terrain, zone state + next-shrink telegraph, arena-wide events: death fireworks with team/count, audible booms with bearing, sponsor drop markers, team/talk inbox, own inventory/HP/stats/cooldowns). Exact schema in Phase B (DESIGN.md).
 
 ## 5. Config intake
 
@@ -130,7 +130,7 @@ No structured observation encoder exists in bitworld (observations are rendered 
 
 **Reused from the bitworld library (infrastructure, ~zero cost):** sprite_v1 + bitscreen codecs; browser clients (global/admin/replay, vendored + reskinned); `.bitreplay` v3 writer/parser incl. tick-hash + chat records + the new raw client-input record (`0x07` — carries arbitrary per-player payloads, i.e. our JSON actions and sponsor events fit natively); `COGAME_*` runtime intake incl. replay mode; framebuffer/RGBA drawing + pixel fonts (sprite sheet generation); pathfinding helpers (baseline bot nav); mummy websocket server pattern + 24 Hz tick-loop template (`global_ui`).
 
-**New (all of it is the game — nothing exists to port):** arena/map gen; pedestals + freeze + mines + fireworks start; loot tables + inventory + 6 weapons + 4 gear + forage; combat (unarmed/melee/ranged/DoT/net), HP, permadeath + death-fireworks broadcast; stat allocation protocol + effects; zone shrink + scripted hazards; talk channels + transcript; sponsor pipeline (softcoin accounting, `/sponsor` ingress, airdrop delivery, gift log); placement+kill scoring + FFA finale; `zero_sum.player.v1` protocol + structured observations + fog; per-agent obs renderer for humans; baseline player (written fresh — `players/baseline/baseline.nim` does not exist upstream); sprite art (placeholders first). Estimate: ~3–5k LOC Nim sim+protocol, ~1k client/player HTML, plus manifest/compose/Dockerfiles/docs (~400 lines) and tests. cogs_vs_clips's equivalent adapter+player+manifest layer is ~1k LOC — consistent.
+**New (all of it is the game — nothing exists to port):** arena/map gen; pedestals + freeze + mines + fireworks start; loot tables + inventory + 6 weapons + 4 gear + forage; combat (unarmed/melee/ranged/DoT/net), HP, permadeath + death-fireworks broadcast; stat allocation protocol + effects; zone shrink + scripted hazards; talk channels + transcript; sponsor pipeline (softcoin accounting, `/sponsor` ingress, airdrop delivery, gift log); placement+kill scoring + FFA finale; `battle_royal.player.v1` protocol + structured observations + fog; per-agent obs renderer for humans; baseline player (written fresh — `players/baseline/baseline.nim` does not exist upstream); sprite art (placeholders first). Estimate: ~3–5k LOC Nim sim+protocol, ~1k client/player HTML, plus manifest/compose/Dockerfiles/docs (~400 lines) and tests. cogs_vs_clips's equivalent adapter+player+manifest layer is ~1k LOC — consistent.
 
 ## 9. Contradiction / evidence log (nothing filed silently)
 
@@ -145,7 +145,7 @@ No structured observation encoder exists in bitworld (observations are rendered 
 
 ## 10. Decisions needed (popup) + proposed next step
 
-- **D1 — Backbone confirmation:** (1) **Nim + bitworld library** in a new `zero-sum` repo, custom `zero_sum.player.v1` JSON protocol, sprite_v1 spectacle — recommended; (2) Python paintarena-style (fastest iteration, no bitworld code reuse, renderer re-implemented or vendored); (3) Python + mettagrid (engine fights every BR mechanic: no projectiles, PvP attack unproven, pinned C++ core) — not recommended.
+- **D1 — Backbone confirmation:** (1) **Nim + bitworld library** in a new `battle-royal` repo, custom `battle_royal.player.v1` JSON protocol, sprite_v1 spectacle — recommended; (2) Python paintarena-style (fastest iteration, no bitworld code reuse, renderer re-implemented or vendored); (3) Python + mettagrid (engine fights every BR mechanic: no projectiles, PvP attack unproven, pinned C++ core) — not recommended.
 - **D2 — Live-gift ingress (local):** (1) dedicated authenticated `/sponsor` WS + `/client/sponsor` console — recommended; (2) extend `/admin`; (3) extra-port sidecar server.
 - **D3 — League-variant sponsorship** (hosted live input impossible today): (1) equal scripted budgets — recommended; (2) none in league; (3) custom commissioner injecting per-episode gift scripts later (v2 backlog).
 - **D4 — Proceed to Phase B** (DESIGN.md) on your go.

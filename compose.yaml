@@ -1,6 +1,6 @@
 services:
-  zero-sum:
-    image: coworld-zero-sum:latest
+  battle-royal:
+    image: coworld-battle-royal:latest
     platform: linux/amd64
     build:
       context: .

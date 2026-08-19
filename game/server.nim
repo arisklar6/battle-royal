@@ -1,4 +1,4 @@
-## Zero Sum game server: runs matches at 24 Hz, streams sprite_v1 to live
+## Battle Royal game server: runs matches at 24 Hz, streams sprite_v1 to live
 ## viewers, records the same presentation packets for the static replay
 ## viewer, writes match artifacts, and exits.
 
@@ -7,7 +7,7 @@ when defined(posix):
   import std/posix
 import mummy
 import bitworld/[runtime, spriteprotocol]
-import zero_sum/[types, arena, sim, obs]
+import battle_royal/[types, arena, sim, obs]
 import render, bundle, demo_script, transcript, analyst, presentation_replay
 
 const
@@ -94,13 +94,13 @@ proc queryParam(uri, key: string): string =
       return decodeUrl(kv[1])
 
 # ops-endpoint gate (review §1.4): /coach is a local-play surface. Default
-# CLOSED: enabled only with ZERO_SUM_LOCAL=1
-# (the launcher sets it) or a matching ?token= against ZERO_SUM_OPS_TOKEN.
+# CLOSED: enabled only with BATTLE_ROYAL_LOCAL=1
+# (the launcher sets it) or a matching ?token= against BATTLE_ROYAL_OPS_TOKEN.
 # Env is read per-call: handler threads must stay GC-safe.
 proc opsAllowed(uri: string): bool =
-  if getEnv("ZERO_SUM_LOCAL") == "1":
+  if getEnv("BATTLE_ROYAL_LOCAL") == "1":
     return true
-  let tok = getEnv("ZERO_SUM_OPS_TOKEN")
+  let tok = getEnv("BATTLE_ROYAL_OPS_TOKEN")
   tok.len > 0 and queryParam(uri, "token") == tok
 
 proc redactUri(u: string): string =
@@ -127,7 +127,7 @@ proc httpHandler(request: Request) =
      path in ["/global", "/admin", "/analyst"] and
      not request.isWsHandshake():
     headers["Content-Type"] = "text/plain"
-    request.respond(200, headers, "zero_sum " & path & " websocket endpoint")
+    request.respond(200, headers, "battle_royal " & path & " websocket endpoint")
     return
   if path == "/coach":
     if not opsAllowed(request.uri):
@@ -244,7 +244,7 @@ proc httpHandler(request: Request) =
       return
     if not request.isWsHandshake():
       headers["Content-Type"] = "text/plain"
-      request.respond(200, headers, "zero_sum watch websocket endpoint")
+      request.respond(200, headers, "battle_royal watch websocket endpoint")
       return
     let websocket = request.upgradeToWebSocket()
     {.gcsafe.}:
@@ -271,7 +271,7 @@ proc httpHandler(request: Request) =
           return
         if not request.isWsHandshake():
           headers["Content-Type"] = "text/plain"
-          request.respond(200, headers, "zero_sum player websocket endpoint")
+          request.respond(200, headers, "battle_royal player websocket endpoint")
           return
         let websocket = request.upgradeToWebSocket()
         let slot = int(internalSlot(appState.leagueMode, AgentId(externalSlot)))
@@ -480,7 +480,7 @@ proc startServer(rc: RuntimeConfig) =
   createThread(serverThread, serverThreadProc, ServerThreadArgs(
     server: addr httpServer, address: rc.host, port: rc.port))
   httpServer.waitUntilReady()
-  echo "zero_sum server on ", rc.host, ":", rc.port
+  echo "battle_royal server on ", rc.host, ":", rc.port
 
 proc serviceWatchers(s: Sim) =
   ## Read-only /watch mirrors: per-slot observation stream, no inputs.
@@ -844,7 +844,7 @@ proc runLive(rc: RuntimeConfig) =
       # DMs are public POST-match by design; streaming them to the live
       # log mid-match is a real-time intel channel (review §2.3) — gate it
       if s.talkLog[echoedTalks].channel != tcDm or
-         getEnv("ZERO_SUM_DEBUG_CHAT") == "1":
+         getEnv("BATTLE_ROYAL_DEBUG_CHAT") == "1":
         echo "CHAT ", talkLine(s, s.talkLog[echoedTalks])
       inc echoedTalks
     tracker.track(s)
@@ -886,7 +886,7 @@ when isMainModule:
   if rc.replayMode:
     # A stray COGAME_LOAD_REPLAY_URI should not surface as an AssertionDefect
     # and a stack trace; say what changed and exit non-zero cleanly.
-    stderr.writeLine "zero_sum: replay mode is no longer served by the game " &
+    stderr.writeLine "battle_royal: replay mode is no longer served by the game " &
       "image. Replays are played by the static viewer bundle declared at " &
       "game.replay_viewer.bundle; point the viewer at the artifact instead."
     quit(1)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-generate.py — "nano banana" (Gemini image model) generation harness for ZERO SUM art.
+generate.py — "nano banana" (Gemini image model) generation harness for BATTLE ROYAL art.
 
 Implements the generation half of docs/ART_UPGRADE_PLAN.md §3. It turns a prompt
 spec file into raw PNG generations on disk. It does NOT key, reduce, quantize or
@@ -143,10 +143,10 @@ EXIT_NO_KEY = 5
 # ---------------------------------------------------------------------------
 
 def repo_root() -> Path:
-    """Walk up from this file to the repo root (marked by zero_sum.nimble)."""
+    """Walk up from this file to the repo root (marked by battle_royal.nimble)."""
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
-        if (candidate / "zero_sum.nimble").exists() or (candidate / ".git").exists():
+        if (candidate / "battle_royal.nimble").exists() or (candidate / ".git").exists():
             return candidate
     return here.parent.parent.parent
 
@@ -781,7 +781,7 @@ def print_dry_run(spec: PromptSpec, body: dict[str, Any], req_sha: str,
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="generate.py",
-        description="Generate ZERO SUM sprite source art with Google's nano banana "
+        description="Generate BATTLE ROYAL sprite source art with Google's nano banana "
                     "(Gemini image) models. See docs/ART_UPGRADE_PLAN.md §3.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -927,7 +927,7 @@ def main(argv: list[str]) -> int:
     blocked: list[str] = []
 
     mode = "DRY RUN — nothing generated" if args.dry_run else "LIVE"
-    print(f"ZERO SUM art generation harness — {mode}")
+    print(f"BATTLE ROYAL art generation harness — {mode}")
     print(f"repo:    {ROOT}")
     print(f"output:  {out_root}")
     if use_local:

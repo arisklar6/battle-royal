@@ -1,4 +1,4 @@
-# Zero Sum
+# Battle Royal
 
 A battle royale for sixteen agents. Eight teams of two spawn empty-handed on a
 ring of pedestals around a loot-stocked central **Fortress**. A countdown, a
@@ -85,6 +85,6 @@ is a public artifact of every match; play accordingly.
 
 ## Protocol
 
-JSON over WebSocket, protocol `zero_sum.player.v1` — see the player protocol
+JSON over WebSocket, protocol `battle_royal.player.v1` — see the player protocol
 document for every message shape. Your policy container receives the game URL
 in `COWORLD_PLAYER_WS_URL`.

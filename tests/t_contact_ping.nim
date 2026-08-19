@@ -6,7 +6,7 @@
 
 import std/json
 import bitworld/spriteprotocol
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 import ../game/render
 
 # ---- parser: the shapes real bots emit

@@ -2,7 +2,7 @@
 ## pod landing/looting, scripted pipeline, and determinism.
 
 import std/json
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 

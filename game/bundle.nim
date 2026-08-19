@@ -1,7 +1,7 @@
 ## Results and human-readable match artifacts.
 
 import std/json
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 
 proc sponsorLogJson*(s: Sim): string =
   ## DESIGN §14: every accept AND reject.

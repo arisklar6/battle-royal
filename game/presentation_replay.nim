@@ -5,7 +5,8 @@
 import zippy
 
 const
-  PresentationReplayMagic* = "ZERO_SUM_FRAMES"
+  PresentationReplayMagic* = "BATTLE_ROYAL_FRAMES"
+  LegacyPresentationReplayMagic* = "ZERO_SUM_FRAMES"
   PresentationReplayVersion* = 1'u16
   PresentationReplayTickRate* = 24'u16
 
@@ -81,12 +82,20 @@ proc encodeFrames*(replay: PresentationReplay): string =
 proc encodePresentationReplay*(replay: PresentationReplay): string =
   compress(encodeFrames(replay), BestCompression, dfZlib)
 
+proc matchesMagic(raw, magic: string): bool =
+  raw.len >= magic.len and raw[0 ..< magic.len] == magic
+
 proc decodeFrames*(raw: string): PresentationReplay =
-  ## Inverse of encodeFrames, on the uncompressed buffer.
-  if raw.len < PresentationReplayMagic.len or
-     raw[0 ..< PresentationReplayMagic.len] != PresentationReplayMagic:
-    raise newException(ValueError, "not a Zero Sum presentation replay")
-  var offset = PresentationReplayMagic.len
+  ## Inverse of encodeFrames, on the uncompressed buffer. Accepts both the
+  ## current magic and the legacy one so replays recorded before the game was
+  ## renamed (Zero Sum -> Battle Royal) keep parsing.
+  var offset: int
+  if raw.matchesMagic(PresentationReplayMagic):
+    offset = PresentationReplayMagic.len
+  elif raw.matchesMagic(LegacyPresentationReplayMagic):
+    offset = LegacyPresentationReplayMagic.len
+  else:
+    raise newException(ValueError, "not a Battle Royal presentation replay")
   if raw.readU16(offset) != PresentationReplayVersion:
     raise newException(ValueError, "unsupported presentation replay version")
   if raw.readU16(offset) != PresentationReplayTickRate:

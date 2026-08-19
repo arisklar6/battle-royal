@@ -2,7 +2,8 @@
 ## encoded replay round-trips every packet byte-for-byte and stays byte-stable.
 
 import std/json
-import zero_sum/[sim, types]
+import zippy
+import battle_royal/[sim, types]
 import ../game/[presentation_replay, render]
 
 proc fixedSeed(): uint64 = 42'u64
@@ -46,6 +47,25 @@ doAssert decoded.frames[0].tick == 0
 doAssert decoded.frames[^1].tick == uint32(gameState.tick)
 doAssert decoded.frames[0].packet.len > decoded.frames[^1].packet.len
 
+# Legacy-magic back-compat: league replays recorded before the game was
+# renamed (Zero Sum -> Battle Royal) start with "ZERO_SUM_FRAMES" and must
+# keep parsing byte-for-byte.
+doAssert LegacyPresentationReplayMagic != PresentationReplayMagic
+doAssert raw[0 ..< PresentationReplayMagic.len] == PresentationReplayMagic
+let legacyRaw = LegacyPresentationReplayMagic &
+  raw[PresentationReplayMagic.len .. ^1]
+doAssert decodeFrames(legacyRaw).frames == replay.frames
+
+# ...and through the compressed artifact path too (a tiny payload, so the
+# zippy 0.10.19 inflate corruption documented in encodeFrames cannot bite).
+var tiny: PresentationReplay
+tiny.addFrame(0, @[1'u8, 2, 3])
+tiny.addFrame(24, @[4'u8])
+let tinyLegacyArtifact = compress(LegacyPresentationReplayMagic &
+  encodeFrames(tiny)[PresentationReplayMagic.len .. ^1],
+  BestCompression, dfZlib)
+doAssert parsePresentationReplay(tinyLegacyArtifact).frames == tiny.frames
+
 echo "t_presentation_replay ok: frames=", decoded.frames.len,
      " packet_bytes=", packetBytes, " largest_packet=", largestPacket,
-     " artifact_bytes=", artifact.len
+     " artifact_bytes=", artifact.len, " legacy_magic=ok"

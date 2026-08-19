@@ -2,7 +2,7 @@
 ## formulas (§5.2), forage yield, determinism with allocations.
 
 import std/json
-import zero_sum/[prng, types, arena, sim]
+import battle_royal/[prng, types, arena, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 

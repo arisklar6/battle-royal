@@ -1,7 +1,7 @@
 ## Step-1 scripted demo policy (shared by headless and the live server):
 ## slot 3 steps off early (mine), survivors drift to center after ignition.
 
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 
 proc driveScript*(s: var Sim) =
   if s.tick == 4:

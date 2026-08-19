@@ -1,4 +1,4 @@
-## Observation builder — zero_sum.player.v1 (DESIGN §10). Pure function of
+## Observation builder — battle_royal.player.v1 (DESIGN §10). Pure function of
 ## sim state; the server serializes whatever this returns.
 
 import std/json
@@ -154,7 +154,7 @@ proc playerConfigJson*(s: Sim, slot: int): string =
   for st in s.cfg.zone:
     zoneArr.add(%[st.warnT, st.shrinkT, st.doneT, st.rStart, st.rEnd, st.dmgPerS])
   $(%*{
-    "type": "player_config", "protocol": "zero_sum.player.v1",
+    "type": "player_config", "protocol": "battle_royal.player.v1",
     "slot": slot, "team": teamName(AgentId(slot)),
     "teammate_slot": int(teammate(AgentId(slot))),
     "name": s.cfg.playerNames[slot],

@@ -46,6 +46,22 @@ async function main(){
   assert.ok(bomb.length<1024*1024,"bomb fixture should be tiny compressed");
   await assert.rejects(replay.inflate(bomb),/expands past/);
 
+  // a legacy-magic artifact (recorded before the Zero Sum -> Battle Royal
+  // rename) still decodes
+  const legacyRaw=Buffer.concat([
+    Buffer.from(replay.LEGACY_MAGIC),u16(replay.VERSION),u16(24),u32(2),
+    u32(0),u32(packets[0].length),packets[0],
+    u32(24),u32(packets[1].length),packets[1],
+  ]);
+  const legacyDecoded=await replay.decode(zlib.deflateSync(legacyRaw));
+  assert.equal(legacyDecoded.tickRate,24);
+  assert.equal(legacyDecoded.durationTicks,24);
+  assert.deepEqual([...legacyDecoded.frames[0].packet],[...packets[0]]);
+  assert.deepEqual([...legacyDecoded.frames[1].packet],[...packets[1]]);
+  assert.throws(
+    ()=>replay.parse(Buffer.from("NEITHER_MAGIC_MATCHES_THIS_LONG_HEADER")),
+    /not a Battle Royal replay/);
+
   console.log("t_replay_viewer ok");
 }
 

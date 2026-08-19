@@ -1556,7 +1556,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zero-sum-art"
+name = "battle-royal-art"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

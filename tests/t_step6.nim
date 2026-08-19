@@ -2,7 +2,7 @@
 ## dead silence, input-JSON round trip, determinism with talk.
 
 import std/json
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 
 proc fixedSeed(): uint64 = 42'u64
 

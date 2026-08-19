@@ -1,6 +1,6 @@
-# League proposal: Zero Sum Solo
+# League proposal: Battle Royal Solo
 
-Request to the Softmax team to seed the published Coworld **zero-sum** as one
+Request to the Softmax team to seed the published Coworld **battle-royal** as one
 platform-owned Solo league.
 
 Seed creation is currently staff-only. The endpoint
@@ -13,9 +13,9 @@ does not turn a Coworld-owner user credential into a team credential.
 | Field | Value |
 |---|---|
 | Coworld ID | `cow_36202b83-04d1-4307-84d4-06832f069adb` |
-| Name / version | `zero-sum:0.1.8` (canonical) |
+| Name / version | `battle-royal:0.1.8` (canonical) |
 | Owner | arisklar6@gmail.com |
-| Source | https://github.com/arisklar6/zero-sum |
+| Source | https://github.com/arisklar6/battle-royal |
 | Certification | 10/10, hosted smoke 5/5 |
 | Seats | 16 contestants, paired internally as 8 adjacent teams |
 | Score | Per-seat placement points plus kills |
@@ -26,12 +26,12 @@ identical scripted sponsor schedule for every in-game team.
 
 ## Why this request contains one league
 
-Coworld league seeds are unique by Coworld name. One `zero-sum` seed therefore
+Coworld league seeds are unique by Coworld name. One `battle-royal` seed therefore
 creates one reconciled league; it cannot create separate Solo and Duos leagues.
 
-The published `zero-sum:0.1.8` contract is already correct for Solo: each
+The published `battle-royal:0.1.8` contract is already correct for Solo: each
 platform policy controls one seat and receives that seat's score. Duos needs a
-separate `zero-sum-duos` Coworld profile because platform `team_n` with
+separate `battle-royal-duos` Coworld profile because platform `team_n` with
 `team_count: 8` gives an entrant seats `i` and `i+8`, while the current game
 teams are adjacent slots, and the platform averages multi-seat policy rewards.
 That profile is tracked in issue #2 and PR #3. Seed it separately only after
@@ -46,7 +46,7 @@ POST /api/observatory/v2/coworld-league-seeds
 Content-Type: application/json
 
 {
-  "coworld_name": "zero-sum",
+  "coworld_name": "battle-royal",
   "template": "commissioner_driven",
   "enabled": true,
   "overrides": {
@@ -183,7 +183,7 @@ continues rounds through its shared workflow.
 
 ## Duos follow-up
 
-After PR #3 lands, publish and certify the generated `zero-sum-duos` manifest
+After PR #3 lands, publish and certify the generated `battle-royal-duos` manifest
 under its separate name, then create a second platform seed with the same
 four-step process. Its scheduler uses `team_n`, `team_count: 8`; the game maps
 external seats `i` and `i+8` to adjacent teammates and reports the same

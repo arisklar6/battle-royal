@@ -6,7 +6,7 @@
 
 import std/tables
 import bitworld/spriteprotocol
-import zero_sum/[types, arena, sim]
+import battle_royal/[types, arena, sim]
 import art_baked
 
 const

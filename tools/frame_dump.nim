@@ -21,7 +21,7 @@
 import std/[algorithm, json, os, strformat, strutils, tables]
 import pixie, supersnappy
 import bitworld/spriteprotocol
-import zero_sum/[types, sim]
+import battle_royal/[types, sim]
 import render, demo_script
 
 type

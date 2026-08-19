@@ -1,4 +1,4 @@
-# ZERO SUM — Art Upgrade Plan (baked generative art)
+# BATTLE ROYAL — Art Upgrade Plan (baked generative art)
 
 **Status:** proposed v1.0 (2026-08-13). Decision document, not a survey.
 **Direction:** AFTERGLOW (`docs/VISUAL_REDESIGN.md` is the art bible and wins every conflict).
@@ -17,7 +17,7 @@ runs at, how images become pixels, how pixels become Nim, and in what order it l
 | Constant | Value | Where |
 |---|---|---|
 | `TileSize` | **6** | `bitworld/src/bitworld/spriteprotocol.nim:9` — engine-owned, do not touch |
-| `ArenaSize` | 48 | `src/zero_sum/types.nim:118` |
+| `ArenaSize` | 48 | `src/battle_royal/types.nim:118` |
 | `RS` (today) | 2 | `game/render.nim:21` |
 | `TilePxR` / `WorldPxR` (today) | 12 / 576 | derived |
 | Wire format | raw **unpremultiplied** 8-bit RGBA, Snappy-compressed, `u16` dims | `docs/PLATFORM_FACTS.md` |
@@ -348,7 +348,7 @@ let WeaponIcon*    : array[13, BakedSprite]
 let BurstStar*     : BakedSprite              # monochrome + alpha, tinted in code
 ```
 
-`art_baked.nim` stays **dependency-free** (indexes by `int`, never imports `zero_sum/items`), so it
+`art_baked.nim` stays **dependency-free** (indexes by `int`, never imports `battle_royal/items`), so it
 can never create an import cycle with `render.nim`. Decompression happens once at module init
 (~7 MB, a few ms).
 
@@ -401,7 +401,7 @@ because after the art swap they follow the new outline by construction.
   Deterministic by construction (fixed-order median cut, no RNG, no timestamps).
 - CI: re-run the baker and `git diff --exit-code art/baked game/art_baked.nim`.
 - Dockerfile: add `COPY art/baked ./art/baked` to the **build stage only**. The runtime stage
-  copies only `/out/zero_sum_server`, so **no asset directory ships in the image** — the constraint
+  copies only `/out/battle_royal_server`, so **no asset directory ships in the image** — the constraint
   holds exactly. `art/source/` never enters Docker at all (add it to `.dockerignore`).
 - **Doc debt:** `DESIGN.md §21.1` and the `render.nim:1-4` header both say "all art stays
   code-generated pixel data (no external asset pipeline)". Baking honours the *intent* (nothing
@@ -566,8 +566,8 @@ dep checkouts are gitignored at the repo root, so a fresh clone needs this once.
 ### 1. Baseline build (the Dockerfile's command, natively)
 
 ```bash
-nim c -d:release --hints:off --warnings:off -o:/tmp/zs-out/zero_sum_server game/server.nim
-nim c -d:release --hints:off --warnings:off -o:/tmp/zs-out/zero_sum_baseline player/baseline.nim
+nim c -d:release --hints:off --warnings:off -o:/tmp/zs-out/battle_royal_server game/server.nim
+nim c -d:release --hints:off --warnings:off -o:/tmp/zs-out/battle_royal_baseline player/baseline.nim
 ```
 
 Cold ~30 s, warm ~1.3 s (Nim caches in `~/.cache/nim/`). Never `-o:` into the
@@ -652,7 +652,7 @@ commit is wrong.
 For HUD layers, animation, and the actual viewer code path:
 
 ```bash
-ZERO_SUM_LOCAL=1 /tmp/zs-out/zero_sum_server --port 8080
+BATTLE_ROYAL_LOCAL=1 /tmp/zs-out/battle_royal_server --port 8080
 # then open http://localhost:8080/global
 ```
 

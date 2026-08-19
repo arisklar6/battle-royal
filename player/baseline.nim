@@ -1,4 +1,4 @@
-## Zero Sum baseline player (DESIGN §18): legal build, grabs loot, fights
+## Battle Royal baseline player (DESIGN §18): legal build, grabs loot, fights
 ## when strong, flees weak, obeys the zone, claims sponsor drops, forages.
 ## Certify/demo quality, not competitive strength.
 ##

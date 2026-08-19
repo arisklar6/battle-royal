@@ -3,7 +3,7 @@
 ## duplicated team total so the platform's per-policy mean is the sum.
 
 import std/json
-import zero_sum/[types, sim, obs]
+import battle_royal/[types, sim, obs]
 import ../game/bundle
 
 proc fixedSeed(): uint64 = 42'u64

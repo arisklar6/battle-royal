@@ -19,7 +19,7 @@ def doc(rel: str) -> dict:
 # omits it fails that step outright. It was added by hand in 84b3377/91558ff
 # after this generator had already been written, so regenerating used to drop it
 # again silently; assert_source_urls() below is what makes that impossible now.
-SOURCE_URL = "https://github.com/arisklar6/zero-sum"
+SOURCE_URL = "https://github.com/arisklar6/battle-royal"
 
 
 INT16 = {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "integer"}}
@@ -209,7 +209,7 @@ MANIFEST = {
     "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
     "tags": ["battle-royale", "multi-agent", "real-time", "social", "sponsor-economy"],
     "game": {
-        "name": "zero-sum",
+        "name": "battle-royal",
         "replay_viewer": {"bundle": "build/static-replay-viewer"},
         "description": "Battle royale for 16 agents in 8 teams of 2: a "
                        "loot-stocked central Fortress, a shrinking ring of "
@@ -220,8 +220,8 @@ MANIFEST = {
         "runnable": {
             "type": "game",
             "source_url": SOURCE_URL,
-            "image": "{{ZERO_SUM_IMAGE}}",
-            "run": ["/app/zero_sum_server"],
+            "image": "{{BATTLE_ROYAL_IMAGE}}",
+            "run": ["/app/battle_royal_server"],
         },
         "config_schema": CONFIG_SCHEMA,
         "results_schema": RESULTS_SCHEMA,
@@ -233,12 +233,12 @@ MANIFEST = {
         "docs": {"readme": doc("game/docs/README.md")},
     },
     "player": [{
-        "id": "zero-sum-baseline",
-        "name": "Zero Sum Baseline",
+        "id": "battle-royal-baseline",
+        "name": "Battle Royal Baseline",
         "type": "player",
         "source_url": SOURCE_URL,
-        "image": "{{ZERO_SUM_IMAGE}}",
-        "run": ["/app/zero_sum_baseline"],
+        "image": "{{BATTLE_ROYAL_IMAGE}}",
+        "run": ["/app/battle_royal_baseline"],
         "description": "Bundled reference policy: allocates 6/6/4/4, loots "
                        "nearby crates, fights when armed and healthy, flees "
                        "weak, heals when safe, obeys the ring, claims its "
@@ -267,14 +267,14 @@ MANIFEST = {
     ],
     "certification": {
         "game_config": FIXTURE,
-        "players": [{"player_id": "zero-sum-baseline"} for _ in range(16)],
+        "players": [{"player_id": "battle-royal-baseline"} for _ in range(16)],
     },
 }
 
 DUOS_MANIFEST = deepcopy(MANIFEST)
-DUOS_MANIFEST["game"]["name"] = "zero-sum-duos"
+DUOS_MANIFEST["game"]["name"] = "battle-royal-duos"
 DUOS_MANIFEST["game"]["description"] = (
-    "Self-paired Zero Sum for 8 policies controlling adjacent teams of 2. "
+    "Self-paired Battle Royal for 8 policies controlling adjacent teams of 2. "
     "The game remaps the platform team_n seat pattern onto the canonical "
     "arena layout and attributes each policy its two contestants' team-total "
     "score."

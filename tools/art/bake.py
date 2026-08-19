@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bake.py — PNG -> Nim const RGBA baker for ZERO SUM (AFTERGLOW).
+"""bake.py — PNG -> Nim const RGBA baker for BATTLE ROYAL (AFTERGLOW).
 
 Implements the reduction chain in docs/ART_UPGRADE_PLAN.md §3.4, the ramps in
 §3.5, and the bake format in §4.2.  One generated image in, one reviewable Nim

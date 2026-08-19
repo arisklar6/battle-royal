@@ -1,9 +1,9 @@
-# Zero Sum — Design Document (v1)
+# Battle Royal — Design Document (v1)
 
 Status: Phase B draft for review. Numbers are proposals unless marked LOCKED (locked upstream by mission).
 Engine: Nim game on the bitworld library (pinned commit recorded at scaffold time; `e47559c90d92ff25c748ecdb41cd5695c10c65b2` at design time).
 Platform: coworld manifest/certify contract. Tick rate 24 Hz (bitworld-family norm).
-Naming (locked, 4 forms): display "Zero Sum", slug `zero-sum`, code `zero_sum`, constants/magic `ZERO_SUM` (uppercase of code form). No "bitworld" and no Hunger-Games-distinctive vocabulary in anything public-facing.
+Naming (locked, 4 forms): display "Battle Royal", slug `battle-royal`, code `battle_royal`, constants/magic `BATTLE_ROYAL` (uppercase of code form). No "bitworld" and no Hunger-Games-distinctive vocabulary in anything public-facing.
 
 Engine/platform facts were verified against bitworld `e47559c` and coworld `7c3d8f0` source — file:line evidence in docs/PLATFORM_FACTS.md. This draft was adversarially reviewed (6 lenses, 39 agents); all confirmed defects are fixed in this text. The 8 open design parameters were decided by the owner via popups (§19 decision record) and are integrated throughout.
 
@@ -254,7 +254,7 @@ LOCKED frame: no platform economy exists — softcoin is a per-team budget fully
 
 ---
 
-## 10. Player protocol — `zero_sum.player.v1`
+## 10. Player protocol — `battle_royal.player.v1`
 
 JSON over WS `/player?slot=K&token=...` (game-owned protocol; the Paint Arena player-protocol idiom). The endpoint accepts and ignores unknown query params; a `name` param, when present, is used for display. Server → client messages carry `type`. Malformed JSON, unknown `type`, or unknown action verbs are treated as `none` with `action_result: "malformed"` — never a disconnect (logged server-side).
 Reconnects: a second connection with a valid token for an occupied slot **replaces the seat** (Paint Arena idiom; `coworld play` humans race their slot's container by design). The old socket closes; the new one receives `player_config`, the `alloc_result` if allocation already happened, and the current observation. Agent state is untouched — reconnection is pure transport.
@@ -262,7 +262,7 @@ Reconnects: a second connection with a valid token for an occupied slot **replac
 ### 10.1 `player_config` (on connect)
 ```json
 {
-  "type": "player_config", "protocol": "zero_sum.player.v1",
+  "type": "player_config", "protocol": "battle_royal.player.v1",
   "slot": 3, "team": "B", "teammate_slot": 2, "name": "P03",
   "arena": {"size": 48, "static_map": "<48 rows of 48 tile codes>",
              "legend": {".": "ground", "#": "wall", "R": "rock", "F": "fortress_wall", "P": "pedestal", "B": "berry_bush"},
@@ -323,7 +323,7 @@ Reconnects: a second connection with a valid token for an occupied slot **replac
 
 ---
 
-## 11. Sponsor protocol — `zero_sum.sponsor.v1` (LOCKED ingress: authenticated WS + browser console on the game container; token-gated, separate from ops/admin control)
+## 11. Sponsor protocol — `battle_royal.sponsor.v1` (LOCKED ingress: authenticated WS + browser console on the game container; token-gated, separate from ops/admin control)
 
 - WS `/sponsor?team=B&token=...` — token must match `sponsor.sponsor_tokens[team]` from runtime config (secrets never in manifest). Bad token → connection rejected at upgrade. `sponsor.live: false` → 403.
 - `GET /client/sponsor?team=B&token=...` — browser console: embeds the global spectator view + shop panel + budget + gift log. WS URL per the client-page contract below. The sponsor console URL is documented alongside the printed links.
@@ -430,7 +430,7 @@ Verified platform rules baked in: `tokens` is runner-injected (authored configs 
 
 ### 17.2 Manifest & runnable-contract musts (verified against certifier/validator source)
 - Manifest: `game` + ≥1 `player` + ≥1 variant + `certification`; **≥3 tags** (hard-required by certify); config_schema requires `tokens` (16/16); results_schema declares 16-slot `scores` + our extra arrays; docs `readme` + `protocols.player` + `protocols.global` as inline `{type:"text", value}` objects (verified allowed, types.py:220); `protocols.engine_runtime: "bitworld"` (platform enum value, not our naming); template must NOT set `game.version` (build stamps it); no `source_url` in v1 (absent → source-resolves skips); `episode_timeout_minutes` omitted → platform default 20 min.
-- Compose: service `zero-sum` → placeholder `{{ZERO_SUM_IMAGE}}` (uppercase, dash→underscore — verified rule), `platform: linux/amd64` on every service. Paint Arena precedent: ONE shared Dockerfile/image for game + player, roles differentiated by manifest `run` argv — we follow it (game binary + baseline-player binary in one image).
+- Compose: service `battle-royal` → placeholder `{{BATTLE_ROYAL_IMAGE}}` (uppercase, dash→underscore — verified rule), `platform: linux/amd64` on every service. Paint Arena precedent: ONE shared Dockerfile/image for game + player, roles differentiated by manifest `run` argv — we follow it (game binary + baseline-player binary in one image).
 - Certify smoke probes (exact, verified — coworld PLATFORM certifier, the one that gates upload): `/healthz` 200 → `GET /client/player?slot=0&token=<t0>` 2xx → WS `/player?slot=0&token=bad` MUST be rejected (close/handshake-fail/401/403) → `GET /client/global` OK → ≥1 frame on WS `/global` within min(timeout,10) s → game exits → results/replay checked after exit → player containers exit. When `game.replay_viewer.bundle` is declared, certification does not launch the legacy replay container; the bundle's browser proof is the replay gate.
 - Player-failure channel (typed, platform): `COGAME_PLAYER_FAILURE_URI` → `{message: 1–2000 chars, failed_policy_index ≥ 0}`, atomic write (temp+rename). **Eliminations are normal gameplay and NEVER use it** — only unrecoverable protocol failures (e.g., a slot that never completes the WS handshake before ignition + grace).
 - Fixture wall-clock budget: 600 ticks = 25 s sim + container start/stop fits the 60 s certifier timeout; the fixture schedule is pure config and shrinks further if tight.

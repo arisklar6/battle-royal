@@ -3,7 +3,7 @@
 ## Usage: headless [seed] [maxTicks]  (defaults 42, 600)
 
 import std/[json, os, strformat, strutils]
-import zero_sum/[prng, types, arena, sim]
+import battle_royal/[prng, types, arena, sim]
 
 proc mintFromOs(): uint64 =
   ## Boundary-only entropy (never inside the sim). Step-1 harness uses a fixed

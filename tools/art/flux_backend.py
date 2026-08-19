@@ -1,9 +1,9 @@
-"""Local FLUX.2 [klein] 4B backend for the ZERO SUM art pipeline.
+"""Local FLUX.2 [klein] 4B backend for the BATTLE ROYAL art pipeline.
 
 Why local, and why this model specifically (decided 2026-08-17; model updated
 to FLUX.2 klein-4B 2026-08-18 when BFL's newer Apache-2.0 model landed locally):
 
-  * Zero Sum is a PUBLIC, MIT repo, so the generator's licence attaches to art
+  * Battle Royal is a PUBLIC, MIT repo, so the generator's licence attaches to art
     we would be committing. FLUX.2 [klein] 4B is Apache-2.0 and ungated
     (verified on the model card 2026-08-18) — same clean terms as schnell,
     newer model, a third the size. FLUX.2 [dev] and klein-9B are explicitly

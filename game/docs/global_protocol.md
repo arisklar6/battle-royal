@@ -1,4 +1,4 @@
-# Zero Sum — global/spectator protocol
+# Battle Royal — global/spectator protocol
 
 The spectator surfaces speak the engine's binary sprite protocol
 (`sprite_v1`): the server pushes sprite/object/layer definition messages over

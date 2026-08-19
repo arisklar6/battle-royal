@@ -10,7 +10,7 @@
 ## rules change in the same commit.
 
 import std/[json, strutils]
-import zero_sum/[prng, types, arena, sim]
+import battle_royal/[prng, types, arena, sim]
 
 const GoldenSeeds = [1, 7, 42, 99, 1234]
 const Checkpoints = [1000, 3000]     # plus the final tick, always

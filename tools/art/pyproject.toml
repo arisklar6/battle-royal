@@ -1,7 +1,7 @@
 [project]
-name = "zero-sum-art"
+name = "battle-royal-art"
 version = "0.1.0"
-description = "ZERO SUM art pipeline: nano banana (Gemini image) generation harness + bake helpers."
+description = "BATTLE ROYAL art pipeline: nano banana (Gemini image) generation harness + bake helpers."
 requires-python = ">=3.11"
 
 # Deliberately minimal. `requests` talks to the Gemini REST endpoint directly
