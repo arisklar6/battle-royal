@@ -115,6 +115,10 @@ const
   ## broadcast finally shows it. Double-buffered per speaker like every
   ## other dynamic text sprite.
   SpTalkBase = 1400        # 1400 + slot*2 + flip -> 1400..1431
+  ## Death decomposition (VISUAL_REDESIGN Part 7): 8 frames per chassis,
+  ## derived from the baked body at defs time — frame 0 IS the body.
+  SpDecompBase = 1450      # + parity*8 + frame -> 1450..1465
+  DecompFrames = 8
 
   # object ids
   ObBackground = 1
@@ -993,6 +997,77 @@ proc burstPixels(size: int, r, g, b: uint8): seq[uint8] =
         # sparse embers between the rays, thinning outward
         result.put(size, x, y, (r, g, b), uint8(fade * 3 div 5))
 
+proc tintedBurstStar(tint: (uint8, uint8, uint8)): seq[uint8] =
+  ## The baked burst star is a SHAPE — the generation is near-black ink on
+  ## key, so its alpha mask carries the rays and its pixel values carry
+  ## nothing. The tint paints the mask at full strength with a radial
+  ## falloff (core solid, tips breaking up), and a peak-white core dot so
+  ## the beat reads as a flash, not a sticker.
+  result = newSeq[uint8](BurstStarW * BurstStarH * 4)
+  let c = BurstStarW div 2
+  for y in 0 ..< BurstStarH:
+    for x in 0 ..< BurstStarW:
+      let k = y * BurstStarW + x
+      let a = int(BurstStarPx[k * 4 + 3])
+      if a == 0:
+        continue
+      let dx = x - c
+      let dy = y - c
+      let d2 = dx * dx + dy * dy
+      let fall = 255 - min(200, d2 * 200 div (c * c))
+      let core = d2 * 9 < c * c
+      let col = (if core: PhosphorPeak else: tint)
+      result.put(BurstStarW, x, y, col, uint8(a * fall div 255))
+
+proc resample3to2(px: seq[uint8], w, h: int): seq[uint8] =
+  ## Exact 2/3 box resample (72 -> 48 for the mine burst): duplicate to
+  ## 2x, then 3x3 box — all integer, deterministic.
+  let ow = w * 2 div 3
+  let oh = h * 2 div 3
+  result = newSeq[uint8](ow * oh * 4)
+  for oy in 0 ..< oh:
+    for ox in 0 ..< ow:
+      var acc: array[4, int]
+      for sy in 0 ..< 3:
+        for sx in 0 ..< 3:
+          # position in the virtual 2x-duplicated grid, mapped back
+          let gx = (ox * 3 + sx) div 2
+          let gy = (oy * 3 + sy) div 2
+          let si = (min(gy, h - 1) * w + min(gx, w - 1)) * 4
+          for ch in 0 .. 3:
+            acc[ch] += int(px[si + ch])
+      for ch in 0 .. 3:
+        result[(oy * ow + ox) * 4 + ch] = uint8(acc[ch] div 9)
+
+proc decompFrame(parity, frame: int): seq[uint8] =
+  ## One frame of the death decomposition: pixels of the baked body
+  ## scatter into the tile — a process being freed. Frame 0 is the body
+  ## exactly; each later frame frees another hash class of pixels, which
+  ## drift down and outward as fading embers.
+  result = newSeq[uint8](BodyWR * BodyHR * 4)
+  let (art, _) = chassisPx(parity, 0)
+  for y in 0 ..< BodyHR:
+    for x in 0 ..< BodyWR:
+      let si = (y * BodyWR + x) * 4
+      if art[si + 3] == 0:
+        continue
+      let cls = pixHash(x * 3 + 1, y * 5 + 2) mod DecompFrames
+      if cls >= frame:
+        # still part of the body
+        let di = si
+        result[di] = art[si]; result[di+1] = art[si+1]
+        result[di+2] = art[si+2]; result[di+3] = art[si+3]
+      else:
+        # freed: drifting ember, fading with age
+        let t = frame - cls
+        let dx = (pixHash(x * 7 + 3, y * 11 + 5) mod 3) - 1
+        let nx = x + dx * t
+        let ny = y + t
+        if nx >= 0 and nx < BodyWR and ny < BodyHR:
+          let al = max(0, 210 - t * 60)
+          if al > 0:
+            result.put(BodyWR, nx, ny, PhosphorPeak, uint8(al))
+
 proc plasmaPixels(phase: int, crit: bool): seq[uint8] =
   ## Swirling plasma wall: teal (stages 1-4) or crimson (endgame).
   ## Native at RS: the band widths are stated in render pixels, so the
@@ -1865,9 +1940,21 @@ proc spriteDefs(s: Sim): seq[uint8] =
                      "held_" & $id, native = true)
   # death burst in bone: the old (25,25,30)-on-Faraday burst measured
   # under 1.5:1 contrast — the game's pivotal event was invisible
-  result.addSprite(SpFwBlack, 18, 18, burstPixels(18, 233, 228, 216), "fw_black")
-  result.addSprite(SpFwGold, 18, 18, burstPixels(18, 255, 210, 110), "fw_gold")
-  result.addSprite(SpMineFlash, 12, 12, burstPixels(12, 255, 74, 54), "mine")
+  ## Tier A bursts: one baked star, three tints, native at RS (a 72-wire
+  ## native sprite has the same 18-unit board footprint the upscaled 18x18
+  ## had, so every placement stays put). Mine scales to 48 per the plan.
+  result.addSprite(SpFwBlack, BurstStarW, BurstStarH,
+                   tintedBurstStar(Bone), "fw_bone", native = true)
+  result.addSprite(SpFwGold, BurstStarW, BurstStarH,
+                   tintedBurstStar(GoldTone), "fw_amber", native = true)
+  result.addSprite(SpMineFlash, BurstStarW * 2 div 3, BurstStarH * 2 div 3,
+                   resample3to2(tintedBurstStar(Klaxon), BurstStarW, BurstStarH),
+                   "mine", native = true)
+  for parity in 0 .. 1:
+    for f in 0 ..< DecompFrames:
+      result.addSprite(SpDecompBase + parity * DecompFrames + f,
+                       BodyWR, BodyHR, decompFrame(parity, f),
+                       "decomp" & $parity & "_" & $f, native = true)
   result.addSprite(SpZoneFireA, TilePxR, TilePxR, plasmaPixels(0, false),
                    "plasmaA", native = true)
   result.addSprite(SpZoneFireB, TilePxR, TilePxR, plasmaPixels(1, false),
@@ -1889,12 +1976,16 @@ proc spriteDefs(s: Sim): seq[uint8] =
   # baked fade ramps: stage 0 is full strength, later stages pre-dimmed
   for k in 0 ..< FadeStages:
     let m = (FadeStages - k) * 255 div FadeStages
-    result.addSprite(SpFadeDeath + k, 18, 18,
-                     dimmed(burstPixels(18, 233, 228, 216), m), "fade_death")
-    result.addSprite(SpFadeIgnite + k, 18, 18,
-                     dimmed(burstPixels(18, 255, 210, 110), m), "fade_ignite")
-    result.addSprite(SpFadeMine + k, 12, 12,
-                     dimmed(burstPixels(12, 255, 74, 54), m), "fade_mine")
+    result.addSprite(SpFadeDeath + k, BurstStarW, BurstStarH,
+                     dimmed(tintedBurstStar(Bone), m), "fade_death",
+                     native = true)
+    result.addSprite(SpFadeIgnite + k, BurstStarW, BurstStarH,
+                     dimmed(tintedBurstStar(GoldTone), m), "fade_ignite",
+                     native = true)
+    result.addSprite(SpFadeMine + k, BurstStarW * 2 div 3, BurstStarH * 2 div 3,
+                     dimmed(resample3to2(tintedBurstStar(Klaxon),
+                                         BurstStarW, BurstStarH), m),
+                     "fade_mine", native = true)
     result.addSprite(SpFadeVoid + k, 6 * RS, 48 * RS,
                      dimmed(voidBeamPixels(), m), "fade_void", native = true)
   result.addSprite(SpGoldBeam, 8 * RS, 54 * RS, goldBeamPixels(),
@@ -2333,6 +2424,25 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     of evDeathFireworks:
       r.spawnEffect(result, s, SpFwBlack, cx, cy, 18, 36,
                     SpFadeDeath, FadeStages)
+      if e.slot >= 0:
+        # death sequence (VISUAL_REDESIGN Part 7): peak-white frame, then
+        # the body decomposes over 8 frames — pixels scatter into the
+        # tile, a process being freed. Placement matches drawAgent's body
+        # offset exactly so frame 0 lands on the body it replaces.
+        let bx = e.pos.x * TileSize - 1
+        let by = e.pos.y * TileSize - (BodyH - TileSize)
+        let flashObj = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
+        inc r.nextEffect
+        result.addObject(flashObj, bx, by, 21, LayerMap, SpHitFlash)
+        r.effects.add(Effect(objId: flashObj, dieTick: s.tick + 2))
+        let decompObj = ObEffectBase + (r.nextEffect mod (ObBushBase - ObEffectBase))
+        inc r.nextEffect
+        let base = SpDecompBase + (e.slot mod 2) * DecompFrames
+        result.addObject(decompObj, bx, by, 20, LayerMap, base)
+        r.effects.add(Effect(objId: decompObj, dieTick: s.tick + 24,
+                             stageBase: base, stages: DecompFrames,
+                             bornTick: s.tick, ttl: 24, stageShown: 0,
+                             x: bx, y: by))
       if e.slot >= 0:
         # settlement chyron (VISUAL_REDESIGN 5.3): credit = last damager,
         # same rule as scoring; cause from the hit-time watermark
