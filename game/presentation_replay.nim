@@ -51,13 +51,21 @@ proc addFrame*(replay: var PresentationReplay, tick: int,
 proc encodeFrames*(replay: PresentationReplay): string =
   ## The framing layer on its own, before compression. Split out from
   ## encodePresentationReplay so the round-trip we actually own can be tested
-  ## without going through zippy: zippy 0.10.19's `uncompress` miscomputes
-  ## adler32 on multi-MB buffers and rejects its OWN valid output (verified
-  ## 2026-08-19 — Python zlib reads the same artifact, and the trailer
-  ## checksum matches Python's adler32 of the result). Only inflate is
-  ## affected, and the game never inflates in production, so shipped replays
-  ## are correct; it is the in-process round-trip assertion that cannot use
-  ## it. 0.10.19 is the latest release, so there is no fix to pull.
+  ## without going through zippy: zippy 0.10.19's INFLATE corrupts some
+  ## multi-MB streams. Verified 2026-08-19 by inflating the same stream with
+  ## `dfDeflate` (which skips checksum verification) and diffing against
+  ## Python's zlib: zippy returns 6,373,670 bytes where zlib returns
+  ## 6,373,669, first differing at offset 5,346,342. The ZippyError that
+  ## surfaces says "Checksum verification failed", which reads like a checksum
+  ## bug and is not — adler32 is correctly catching real corruption.
+  ##
+  ## Deflate is fine (Python reads what zippy writes), it is level-dependent
+  ## (the same payload round-trips at BestSpeed and DefaultCompression), and
+  ## it is data-dependent, not a size cliff — a real 28.8 MB league replay
+  ## parses correctly. 0.10.19 is the latest release. Nothing in the shipped
+  ## game inflates: the server refuses replay mode and the static viewer
+  ## bundle plays artifacts in the browser, so only this in-process assertion
+  ## and tools/replay_video.nim use that decoder.
   doAssert replay.frames.len > 0
   var raw = PresentationReplayMagic
   raw.addU16(PresentationReplayVersion)

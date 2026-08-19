@@ -25,11 +25,11 @@ while gameState.phase != phEnded:
   replay.addFrame(gameState.tick, renderer.updatePacket(gameState))
 
 # Round-trip the FRAMING, which is the part this repo owns. The compressed
-# round-trip cannot be asserted in-process: zippy 0.10.19's uncompress
-# miscomputes adler32 on multi-MB buffers and rejects its own valid output
-# (see encodeFrames' note — Python zlib reads the same artifact and the
-# trailer matches Python's adler32). Only inflate is affected and the game
-# never inflates in production, so shipped replays are unaffected.
+# round-trip cannot be asserted in-process: zippy 0.10.19's inflate corrupts
+# this payload (returns one byte too many, diverging at offset 5,346,342 —
+# see encodeFrames' note). Its "Checksum verification failed" error reads
+# like a checksum bug but is adler32 correctly catching real corruption.
+# Deflate is fine, so shipped replays are unaffected.
 let raw = encodeFrames(replay)
 let decoded = decodeFrames(raw)
 let artifact = encodePresentationReplay(replay)
