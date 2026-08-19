@@ -55,7 +55,7 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
   let statsLocked = s.tick >= s.allocDeadlineTick()
   var agents = newJArray()
   var alive = 0
-  for i in 0 .. 15:
+  for i in 0 ..< s.cfg.numPlayers:
     let a = s.agents[i]
     if a.alive:
       inc alive
@@ -99,7 +99,7 @@ proc analystJson*(s: Sim, t: AnalystTracker): string =
   # settlements: the match's death ledger, oldest first. Killer = last
   # damager (same credit rule as scoring); -1 = arena (zone/hazard/mine).
   var dead: seq[int] = @[]
-  for i in 0 .. 15:
+  for i in 0 ..< s.cfg.numPlayers:
     if not s.agents[i].alive:
       dead.add(i)
   dead.sort(proc (x, y: int): int = s.agents[x].deathTick - s.agents[y].deathTick)

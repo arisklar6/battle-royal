@@ -53,6 +53,7 @@ type
     seed*: uint64
     seedWasMinted*: bool
     leagueMode*: LeagueMode
+    numPlayers*: int           # active seats 0..<numPlayers; even, 2..16
     maxTicks*: int
     freezeTicks*: int
     zone*: seq[ZoneStage]
@@ -196,6 +197,10 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   of "duos": result.leagueMode = lmDuos
   else:
     raise newException(ValueError, "config: league_mode must be solo or duos")
+  result.numPlayers = node{"num_players"}.getInt(16)
+  if result.numPlayers < 2 or result.numPlayers > 16 or
+     result.numPlayers mod 2 != 0:
+    raise newException(ValueError, "config: num_players must be even, 2..16")
   result.maxTicks = node{"max_ticks"}.getInt(9120)
   result.freezeTicks = node{"freeze_ticks"}.getInt(240)
   if node.hasKey("seed"):
@@ -277,8 +282,10 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
     result.playerNames.add(DefaultNames[i])
   if node.hasKey("players"):
     for i, p in node["players"].elems:
-      if i < 16 and p.kind == JObject and p{"name"}.getStr("").len > 0:
-        let slot = internalSlot(result.leagueMode, AgentId(i))
+      if i < result.numPlayers and p.kind == JObject and
+         p{"name"}.getStr("").len > 0:
+        let slot = internalSlot(result.leagueMode, AgentId(i),
+                                result.numPlayers)
         result.playerNames[slot] = p["name"].getStr()
   if node.hasKey("events"):
     for e in node["events"]:
@@ -500,10 +507,20 @@ proc initSim*(cfg: SimConfig): Sim =
   result.phase = phCountdown
   result.ignitionTick = cfg.freezeTicks
   result.winnerSlot = -1
+  # Active seats spread around the full pedestal ring whatever the head
+  # count: each team takes a strided arc, duo partners stay adjacent. At
+  # numPlayers = 16 the stride is 2 and the seating is bit-identical to
+  # the fixed layout this replaces. Inactive seats are dead from birth —
+  # never spawned, never scored (computePlacements sinks them below every
+  # real death), never drawn.
+  let pedestalStride = 16 div (cfg.numPlayers div 2)
   for i in 0 .. 15:
+    let active = i < cfg.numPlayers
     result.agents[i] = Agent(
-      slot: AgentId(i), alive: true, pos: Pedestals[i],
-      hpCenti: MaxHpCenti,
+      slot: AgentId(i), alive: active,
+      pos: (if active: Pedestals[team(AgentId(i)) * pedestalStride + i mod 2]
+            else: Pedestals[i]),
+      hpCenti: (if active: MaxHpCenti else: 0),
       stats: Stats(speed: 5, strength: 5, intelligence: 5, athleticism: 5),
       moveReadyTick: 0, attackReadyTick: 0, deathTick: -1,
       lastDamager: -1)
@@ -1104,14 +1121,14 @@ proc requestGift*(s: var Sim, sponsor: string, teamIdx: int,
     rec.balanceAfter = (if teamIdx in 0 .. 7: s.teamBudget[teamIdx] else: 0)
     s.sponsorLog.add(rec)
     GiftOutcome(accepted: false, reason: why, balance: rec.balanceAfter)
-  if s.phase == phEnded or teamIdx notin 0 .. 7:
+  if s.phase == phEnded or teamIdx notin 0 ..< s.cfg.numPlayers div 2:
     return reject("malformed")
   if requireTile and not tileMode:
     return reject("target_required")
   if tileMode:
     if not inBounds(target):
       return reject("malformed")
-  elif recipientSlot notin 0 .. 15:
+  elif recipientSlot notin 0 ..< s.cfg.numPlayers:
     return reject("malformed")
   let (known, gift) = giftLookup(itemId)
   if not known:

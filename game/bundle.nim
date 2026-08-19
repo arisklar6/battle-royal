@@ -33,8 +33,9 @@ proc resultsJson*(s: Sim): string =
   for r in s.sponsorLog:
     if r.status == gsAccepted and r.recipientSlot in 0 .. 15:
       inc giftCount[r.recipientSlot]
-  for external in 0 .. 15:
-    let i = internalSlot(s.cfg.leagueMode, AgentId(external))
+  for external in 0 ..< s.cfg.numPlayers:
+    let i = internalSlot(s.cfg.leagueMode, AgentId(external),
+                         s.cfg.numPlayers)
     let a = s.agents[i]
     scores.add(%s.episodeScore(places, i))
     placements.add(%places[i])
@@ -46,7 +47,8 @@ proc resultsJson*(s: Sim): string =
     if s.winnerSlot >= 0: %teamName(AgentId(s.winnerSlot)) else: newJNull()
   let winnerSlot =
     if s.winnerSlot >= 0:
-      int(externalSlot(s.cfg.leagueMode, AgentId(s.winnerSlot)))
+      int(externalSlot(s.cfg.leagueMode, AgentId(s.winnerSlot),
+                       s.cfg.numPlayers))
     else:
       -1
   $(%*{"scores": scores, "placements": placements, "kills": kills,
