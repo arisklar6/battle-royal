@@ -162,7 +162,35 @@ const DefaultZone*: array[7, ZoneStage] = [
   ZoneStage(warnT: 6000, shrinkT: 6192, doneT: 6624, rStart: 5, rEnd: 3, dmgPerS: 16),
   ZoneStage(warnT: 6912, shrinkT: 7104, doneT: 7536, rStart: 3, rEnd: 0, dmgPerS: 24)]
 
+proc warnUnknownKeys(node: JsonNode, path: string, known: openArray[string]) =
+  ## Nim's JSON parser ignores keys it was not asked for, so a config that has
+  ## drifted -- a renamed field, a stale block from an older schema, a typo --
+  ## parses "successfully" and silently runs with defaults. That is how a
+  ## team-shaped sponsor block survived a rules change: every scripted gift
+  ## rejected as `malformed` at runtime, with nothing anywhere saying why.
+  ##
+  ## Deliberately a WARNING, not a raise. The manifest's config_schema already
+  ## rejects unknown keys for hosted play (`additionalProperties: false`), so
+  ## the platform path is covered; this covers the paths that bypass the
+  ## schema -- the built-in demo config, configs/*.json, tests, and
+  ## commissioner overrides. Raising here would instead mean a future platform
+  ## field addition could hard-fail live matches, which is a worse trade than
+  ## a loud line on stderr.
+  if node == nil or node.kind != JObject: return
+  for key in node.keys:
+    if key notin known:
+      stderr.writeLine("config: WARNING: unknown key `" & path & key &
+                       "` ignored — check for a rename or a stale block")
+
 proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
+  # The known set spans the WHOLE config, not just the keys this proc reads:
+  # game/server.nim consumes `tokens` and `player_connect_timeout_seconds`
+  # from the same object, and a guard that flagged those would cry wolf on
+  # our own shipped configs/*.json -- which is the failure mode this guard
+  # exists to prevent, not to reproduce.
+  warnUnknownKeys(node, "", ["league_mode", "max_ticks", "freeze_ticks",
+                             "seed", "zone", "sponsor", "events", "players",
+                             "tokens", "player_connect_timeout_seconds"])
   case node{"league_mode"}.getStr("solo")
   of "solo": result.leagueMode = lmSolo
   of "duos": result.leagueMode = lmDuos
@@ -209,11 +237,18 @@ proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
   result.sponsor.shopOpensTick = 1680
   if node.hasKey("sponsor"):
     let sp = node["sponsor"]
+    # `sponsor_tokens` is server.nim's, not this proc's -- same reason as above
+    warnUnknownKeys(sp, "sponsor.", ["live", "budget_per_team",
+                                     "shop_opens_tick", "scripted_gifts",
+                                     "sponsor_tokens"])
     result.sponsor.live = sp{"live"}.getBool(false)
     result.sponsor.budgetPerTeam = sp{"budget_per_team"}.getInt(300)
     result.sponsor.shopOpensTick = sp{"shop_opens_tick"}.getInt(1680)
     if sp.hasKey("scripted_gifts"):
       for g in sp["scripted_gifts"]:
+        warnUnknownKeys(g, "sponsor.scripted_gifts[].",
+                        ["tick", "team", "recipient_slot", "target",
+                         "item_id"])
         var teamIdx = -1
         let teamStr = g{"team"}.getStr("")
         for ti, tn in TeamNames:
