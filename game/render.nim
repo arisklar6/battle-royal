@@ -66,6 +66,9 @@ const
   SpRingGhost = 834        # dashed next-radius preview tile
   SpKillBase = 840         # 840..847: kill-feed lines (KillRows x 2 buffers)
   KillRows = 4             # VISUAL_REDESIGN 6.1: last 4 settlement rows
+  KillCols = 39            # LayerHudTL is 240px and the feed draws at
+                           # x=2 in the 5x7 face (6px advance), so a row
+                           # past this runs off the viewport unseen
   SpChannelA = 850         # phosphor channel halo (heal/eat window)
   SpChannelB = 851
   SpRevealMark = 852       # red "camo blown" mark
@@ -267,6 +270,7 @@ type
     regionDrawn: int
     bushesDrawn: int
     weaponDrawn: array[16, bool]
+    tagOn: array[16, bool]        # identity plate currently placed
     ## One flip counter per HUD line. They shared `hudFlip` until 2026-08-13,
     ## and a shared counter breaks the parity it exists to keep: when both
     ## lines change on the same tick, hud1 takes parity p and hud2 advances
@@ -296,6 +300,8 @@ type
     talkFlip: array[16, int]
     talkW: array[16, int]     # chip width in 1x space, for the edge clamp
     lastCause: array[16, string]  # cause watermark for settlement chyrons
+    labels: array[16, string]     # slotLabel per seat; see ensureLabels
+    labelsReady: bool
     nextRingDrawn: int
     lastBgRadius: int         # last (safe radius, de-rez stage) key applied
     derezTile: seq[int]       # per tile: overlay sprite id placed, 0 = none
@@ -1469,6 +1475,68 @@ proc upperLabel(s: string): string =
     elif ch >= 'a' and ch <= 'z': result.add(chr(ord(ch) - 32))
     else: result.add(ch)
 
+const LabelMax = 8         # in-world tags sit over a 24px tile; past 8 chars
+                           # at the 3x5 face's 4px advance they collide with
+                           # the next agent's tag
+
+proc glyphSafe(ch: char): char =
+  ## Fold one character into the 41-glyph set both faces share
+  ## (0-9 A-Z : - > . space). Anything else draws as a blank advance, so it
+  ## becomes a space here and gets collapsed away instead of eating width.
+  if ch >= 'a' and ch <= 'z': chr(ord(ch) - 32)
+  elif (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9'): ch
+  elif ch in {':', '-', '>', '.'}: ch
+  else: ' '
+
+proc slotLabel*(name: string, slot: int): string =
+  ## On-screen identity for one seat, from the display name the platform
+  ## injects into game_config.players[].name (sim.nim parses it into
+  ## cfg.playerNames; obs/transcript/analyst already use it).
+  ##
+  ## Hosted rounds resolve these to real usernames and disambiguate repeats of
+  ## one policy with " (2)", " (3)" ... — twelve filler seats arrive as
+  ## Baseline, Baseline (2), ... Baseline (12), where that tail is the ONLY
+  ## thing telling them apart. So the tail survives truncation and the stem
+  ## gives way: BASELIN5, BASELI12.
+  var cleaned: string
+  for ch in name:
+    let g = glyphSafe(ch)
+    if g == ' ':
+      if cleaned.len > 0 and cleaned[^1] != ' ': cleaned.add(' ')
+    else:
+      cleaned.add(g)
+  while cleaned.len > 0 and cleaned[^1] == ' ': cleaned.setLen(cleaned.len - 1)
+  if cleaned.len == 0:
+    return "P" & $slot
+  var stem = cleaned
+  var tail = ""
+  var i = cleaned.len
+  while i > 0 and cleaned[i - 1] >= '0' and cleaned[i - 1] <= '9': dec i
+  if i > 0 and i < cleaned.len and cleaned[i - 1] == ' ':
+    tail = cleaned[i .. ^1]
+    stem = cleaned[0 ..< i - 1]
+  if tail.len >= LabelMax:
+    return tail[0 ..< LabelMax]
+  let room = LabelMax - tail.len
+  if stem.len > room: stem = stem[0 ..< room]
+  stem & tail
+
+proc slotLabel*(s: Sim, slot: int): string =
+  if slot >= 0 and slot < s.cfg.playerNames.len:
+    slotLabel(s.cfg.playerNames[slot], slot)
+  else:
+    "P" & $slot
+
+proc clipCols(line: string, cols: int): string =
+  if line.len <= cols: line else: line[0 ..< cols]
+
+proc ensureLabels(r: var Renderer, s: Sim) =
+  ## Seat labels are fixed for the whole match, so build them once. They are
+  ## cached on the Renderer because etchScar has no Sim in scope.
+  if r.labelsReady: return
+  for i in 0 .. 15: r.labels[i] = slotLabel(s, i)
+  r.labelsReady = true
+
 const
   TalkChipTtl = 60     # 2.5 s at 24 Hz
   TalkChipMax = 24     # chars of message after the speaker tag
@@ -1737,7 +1805,7 @@ proc etchScar(r: var Renderer, slot: int, pos: Pos) =
   ## The slot glyph keeps its physical size: one font pixel is RS render
   ## pixels, so the etch reads the same next to a 24 px tile as it did next
   ## to a 6 px one. A crisper cut is the Phase-2 font job, not this.
-  let label = "P" & $slot
+  let label = r.labels[slot]
   var gx = ox + TilePxR + RS
   for ch in label:
     let bits = Glyphs.getOrDefault(ch, 0)
@@ -2040,7 +2108,7 @@ proc spriteDefs(s: Sim): seq[uint8] =
     result.addSprite(SpProjBase + ord(id), ProjPx, ProjPx, projPixels(id),
                        "proj_" & $id, native = true)
   for slot in 0 .. 15:
-    let (w, h, px) = textPixels("P" & $slot, 205, 214, 220)
+    let (w, h, px) = textPixels(slotLabel(s, slot), 205, 214, 220)
     result.addSprite(SpSlotLabelBase + slot, w, h, px, "tag" & $slot)
   for band in 0 .. 2:
     result.addSprite(SpHpBandBase + band, 10, 3, hpBandPixels(band), "hp" & $band)
@@ -2068,6 +2136,23 @@ proc bodySprite(r: Renderer, s: Sim, slot: int): int =
 proc camoHidden(s: Sim, slot: int): bool =
   s.agents[slot].body == iCamo and s.tick >= s.agents[slot].camoRevealedUntil
 
+const TagClearTiles = 2
+
+proc tagCrowded(s: Sim, slot: int): bool =
+  ## An 8-character plate is about two tiles wide, so neighbouring tags stack
+  ## into an unreadable block wherever agents bunch up — worst during the
+  ## Fortress scramble, where the whole courtyard vanishes behind text.
+  ## Suppress the plate instead of stacking it: a name is worth drawing
+  ## exactly when it can be read, and the board art carries the moment when
+  ## it cannot. (P-numbers had the same pile-up; names just made it wide.)
+  let p = s.agents[slot].pos
+  for i in 0 .. 15:
+    if i == slot or not s.agents[i].alive: continue
+    let q = s.agents[i].pos
+    if abs(q.x - p.x) <= TagClearTiles and abs(q.y - p.y) <= TagClearTiles:
+      return true
+  false
+
 proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
   let p = s.agents[slot].pos
   # camo agents render as refractive glass on the spectator view (§21.3)
@@ -2082,9 +2167,10 @@ proc drawAgent(r: Renderer, packet: var seq[uint8], s: Sim, slot: int) =
     packet.addObject(ObWeaponBase + slot, p.x * TileSize - 1 + dx,
                      p.y * TileSize - 3, 11, LayerMap, SpWeaponBase + ord(hand))
   # identity tag + hp semaphore (Tier 1): fights must be readable on air
-  packet.addObject(ObSlotLabelBase + slot, p.x * TileSize - 3,
-                   p.y * TileSize + TileSize + 1, 12, LayerMap,
-                   SpSlotLabelBase + slot)
+  if not s.tagCrowded(slot):
+    packet.addObject(ObSlotLabelBase + slot, p.x * TileSize - 3,
+                     p.y * TileSize + TileSize + 1, 12, LayerMap,
+                     SpSlotLabelBase + slot)
   let band = (if s.agents[slot].hpCenti > 6600: 0
               elif s.agents[slot].hpCenti >= 3300: 1 else: 2)
   packet.addObject(ObHpBandBase + slot, p.x * TileSize - 2,
@@ -2107,6 +2193,7 @@ proc spawnEffect(r: var Renderer, packet: var seq[uint8], s: Sim,
                        x: px, y: py))
 
 proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
+  r.ensureLabels(s)
   # Pedestal disarm (VISUAL_REDESIGN §3.4): the mines die at ignition, so
   # the board's plates swap from hazard-striped to plain — one extra
   # background define per match, exactly as ART_UPGRADE_PLAN budgeted.
@@ -2172,6 +2259,10 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         r.lastMoveTick[slot] = s.tick
         r.lastPos[slot] = a.pos
       r.drawAgent(result, s, slot)
+      let showTag = not s.tagCrowded(slot)
+      if not showTag and r.tagOn[slot]:
+        result.addDeleteObject(ObSlotLabelBase + slot)
+      r.tagOn[slot] = showTag
       r.weaponDrawn[slot] = s.agents[slot].hand != iNone and not s.camoHidden(slot)
       # camo reveal glitch: hidden last frame, visible now (§21.3)
       let hiddenNow = s.camoHidden(slot)
@@ -2221,6 +2312,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     elif not r.deadDrawn[slot]:
       result.addDeleteObject(ObAgentBase + slot)
       result.addDeleteObject(ObSlotLabelBase + slot)
+      r.tagOn[slot] = false
       result.addDeleteObject(ObHpBandBase + slot)
       if r.weaponDrawn[slot]:
         result.addDeleteObject(ObWeaponBase + slot)
@@ -2264,9 +2356,9 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       continue
     let tag =
       case msg.channel
-      of tcBroadcast: "P" & $msg.slot & ":"
-      of tcTeam: "P" & $msg.slot & "+"
-      of tcDm: "P" & $msg.slot & ">P" & $msg.to
+      of tcBroadcast: slotLabel(s, msg.slot) & ":"
+      of tcTeam: slotLabel(s, msg.slot) & "+"
+      of tcDm: slotLabel(s, msg.slot) & ">" & slotLabel(s, msg.to)
     let chipColor =
       case msg.channel
       of tcBroadcast: Bone
@@ -2463,16 +2555,19 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
         # same rule as scoring; cause from the hit-time watermark
         let k = s.agents[e.slot].lastDamager
         let place = s.computePlacements()[e.slot]
-        var line = "P" & $e.slot & " SETTLED " & $place & ordSuffix(place)
+        # "SETTLED" cost 8 of the feed's 39 columns; with real names the
+        # typical line overflowed and lost its timestamp. Place + killer +
+        # weapon + time all fit without it.
+        var line = slotLabel(s, e.slot) & " " & $place & ordSuffix(place)
         if k >= 0 and k != e.slot:
-          line.add " BY P" & $k
+          line.add " BY " & slotLabel(s, k)
         if r.lastCause[e.slot].len > 0:
           line.add " " & r.lastCause[e.slot]
         line.add " " & mmss(max(0, s.agents[e.slot].deathTick) div 24)
         if k >= 0 and k != e.slot and
            s.agents[k].deathTick == s.agents[e.slot].deathTick:
           line.add " MUTUAL"
-        r.killFeed.insert(line, 0)
+        r.killFeed.insert(clipCols(line, KillCols), 0)
         if r.killFeed.len > KillRows:
           r.killFeed.setLen(KillRows)
         r.killDirty = true
@@ -2648,7 +2743,7 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
       of evFinale: "FINALE"
       of evMatchEnd:
         (if e.slot >= 0: "WINNER " & $TeamNames[team(AgentId(e.slot))] &
-                         " P" & $e.slot
+                         " " & slotLabel(s, e.slot)
          else: "MATCH OVER")
       else: ""
     if txt.len > 0:
@@ -2664,16 +2759,26 @@ proc updatePacket*(r: var Renderer, s: Sim): seq[uint8] =
     result.addDeleteObject(ObBanner)
 
 proc arenaKey(a: Arena): uint64 =
-  ## FNV-1a over the tile grid. spriteDefs depends on the arena and nothing
-  ## else, so this is the entire cache key — and it costs microseconds
-  ## against the tens of milliseconds it guards.
+  ## FNV-1a over the tile grid — and it costs microseconds against the tens of
+  ## milliseconds it guards. NOT the whole cache key on its own: spriteDefs
+  ## also bakes the seat nameplates, so initPacket folds labelsKey in too.
   result = 0xCBF29CE484222325'u64
   for ty in 0 ..< ArenaSize:
     for tx in 0 ..< ArenaSize:
       result = (result xor uint64(ord(a.tiles[ty][tx]))) * 0x100000001B3'u64
 
+proc labelsKey(s: Sim): uint64 =
+  ## The nameplate sprites are baked into the atlas, so the seat labels are
+  ## part of what it depends on. Without this a cached atlas would carry one
+  ## match's names into the next.
+  result = 0xCBF29CE484222325'u64
+  for i in 0 .. 15:
+    for ch in slotLabel(s, i):
+      result = (result xor uint64(ord(ch))) * 0x100000001B3'u64
+
 proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   ## Complete current scene for a fresh viewer (or replay-loop restart).
+  r.ensureLabels(s)
   result.addClearObjects()
   result.addLayer(LayerMap, 0x00, 0x01)
   result.addViewport(LayerMap, WorldPxR, WorldPxR)
@@ -2683,7 +2788,7 @@ proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   result.addViewport(LayerHudBL, 320, 14)
   result.addLayer(LayerBanner, 0x05, 0x02)
   result.addViewport(LayerBanner, 120, 16)
-  var key = arenaKey(s.arena)
+  var key = arenaKey(s.arena) xor labelsKey(s)
   if s.phase == phCountdown:
     key = key xor 1'u64        # armed pedestals bake a different board
   if not r.defsValid or r.defsKey != key:
@@ -2706,6 +2811,7 @@ proc initPacket*(r: var Renderer, s: Sim): seq[uint8] =
   for slot in 0 .. 15:
     if s.agents[slot].alive:
       r.drawAgent(result, s, slot)
+      r.tagOn[slot] = not s.tagCrowded(slot)
     elif s.agents[slot].deathTick >= 0:
       # late joiners still see the fallen where they fell
       result.addObject(ObCorpseBase + slot,
@@ -2718,6 +2824,7 @@ proc resetForLoop*(r: var Renderer) =
   for i in 0 .. 15:
     r.deadDrawn[i] = false
     r.weaponDrawn[i] = false
+    r.tagOn[i] = false
     r.facing[i] = 0
     r.lastPos[i] = Pos(x: -1, y: -1)
     r.lastMoveTick[i] = -100
@@ -2739,6 +2846,7 @@ proc resetForLoop*(r: var Renderer) =
     r.talkFlip[i] = 0
     r.talkUntil[i] = 0
     r.lastCause[i] = ""
+  r.labelsReady = false
 
   r.lastBgRadius = 0
   r.bgLive = false
