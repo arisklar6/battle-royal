@@ -1,4 +1,4 @@
-version     = "0.1.16"
+version     = "0.1.17"
 author      = "arisk"
 description = "Zero Sum - a battle-royale Coworld: 16 contestants, one Fortress, a shrinking zone, and sponsor airdrops."
 license     = "MIT"
