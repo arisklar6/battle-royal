@@ -480,7 +480,11 @@ proc plateAt(px: var seq[uint8], w, ox, oy, tx, ty: int) =
       if jx < RS or jy < RS: d -= 10
       elif jx < RS * 2 or jy < RS * 2: d += 6
       elif x < RS or y < RS: d -= 3     # faint per-tile etch grid
-      px.put(w, wx, wy, shade(BgDark, max(FloorLo, min(FloorHi, d))))
+      # Tier B (ART_UPGRADE_PLAN §4.3): the base is the baked floor field —
+      # generated stone sampled at absolute world coordinates, so the floor
+      # stays non-tiling — and every delta above rides on it unchanged.
+      let base = FloorField.rgbAt(wx mod FloorFieldW, wy mod FloorFieldH)
+      px.put(w, wx, wy, shade(base, max(FloorLo, min(FloorHi, d))))
 
 # --- structural material: shading derived from the collision mask ---
 # Ported technique (coworld-ctf map_art.nim rooftopColorAt): instead of a
@@ -510,14 +514,18 @@ proc openDistDir(a: Arena, wx, wy, dx, dy, maxD: int): int =
       return d
   maxD + 1
 
-proc parapetColorAt(a: Arena, wx, wy: int,
-                    base: (uint8, uint8, uint8)): (uint8, uint8, uint8) =
+proc parapetColorAt(a: Arena, wx, wy: int, lift: int): (uint8, uint8, uint8) =
+  ## Tier B: the material is baked generated stone, but ONLY the base colour
+  ## comes from it — the 4-ray collider classification below is what makes
+  ## walls read as built volume, and it stays verbatim (ART_UPGRADE_PLAN
+  ## risk 4). The Fortress is the same material lifted, not a second image.
   const MaxD = WallBevelPx + 2
   let up = openDistDir(a, wx, wy, 0, -1, MaxD)
   let dn = openDistDir(a, wx, wy, 0, 1, MaxD)
   let lf = openDistDir(a, wx, wy, -1, 0, MaxD)
   let rt = openDistDir(a, wx, wy, 1, 0, MaxD)
   let edge = min(min(up, dn), min(lf, rt))
+  let base = shade(WallFace.rgbAt(wx mod WallFaceW, wy mod WallFaceH), lift)
   if edge <= 1:
     StoneInk
   elif edge <= WallBevelPx:
@@ -528,11 +536,10 @@ proc parapetColorAt(a: Arena, wx, wy: int,
   else:
     base
 
-proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena,
-            base: (uint8, uint8, uint8)) =
+proc wallAt(px: var seq[uint8], w, ox, oy: int, a: Arena, lift: int) =
   for y in 0 ..< TilePxR:
     for x in 0 ..< TilePxR:
-      px.put(w, ox + x, oy + y, parapetColorAt(a, ox + x, oy + y, base))
+      px.put(w, ox + x, oy + y, parapetColorAt(a, ox + x, oy + y, lift))
 
 proc rockAt(px: var seq[uint8], w, ox, oy: int) =
   ## Boulder under the same up-left key light as the walls.
@@ -684,9 +691,9 @@ proc backgroundPixels(a: Arena, safeR: int, derez: int): seq[uint8] =
       of tkGround, tkBush:      # bushes are objects; plate beneath
         plateAt(result, WorldPxR, ox, oy, tx, ty)
       of tkWall:
-        wallAt(result, WorldPxR, ox, oy, a, Masonry)
+        wallAt(result, WorldPxR, ox, oy, a, 0)
       of tkFortressWall:
-        wallAt(result, WorldPxR, ox, oy, a, shade(Masonry, 22))
+        wallAt(result, WorldPxR, ox, oy, a, 22)
       of tkRock:
         plateAt(result, WorldPxR, ox, oy, tx, ty)
         rockAt(result, WorldPxR, ox, oy)
