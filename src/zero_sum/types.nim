@@ -3,6 +3,13 @@
 import items
 export items
 
+const
+  ## Any change to sim.nim state or rules, or obs.nim wire content, bumps
+  ## GameVersion. Manifest-only variants do not.
+  ##
+  ## GV1 (0.1.19): first stamped version; rules identical to 0.1.18.
+  GameVersion* = "1"
+
 type
   TileKind* = enum
     tkGround = "."
@@ -157,4 +164,3 @@ proc `==`*(a, b: Pos): bool = a.x == b.x and a.y == b.y
 
 proc packSlots*(a: Agent): int =
   if a.body == iBackpack: 4 else: 2
-
