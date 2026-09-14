@@ -1,7 +1,7 @@
 (function(root){
 "use strict";
 
-const MAGIC="ZERO_SUM_FRAMES",VERSION=1;
+const MAGIC="ZERO_SUM_FRAMES",VERSION=2,SUPPORTED_VERSIONS=[1,2];
 
 // Decompression bounds. A measured full-length match (9120 ticks, the hard
 // cap) is 5.26 MiB compressed and 38.3 MiB raw, so these leave ~12x and ~5x
@@ -22,9 +22,20 @@ function parse(raw){
   }
   offset+=MAGIC.length;
   const version=u16(view,offset);offset+=2;
-  if(version!==VERSION)throw new Error("unsupported Zero Sum replay version "+version);
+  if(!SUPPORTED_VERSIONS.includes(version)){
+    throw new Error("unsupported Zero Sum replay version "+version);
+  }
   const tickRate=u16(view,offset);offset+=2;
   if(tickRate!==24)throw new Error("unsupported Zero Sum replay tick rate "+tickRate);
+  let gameVersion=null;
+  if(version===2){
+    if(offset+1>bytes.length)throw new Error("truncated Zero Sum replay");
+    const length=bytes[offset++];
+    if(offset+length>bytes.length)throw new Error("truncated Zero Sum replay");
+    gameVersion=String.fromCharCode(...bytes.subarray(offset,offset+length));
+    offset+=length;
+  }
+  if(offset+4>bytes.length)throw new Error("truncated Zero Sum replay");
   const frameCount=u32(view,offset);offset+=4;
   if(frameCount===0||frameCount>100000)throw new Error("invalid Zero Sum replay frame count");
   const frames=[];
@@ -42,7 +53,7 @@ function parse(raw){
     offset+=length;
   }
   if(offset!==bytes.length)throw new Error("trailing Zero Sum replay bytes");
-  return {tickRate,frames,durationTicks:frames[frames.length-1].tick};
+  return {tickRate,gameVersion,frames,durationTicks:frames[frames.length-1].tick};
 }
 
 async function inflate(artifact){
@@ -91,7 +102,8 @@ async function load(url){
   return decode(await response.arrayBuffer());
 }
 
-const api={MAGIC,VERSION,MAX_COMPRESSED_BYTES,MAX_INFLATED_BYTES,
+const api={MAGIC,VERSION,SUPPORTED_VERSIONS,MAX_COMPRESSED_BYTES,
+  MAX_INFLATED_BYTES,
   parse,inflate,decode,load};
 root.ZeroSumPresentationReplay=api;
 if(typeof module!=="undefined"&&module.exports)module.exports=api;

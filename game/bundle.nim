@@ -53,4 +53,5 @@ proc resultsJson*(s: Sim): string =
        "damage_dealt": damage, "survival_ticks": survival,
        "gifts_received": gifts,
        "winner_slot": winnerSlot, "winner_team": winnerTeam,
-       "match_ticks": s.tick, "seed": cast[int64](s.cfg.seed)})
+       "match_ticks": s.tick, "seed": cast[int64](s.cfg.seed),
+       "game_version": GameVersion})

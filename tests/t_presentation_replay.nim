@@ -39,12 +39,20 @@ for frame in replay.frames:
   packetBytes += frame.packet.len
   largestPacket = max(largestPacket, frame.packet.len)
 doAssert decoded.frames == replay.frames
+doAssert decoded.gameVersion == GameVersion
 doAssert encodeFrames(replay) == raw                  # framing is stable
 doAssert encodePresentationReplay(replay) == artifact # and so is the artifact
 doAssert artifact.len < raw.len                       # compression did happen
 doAssert decoded.frames[0].tick == 0
 doAssert decoded.frames[^1].tick == uint32(gameState.tick)
 doAssert decoded.frames[0].packet.len > decoded.frames[^1].packet.len
+
+let v1Raw = raw[0 ..< PresentationReplayMagic.len] &
+  raw[PresentationReplayMagic.len ..< PresentationReplayMagic.len + 4] &
+  raw[PresentationReplayMagic.len + 5 + GameVersion.len .. ^1]
+let v1Decoded = decodeFrames(v1Raw)
+doAssert v1Decoded.gameVersion == ""
+doAssert v1Decoded.frames == replay.frames
 
 echo "t_presentation_replay ok: frames=", decoded.frames.len,
      " packet_bytes=", packetBytes, " largest_packet=", largestPacket,

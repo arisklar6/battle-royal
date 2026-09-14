@@ -6,7 +6,7 @@ import zippy
 
 const
   PresentationReplayMagic* = "ZERO_SUM_FRAMES"
-  PresentationReplayVersion* = 1'u16
+  PresentationReplayVersion* = 2'u16
   PresentationReplayTickRate* = 24'u16
 
 type
@@ -16,6 +16,7 @@ type
 
   PresentationReplay* = object
     frames*: seq[PresentationFrame]
+    gameVersion*: string
 
 proc addU16(data: var string, value: uint16) =
   data.add(char(value and 0xff))
@@ -70,6 +71,9 @@ proc encodeFrames*(replay: PresentationReplay): string =
   var raw = PresentationReplayMagic
   raw.addU16(PresentationReplayVersion)
   raw.addU16(PresentationReplayTickRate)
+  doAssert GameVersion.len <= 255
+  raw.add(char(GameVersion.len))
+  raw.add(GameVersion)
   raw.addU32(uint32(replay.frames.len))
   for frame in replay.frames:
     raw.addU32(frame.tick)
@@ -87,10 +91,20 @@ proc decodeFrames*(raw: string): PresentationReplay =
      raw[0 ..< PresentationReplayMagic.len] != PresentationReplayMagic:
     raise newException(ValueError, "not a Zero Sum presentation replay")
   var offset = PresentationReplayMagic.len
-  if raw.readU16(offset) != PresentationReplayVersion:
+  let version = raw.readU16(offset)
+  if version notin [1'u16, 2'u16]:
     raise newException(ValueError, "unsupported presentation replay version")
   if raw.readU16(offset) != PresentationReplayTickRate:
     raise newException(ValueError, "unsupported presentation replay tick rate")
+  if version == 2:
+    if offset + 1 > raw.len:
+      raise newException(ValueError, "truncated presentation replay")
+    let gameVersionLength = int(uint8(raw[offset]))
+    inc offset
+    if offset + gameVersionLength > raw.len:
+      raise newException(ValueError, "truncated presentation replay")
+    result.gameVersion = raw[offset ..< offset + gameVersionLength]
+    offset += gameVersionLength
   let frameCount = raw.readU32(offset)
   if frameCount == 0 or frameCount > 100_000:
     raise newException(ValueError, "invalid presentation replay frame count")
