@@ -14,11 +14,11 @@ Built in Nim on the [bitworld](https://github.com/Metta-AI/bitworld) engine libr
 
 Match: 24 Hz, hard cap 9,120 ticks (6:20). Protocol: `zero_sum.player.v1` (JSON over WS). Live and static replay presentation: sprite_v1.
 
-> **CAUTION:** This repository contains both the shipping Zero Sum branch and a
-> held rewrite on `master`.
-
-`release/zero-sum-0.1.x` is the shipping branch for Zero Sum. `master` is the
-held Battle Royal/FFA rewrite and is not the release line for Zero Sum.
+> [!CAUTION]
+> **`release/zero-sum-0.1.x` is the shipping branch for Zero Sum.** Build and
+> upload 0.1.19 from it (`game.name` stays `zero-sum`). `master` is the held
+> Battle Royal / FFA rewrite: do not build, certify, or upload from `master`
+> under the Zero Sum name.
 
 ## League profiles
 

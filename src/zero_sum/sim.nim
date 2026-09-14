@@ -172,9 +172,11 @@ proc warnUnknownKeys(node: JsonNode, path: string,
                        "` ignored — check for a rename or a stale block")
 
 proc parseSimConfig*(node: JsonNode, mintSeed: proc(): uint64): SimConfig =
+  # stat_budget: advertised in the manifest schema; the sim uses its compiled-in budget (20 points).
   warnUnknownKeys(node, "", ["league_mode", "max_ticks", "freeze_ticks",
                              "seed", "zone", "sponsor", "events", "players",
-                             "tokens", "player_connect_timeout_seconds"])
+                             "tokens", "player_connect_timeout_seconds",
+                             "stat_budget"])
   case node{"league_mode"}.getStr("solo")
   of "solo": result.leagueMode = lmSolo
   of "duos": result.leagueMode = lmDuos
