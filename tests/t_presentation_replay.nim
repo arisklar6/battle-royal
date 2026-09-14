@@ -47,9 +47,10 @@ doAssert decoded.frames[0].tick == 0
 doAssert decoded.frames[^1].tick == uint32(gameState.tick)
 doAssert decoded.frames[0].packet.len > decoded.frames[^1].packet.len
 
-let v1Raw = raw[0 ..< PresentationReplayMagic.len] &
+var v1Raw = raw[0 ..< PresentationReplayMagic.len] &
   raw[PresentationReplayMagic.len ..< PresentationReplayMagic.len + 4] &
-  raw[PresentationReplayMagic.len + 5 + GameVersion.len .. ^1]
+  raw[PresentationReplayMagic.len + 6 .. ^1]
+v1Raw[PresentationReplayMagic.len] = char(1)
 let v1Decoded = decodeFrames(v1Raw)
 doAssert v1Decoded.gameVersion == ""
 doAssert v1Decoded.frames == replay.frames

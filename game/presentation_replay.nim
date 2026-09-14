@@ -3,6 +3,7 @@
 ## render them without a game server or a second implementation of the sim.
 
 import zippy
+import zero_sum/types
 
 const
   PresentationReplayMagic* = "ZERO_SUM_FRAMES"

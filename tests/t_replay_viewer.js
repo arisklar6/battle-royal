@@ -39,7 +39,8 @@ async function main(){
   assert.deepEqual([...decoded.frames[1].packet],[...packets[1]]);
   const decodedV1=replay.parse(v1Raw);
   assert.equal(decodedV1.gameVersion,null);
-  assert.deepEqual(decodedV1.frames,decoded.frames);
+  assert.deepEqual(decodedV1.frames.map(frame=>[frame.tick,[...frame.packet]]),
+                   decoded.frames.map(frame=>[frame.tick,[...frame.packet]]));
   assert.throws(()=>replay.parse(raw.subarray(0,raw.length-1)),/truncated/);
   await assert.rejects(replay.decode(Buffer.from("not zlib")),/not zlib/);
 
