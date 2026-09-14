@@ -14,27 +14,23 @@ Built in Nim on the [bitworld](https://github.com/Metta-AI/bitworld) engine libr
 
 Match: 24 Hz, hard cap 9,120 ticks (6:20). Protocol: `zero_sum.player.v1` (JSON over WS). Live and static replay presentation: sprite_v1.
 
+> **CAUTION:** This repository contains both the shipping Zero Sum branch and a
+> held rewrite on `master`.
+
+`release/zero-sum-0.1.x` is the shipping branch for Zero Sum. `master` is the
+held Battle Royal/FFA rewrite and is not the release line for Zero Sum.
+
 ## League profiles
 
-`python tools/gen_manifest.py` generates two publishable templates from the
-same game image:
+`python tools/gen_manifest.py` generates one publishable `zero-sum` manifest
+with Solo `competition` first and a self-paired Duos variant second:
 
-- `coworld_manifest_template.json` (`zero-sum`) is the Solo profile. Each
+- The `competition` variant is Solo: each
   external seat owns one contestant and receives that contestant's score.
-- `coworld_manifest_duos_template.json` (`zero-sum-duos`) is the self-paired
-  Duos profile. Use platform `team_n` seating with `team_count: 8`; external
+- The `duos` variant is self-paired: use platform `team_n` seating with
+  `team_count: 8`; external
   seats `i` and `i+8` are remapped onto the adjacent internal team
   `(2i, 2i+1)`, and both seats receive that team's combined score. The
   platform's per-policy mean therefore equals the requested team total.
-
-The two names are separate because a Coworld league seed is unique by Coworld
-name. Build the Duos package with explicit paths so it does not overwrite the
-Solo artifact:
-
-```bash
-uv run coworld build --project . --version <version> \
-  --template coworld_manifest_duos_template.json \
-  --output dist/duos/coworld_manifest.json
-```
 
 Status: Phase C (implementation) in progress.
