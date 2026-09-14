@@ -579,6 +579,243 @@
       "description": "League standard: full 9120-tick match, fast 5-minute ring, one scripted flood, equal per-team softcoin budgets delivered as an identical scripted gift schedule (no live sponsorship in hosted play)."
     },
     {
+      "id": "duos",
+      "name": "Duos",
+      "game_config": {
+        "league_mode": "duos",
+        "max_ticks": 9120,
+        "freeze_ticks": 240,
+        "stat_budget": 20,
+        "zone": {
+          "schedule": [
+            [
+              1440,
+              1632,
+              2064,
+              24,
+              19,
+              1
+            ],
+            [
+              2352,
+              2544,
+              2976,
+              19,
+              15,
+              2
+            ],
+            [
+              3264,
+              3456,
+              3888,
+              15,
+              11,
+              4
+            ],
+            [
+              4176,
+              4368,
+              4800,
+              11,
+              8,
+              6
+            ],
+            [
+              5088,
+              5280,
+              5712,
+              8,
+              5,
+              8
+            ],
+            [
+              6000,
+              6192,
+              6624,
+              5,
+              3,
+              16
+            ],
+            [
+              6912,
+              7104,
+              7536,
+              3,
+              0,
+              24
+            ]
+          ]
+        },
+        "events": [
+          {
+            "kind": "flood",
+            "rect": [
+              10,
+              22,
+              14,
+              26
+            ],
+            "from_tick": 4400,
+            "duration": 720
+          }
+        ],
+        "sponsor": {
+          "live": false,
+          "budget_per_team": 300,
+          "shop_opens_tick": 1680,
+          "scripted_gifts": [
+            {
+              "tick": 2016,
+              "team": "A",
+              "recipient_slot": 0,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4608,
+              "team": "A",
+              "recipient_slot": 1,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2040,
+              "team": "B",
+              "recipient_slot": 2,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4632,
+              "team": "B",
+              "recipient_slot": 3,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2064,
+              "team": "C",
+              "recipient_slot": 4,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4656,
+              "team": "C",
+              "recipient_slot": 5,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2088,
+              "team": "D",
+              "recipient_slot": 6,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4680,
+              "team": "D",
+              "recipient_slot": 7,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2112,
+              "team": "E",
+              "recipient_slot": 8,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4704,
+              "team": "E",
+              "recipient_slot": 9,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2136,
+              "team": "F",
+              "recipient_slot": 10,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4728,
+              "team": "F",
+              "recipient_slot": 11,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2160,
+              "team": "G",
+              "recipient_slot": 12,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4752,
+              "team": "G",
+              "recipient_slot": 13,
+              "item_id": "first_aid"
+            },
+            {
+              "tick": 2184,
+              "team": "H",
+              "recipient_slot": 14,
+              "item_id": "rations"
+            },
+            {
+              "tick": 4776,
+              "team": "H",
+              "recipient_slot": 15,
+              "item_id": "first_aid"
+            }
+          ]
+        },
+        "players": [
+          {
+            "name": "P00"
+          },
+          {
+            "name": "P01"
+          },
+          {
+            "name": "P02"
+          },
+          {
+            "name": "P03"
+          },
+          {
+            "name": "P04"
+          },
+          {
+            "name": "P05"
+          },
+          {
+            "name": "P06"
+          },
+          {
+            "name": "P07"
+          },
+          {
+            "name": "P08"
+          },
+          {
+            "name": "P09"
+          },
+          {
+            "name": "P10"
+          },
+          {
+            "name": "P11"
+          },
+          {
+            "name": "P12"
+          },
+          {
+            "name": "P13"
+          },
+          {
+            "name": "P14"
+          },
+          {
+            "name": "P15"
+          }
+        ]
+      },
+      "description": "Self-paired Zero Sum for 8 policies controlling adjacent teams of 2."
+    },
+    {
       "id": "casual-live",
       "name": "Casual (live sponsors)",
       "game_config": {

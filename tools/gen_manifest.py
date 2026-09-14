@@ -256,6 +256,13 @@ MANIFEST = {
                            "hosted play).",
         },
         {
+            "id": "duos",
+            "name": "Duos",
+            "game_config": DUOS_COMPETITION,
+            "description": "Self-paired Zero Sum for 8 policies controlling "
+                           "adjacent teams of 2.",
+        },
+        {
             "id": "casual-live",
             "name": "Casual (live sponsors)",
             "game_config": CASUAL,
@@ -270,24 +277,6 @@ MANIFEST = {
         "players": [{"player_id": "zero-sum-baseline"} for _ in range(16)],
     },
 }
-
-DUOS_MANIFEST = deepcopy(MANIFEST)
-DUOS_MANIFEST["game"]["name"] = "zero-sum-duos"
-DUOS_MANIFEST["game"]["description"] = (
-    "Self-paired Zero Sum for 8 policies controlling adjacent teams of 2. "
-    "The game remaps the platform team_n seat pattern onto the canonical "
-    "arena layout and attributes each policy its two contestants' team-total "
-    "score."
-)
-DUOS_MANIFEST["variants"] = [{
-    "id": "competition-duos",
-    "name": "Competition Duos",
-    "game_config": DUOS_COMPETITION,
-    "description": "League standard for 8 self-paired entrants. Use platform "
-                   "team_n seating with team_count 8; external seats i and "
-                   "i+8 become adjacent teammates inside the game.",
-}]
-DUOS_MANIFEST["certification"]["game_config"] = DUOS_FIXTURE
 
 def assert_source_urls(name: str, manifest: dict) -> None:
     """Fail loudly rather than write a template that cannot certify.
@@ -312,7 +301,6 @@ def assert_source_urls(name: str, manifest: dict) -> None:
 
 for filename, manifest in [
     ("coworld_manifest_template.json", MANIFEST),
-    ("coworld_manifest_duos_template.json", DUOS_MANIFEST),
 ]:
     assert_source_urls(filename, manifest)
     out = ROOT / filename
