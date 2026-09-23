@@ -19,7 +19,17 @@ def doc(rel: str) -> dict:
 # omits it fails that step outright. It was added by hand in 84b3377/91558ff
 # after this generator had already been written, so regenerating used to drop it
 # again silently; assert_source_urls() below is what makes that impossible now.
-SOURCE_URL = "https://github.com/arisklar6/zero-sum"
+#
+# Point at the current repo name with a /tree/<ref> form. The repo was renamed
+# zero-sum -> battle-royal, and GitHub's contents API answers the old name with
+# a 301 that the certifier doesn't follow, so provenance read "0/2 verified".
+# `coworld build` rewrites the ref to the build commit's SHA whenever the ref
+# is an ancestor of HEAD or isn't a remote branch (coworld bundle.py
+# _pinned_source_url), so each published manifest names its exact commit. The
+# release tag is only the fallback for builds outside a clone. Never use
+# /tree/HEAD or /tree/master: they resolve to the separate Battle Royal / FFA
+# master, and the ref must not contain "/" (the pinner takes one path segment).
+SOURCE_URL = "https://github.com/arisklar6/battle-royal/tree/zero-sum-v0.1.19"
 
 
 INT16 = {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "integer"}}
