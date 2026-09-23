@@ -11,8 +11,13 @@ WORKDIR /src
 
 # deps first (cache layer): exact pins via nimby.lock, upstream's own flow —
 # plain `nimble install` of bitworld is broken upstream (empty package)
-COPY nimby.lock config.nims zero_sum.nimble ./
-RUN nimble install -y nimby && /root/.nimble/bin/nimby sync nimby.lock
+# nim.cfg must be in this layer: its "# Created by Nimby" header is the workspace
+# marker `nimby sync` looks for. Without it, Nimby 0.2.x refuses with "No Nimby
+# workspace found. Refusing to create one inside package or Git checkout: /src".
+# Nimby is pinned to 0.2.3, the version CI's unpinned install currently resolves,
+# so the image and CI sync the lock with the same tool.
+COPY nimby.lock nim.cfg config.nims zero_sum.nimble ./
+RUN nimble install -y nimby@0.2.3 && /root/.nimble/bin/nimby sync nimby.lock
 
 COPY src ./src
 COPY game ./game
