@@ -306,6 +306,10 @@
         },
         "seed": {
           "type": "integer"
+        },
+        "game_version": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

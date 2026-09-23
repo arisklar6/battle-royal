@@ -145,6 +145,9 @@ RESULTS_SCHEMA = {
         "winner_team": {"type": ["string", "null"]},
         "match_ticks": {"type": "integer", "minimum": 0},
         "seed": {"type": "integer"},
+        # Stamped by game/bundle.nim since 0.1.19 (types.nim GameVersion).
+        # Optional so results from older builds still validate.
+        "game_version": {"type": "string", "minLength": 1},
     },
 }
 

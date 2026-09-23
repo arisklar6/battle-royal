@@ -16,9 +16,10 @@ Match: 24 Hz, hard cap 9,120 ticks (6:20). Protocol: `zero_sum.player.v1` (JSON 
 
 > [!CAUTION]
 > **`release/zero-sum-0.1.x` is the shipping branch for Zero Sum.** Build and
-> upload 0.1.19 from it (`game.name` stays `zero-sum`). `master` is the held
-> Battle Royal / FFA rewrite: do not build, certify, or upload from `master`
-> under the Zero Sum name.
+> upload 0.1.19 from it (`game.name` stays `zero-sum`). Zero Sum stays its own
+> Coworld: the zero-sum -> battle-royal rename was withdrawn (2026-09-23).
+> `master` carries the separate Battle Royal / FFA line, a different game: do
+> not build, certify, or upload from `master` under the Zero Sum name.
 
 ## League profiles
 
