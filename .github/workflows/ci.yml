@@ -46,6 +46,11 @@ jobs:
             exit 1
           fi
           echo "all tests passed"
+      - name: train bridge complete game
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          nim c --hints:off -d:release -o:training_bridge tools/training_bridge.nim
+          python3 tools/test_training_bridge.py ./training_bridge
 
   # Double-run determinism on one runner: the same seed twice must
   # produce byte-identical hash files.

@@ -25,7 +25,7 @@ type
     lootPriority: seq[string]
     finaleMode: string          # fight | evade
 
-  Ctx = object
+  Ctx* = object
     slot: int
     numPlayers: int
     aliveEst: int               # numPlayers minus death fireworks seen
@@ -432,6 +432,24 @@ proc decide(c: var Ctx, m: JsonNode): JsonNode =
     if d >= 0:
       return %*{"type": "action", "do": "move", "dir": DirNames[d]}
   %*{"type": "action", "do": "none"}
+
+proc trainingContext*(config: JsonNode): Ctx =
+  ## Use the shipped policy's state and public arena map in local training.
+  result.coach = defaultCoach()
+  result.slot = config["slot"].getInt()
+  result.numPlayers = config["num_players"].getInt()
+  result.aliveEst = result.numPlayers
+  result.arenaSize = config["arena"]["size"].getInt()
+  for row in config["arena"]["static_map"]:
+    result.staticMap.add(row.getStr())
+
+proc trainingAction*(c: var Ctx, observation: JsonNode): JsonNode =
+  c.decide(observation)
+
+proc trainingAllocation*(): JsonNode =
+  let stats = defaultCoach().stats
+  %*{"type": "allocate_stats", "speed": stats[0], "strength": stats[1],
+     "intelligence": stats[2], "athleticism": stats[3]}
 
 when isMainModule:
   var url = getEnv("COWORLD_PLAYER_WS_URL")
